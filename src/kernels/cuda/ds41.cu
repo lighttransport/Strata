@@ -32,41 +32,49 @@ __device__ inline float warp_sum(float v) {
 }
 
 // one thread: 24 coefficients, ggml's operation order
+// one token per block, a thread per comb element: every sum is taken in the serial order (the same bits)
 __global__ void hc_coeff_kernel(const float* m, const float* scale, const float* base, float* c, int iterations, float eps) {
+    __shared__ float k[16];
+    const int t = threadIdx.x;   // 16 threads: element d + 4 s
     m += size_t(blockIdx.x) * 24;
     c += size_t(blockIdx.x) * 24;
-    for (int i = 0; i < 4; ++i) c[i] = sigmoid(m[i] * scale[0] + base[i]) + eps;
-    for (int i = 0; i < 4; ++i) c[4 + i] = sigmoid(m[4 + i] * scale[1] + base[4 + i]) * 2.0f;
-    float k[16];
-    for (int i = 0; i < 16; ++i) k[i] = m[8 + i] * scale[2] + base[8 + i];
-    // comb[dst + 4 src]: softmax over dst for each src
-    for (int s = 0; s < 4; ++s) {
+    if (t < 4) c[t] = sigmoid(m[t] * scale[0] + base[t]) + eps;
+    else if (t < 8) c[t] = sigmoid(m[t] * scale[1] + base[t]) * 2.0f;
+    k[t] = m[8 + t] * scale[2] + base[8 + t];
+    __syncthreads();
+    const int d = t % 4, sc = t / 4;
+    {   // comb[dst + 4 src]: softmax over dst for each src
         float mx = -INFINITY;
-        for (int d = 0; d < 4; ++d) mx = fmaxf(mx, k[d + 4 * s]);
-        float sum = 0;
-        for (int d = 0; d < 4; ++d) { k[d + 4 * s] = expf(k[d + 4 * s] - mx); sum += k[d + 4 * s]; }
+        for (int i = 0; i < 4; ++i) mx = fmaxf(mx, k[i + 4 * sc]);
+        float e[4], sum = 0;
+        for (int i = 0; i < 4; ++i) { e[i] = expf(k[i + 4 * sc] - mx); sum += e[i]; }
         const float inv = 1.0f / sum;
-        for (int d = 0; d < 4; ++d) k[d + 4 * s] = k[d + 4 * s] * inv + eps;
+        const float v = e[d] * inv + eps;
+        __syncthreads();
+        k[t] = v;
+        __syncthreads();
     }
     auto cols = [&] {   // for each dst: divide by (sum over src + eps)
-        for (int d = 0; d < 4; ++d) {
-            float sum = 0;
-            for (int s = 0; s < 4; ++s) sum += k[d + 4 * s];
-            sum += eps;
-            for (int s = 0; s < 4; ++s) k[d + 4 * s] /= sum;
-        }
+        float sum = 0;
+        for (int i = 0; i < 4; ++i) sum += k[d + 4 * i];
+        sum += eps;
+        const float v = k[t] / sum;
+        __syncthreads();
+        k[t] = v;
+        __syncthreads();
     };
     auto rows = [&] {   // for each src: divide by (sum over dst + eps)
-        for (int s = 0; s < 4; ++s) {
-            float sum = 0;
-            for (int d = 0; d < 4; ++d) sum += k[d + 4 * s];
-            sum += eps;
-            for (int d = 0; d < 4; ++d) k[d + 4 * s] /= sum;
-        }
+        float sum = 0;
+        for (int i = 0; i < 4; ++i) sum += k[i + 4 * sc];
+        sum += eps;
+        const float v = k[t] / sum;
+        __syncthreads();
+        k[t] = v;
+        __syncthreads();
     };
     cols();
     for (int i = 1; i < iterations; ++i) { rows(); cols(); }
-    for (int i = 0; i < 16; ++i) c[8 + i] = k[i];
+    c[8 + t] = k[t];
 }
 
 __global__ void hc_pre_kernel(const float* h, const float* w, float* y, int n) {
@@ -263,6 +271,108 @@ __global__ void __launch_bounds__(256) attn_out_multi_kernel(const float* scores
     }
 #pragma unroll
     for (int j = 0; j < kHeadGroup / 2; ++j) out[size_t(h0 + hs + 2 * j) * dim + d] = acc[j] * inv[hs + 2 * j];
+}
+
+
+// attn_out_kernel with the rows split over blockIdx.z (`splits` parts): each block its rows' weighted sum (the
+// softmax statistics over all rows), into part[z][heads][dim]; attn_combine_kernel adds the parts in order
+__global__ void __launch_bounds__(256) attn_out_split_kernel(const float* scores, int heads, int dim, const float* window, Ring ring, int wrows,
+        const float* comp, int comp_stride, const int* sel, int rows, const float* sinks, float* part, const int* nsel_dev) {
+    extern __shared__ float p[];    // kHeadGroup x chunk
+    __shared__ float inv[kHeadGroup];
+    const int h0 = blockIdx.x * kHeadGroup, tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
+    const int n = nsel_dev ? min(rows, wrows + *nsel_dev) : rows;
+    const int chunk = (rows + gridDim.z - 1) / gridDim.z, r0 = blockIdx.z * chunk, r1 = min(n, r0 + chunk);
+    {
+        const int h = warp;
+        const float* sc = scores + size_t(h0 + h) * kMaxRows;
+        float mx = sinks[h0 + h];
+        for (int r = lane; r < n; r += 32) mx = fmaxf(mx, sc[r]);
+        for (int d = 16; d; d /= 2) mx = fmaxf(mx, __shfl_xor_sync(0xffffffff, mx, d));
+        float sum = 0;
+        for (int r = lane; r < n; r += 32) {
+            const float e = expf(sc[r] - mx);
+            sum += e;
+            if (r >= r0 && r < r1) p[h * chunk + (r - r0)] = e;
+        }
+        sum = warp_sum(sum);
+        if (!lane) inv[h] = 1.0f / (sum + expf(sinks[h0 + h] - mx));
+    }
+    __syncthreads();
+    const int d = blockIdx.y * kDimChunk + tid % kDimChunk, hs = tid / kDimChunk;
+    if (d >= dim) return;
+    float acc[kHeadGroup / 2];
+#pragma unroll
+    for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] = 0;
+    for (int r = r0; r < r1; ++r) {
+        const float v = attn_row(window, ring, wrows, comp, comp_stride, sel, dim, r)[d];
+#pragma unroll
+        for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] += p[(hs + 2 * j) * chunk + (r - r0)] * v;
+    }
+#pragma unroll
+    for (int j = 0; j < kHeadGroup / 2; ++j)
+        part[(size_t(blockIdx.z) * heads + h0 + hs + 2 * j) * dim + d] = acc[j] * inv[hs + 2 * j];
+}
+__global__ void attn_combine_kernel(const float* part, int splits, int n, float* out) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float s = 0;
+    for (int z = 0; z < splits; ++z) s += part[size_t(z) * n + i];
+    out[i] = s;
+}
+
+
+// attn_out_multi_kernel with each token's rows split: blockIdx.z = token * splits + part; into part[token][split]
+__global__ void __launch_bounds__(256) attn_out_multi_split_kernel(const float* scores, int heads, int dim, const float* window, int ring_size,
+        const int4* info, const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, int bound, int splits,
+        const float* sinks, float* part) {
+    extern __shared__ float p[];    // kHeadGroup x chunk
+    __shared__ float inv[kHeadGroup];
+    const int t = blockIdx.z / splits, z = blockIdx.z % splits;
+    const int4 in = info[t];
+    const Ring ring{in.x, ring_size};
+    const int n = in.y + (nsel_dev ? min(in.z, nsel_dev[t]) : in.z);
+    const int chunk = (bound + splits - 1) / splits, r0 = z * chunk, r1 = min(n, r0 + chunk);
+    sel += size_t(t) * sel_stride;
+    scores += size_t(t) * heads * kMaxRows;
+    const int h0 = blockIdx.x * kHeadGroup, tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
+    {
+        const int h = warp;
+        const float* sc = scores + size_t(h0 + h) * kMaxRows;
+        float mx = sinks[h0 + h];
+        for (int r = lane; r < n; r += 32) mx = fmaxf(mx, sc[r]);
+        for (int d = 16; d; d /= 2) mx = fmaxf(mx, __shfl_xor_sync(0xffffffff, mx, d));
+        float sum = 0;
+        for (int r = lane; r < n; r += 32) {
+            const float e = expf(sc[r] - mx);
+            sum += e;
+            if (r >= r0 && r < r1) p[h * chunk + (r - r0)] = e;
+        }
+        sum = warp_sum(sum);
+        if (!lane) inv[h] = 1.0f / (sum + expf(sinks[h0 + h] - mx));
+    }
+    __syncthreads();
+    const int d = blockIdx.y * kDimChunk + tid % kDimChunk, hs = tid / kDimChunk;
+    if (d >= dim) return;
+    float acc[kHeadGroup / 2];
+#pragma unroll
+    for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] = 0;
+    for (int r = r0; r < r1; ++r) {
+        const float v = attn_row(window, ring, in.y, comp, comp_stride, sel, dim, r)[d];
+#pragma unroll
+        for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] += p[(hs + 2 * j) * chunk + (r - r0)] * v;
+    }
+#pragma unroll
+    for (int j = 0; j < kHeadGroup / 2; ++j)
+        part[((size_t(t) * splits + z) * heads + h0 + hs + 2 * j) * dim + d] = acc[j] * inv[hs + 2 * j];
+}
+// out[t][i] = sum over z of part[t][z][i] (n = heads x dim per token)
+__global__ void attn_combine_multi_kernel(const float* part, int splits, int n, float* out) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x, t = blockIdx.y;
+    if (i >= n) return;
+    float s = 0;
+    for (int z = 0; z < splits; ++z) s += part[(size_t(t) * splits + z) * n + i];
+    out[size_t(t) * n + i] = s;
 }
 
 // Batched attention (prefill): block (token t, 8-head group). Key tiles of 16 rows in LDS, scores per head by one
@@ -1124,7 +1234,7 @@ __global__ void stream_mean_kernel(const float* __restrict__ h, float* dst, size
 
 void ds41_hc_coeff(const float* mixes, const float* scale, const float* base, float* coeff, int iterations, float eps,
                    void* stream, int tokens) {
-    hc_coeff_kernel<<<unsigned(tokens), 1, 0, (cudaStream_t)stream>>>(mixes, scale, base, coeff, iterations, eps);
+    hc_coeff_kernel<<<unsigned(tokens), 16, 0, (cudaStream_t)stream>>>(mixes, scale, base, coeff, iterations, eps);
     check("hc_coeff");
 }
 
@@ -1160,6 +1270,19 @@ void ds41_attention(const float* q, int heads, int dim, const float* window, int
     attn_scores_kernel<<<g1, 256, size_t(kHeadGroup) * dim * sizeof(float), (cudaStream_t)stream>>>(
         q, dim, window, ring, window_rows, comp, comp_stride, sel, rows, scale, scores, nsel_dev);
     check("attention scores");
+    // STRATA_DS41_ATTN_SPLIT=n: the output's rows over n blocks each (a partial buffer after the scores, then a sum)
+    static const int split = std::getenv("STRATA_DS41_ATTN_SPLIT") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_ATTN_SPLIT"))) : 1;
+    if (split > 1 && rows >= 2 * split) {
+        float* part = scores + size_t(heads) * kMaxRows;   // the caller's scratch holds more than one token's scores
+        const int chunk = (rows + split - 1) / split;
+        const dim3 g3(unsigned(heads / kHeadGroup), unsigned(dim / kDimChunk), unsigned(split));
+        attn_out_split_kernel<<<g3, 256, size_t(kHeadGroup) * chunk * sizeof(float), (cudaStream_t)stream>>>(
+            scores, heads, dim, window, ring, window_rows, comp, comp_stride, sel, rows, sinks, part, nsel_dev);
+        check("attention out split");
+        attn_combine_kernel<<<unsigned((heads * dim + 255) / 256), 256, 0, (cudaStream_t)stream>>>(part, split, heads * dim, out);
+        check("attention combine");
+        return;
+    }
     const dim3 g2(unsigned(heads / kHeadGroup), unsigned(dim / kDimChunk));
     attn_out_kernel<<<g2, 256, size_t(kHeadGroup) * rows * sizeof(float), (cudaStream_t)stream>>>(
         scores, dim, window, ring, window_rows, comp, comp_stride, sel, rows, sinks, out, nsel_dev);
@@ -1330,6 +1453,18 @@ void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const 
     attn_scores_multi_kernel<<<g1, 256, size_t(kHeadGroup) * dim * sizeof(float), (cudaStream_t)stream>>>(
         q, heads, dim, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, nsel_dev, scale, scores);
     check("attention multi scores");
+    static const int split = std::getenv("STRATA_DS41_ATTN_SPLIT") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_ATTN_SPLIT"))) : 1;
+    if (split > 1 && bound >= 2 * split) {
+        float* part = scores + size_t(tokens) * heads * kMaxRows;   // the caller's scratch: tokens' scores, then the parts
+        const int chunk = (bound + split - 1) / split;
+        const dim3 g3(unsigned(heads / kHeadGroup), unsigned(dim / kDimChunk), unsigned(tokens * split));
+        attn_out_multi_split_kernel<<<g3, 256, size_t(kHeadGroup) * chunk * sizeof(float), (cudaStream_t)stream>>>(
+            scores, heads, dim, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, nsel_dev, bound, split, sinks, part);
+        check("attention multi out split");
+        attn_combine_multi_kernel<<<dim3(unsigned((heads * dim + 255) / 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(part, split, heads * dim, out);
+        check("attention multi combine");
+        return;
+    }
     const dim3 g2(unsigned(heads / kHeadGroup), unsigned(dim / kDimChunk), unsigned(tokens));
     attn_out_multi_kernel<<<g2, 256, size_t(kHeadGroup) * bound * sizeof(float), (cudaStream_t)stream>>>(
         scores, heads, dim, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, nsel_dev, bound, sinks, out);

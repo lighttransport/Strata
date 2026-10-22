@@ -21,6 +21,7 @@
 #include "strata/kernels/exl3.hpp"
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
+#include "strata/kernels/iq_kernels.hpp"
 #include "strata/kernels/native_mmvq.hpp"
 #include "strata/net/expert_tp.hpp"
 #include "strata/prefill/gemm.hpp"
@@ -287,6 +288,68 @@ inline unsigned long gpu_socket_nodes(int dev) {
     return mask;
 }
 
+// STRATA_DS41_DECODE_GROUPED=1: a short pass's routes to one GPU's resident experts in one grouped launch
+// (native_expert_grouped: gate/up, SwiGLU, down for every (expert, token) entry), then the weighted rows added
+// into `sum`. Expert blobs at device pointers in the tier layout [gate | up | down].
+struct GroupedRunner {
+    Dev table, scratch, out, xq;
+    uint8_t* staging = nullptr;   // pinned, portable: the tables
+    size_t staging_bytes = 0;
+    int cap = 0;
+    // groups: (expert blob, its routes (token, weight)); x: [nt][hidden] floats on this GPU
+    bool run(int gu_type, int d_type, int hidden, int ff, float clamp, const std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>>& groups,
+             const float* x, int nt, float* sum, cudaStream_t stream) {
+        if (groups.empty()) return false;
+        int E = 0;
+        for (const auto& g : groups) E += int(g.second.size());
+        const int G = int(groups.size());
+        if (E > cap) {
+            cap = std::max(E, 64);
+            scratch = Dev(k::native_expert_scratch_bytes(cap, ff));
+            out = Dev(size_t(cap) * hidden * 4);
+            table = Dev(size_t(cap) * 64);
+        }
+        if (xq.bytes < k::native_q8_1_bytes(hidden, 1) * size_t(nt)) xq = Dev(k::native_q8_1_bytes(hidden, 1) * size_t(nt) * 2);
+        // tables: ptr[G] (u64), start[G + 1], n_groups, dst[E], tok[E], w[E]
+        const size_t need = size_t(G) * 8 + size_t(G + 1) * 4 + 4 + size_t(E) * 12 + 64;
+        if (need > staging_bytes) {
+            if (staging) cudaFreeHost(staging);
+            ck(cudaHostAlloc(reinterpret_cast<void**>(&staging), need * 2, cudaHostAllocPortable), "grouped staging");
+            staging_bytes = need * 2;
+        }
+        ck(cudaStreamSynchronize(stream), "grouped staging");   // the previous call's tables uploaded
+        auto* ptr = reinterpret_cast<unsigned long long*>(staging);
+        auto* start = reinterpret_cast<int32_t*>(ptr + G);
+        int32_t* ng = start + G + 1;
+        int32_t* dst = ng + 1;
+        int32_t* tok = dst + E;
+        float* w = reinterpret_cast<float*>(tok + E);
+        int e = 0;
+        for (int g = 0; g < G; ++g) {
+            ptr[g] = reinterpret_cast<unsigned long long>(groups[size_t(g)].first);
+            start[g] = e;
+            for (const auto& [t, wt] : groups[size_t(g)].second) { dst[e] = e; tok[e] = t; w[e] = wt; ++e; }
+        }
+        start[G] = e;
+        *ng = G;
+        const size_t bytes = reinterpret_cast<uint8_t*>(w + E) - staging;
+        if (table.bytes < bytes) table = Dev(bytes * 2);
+        ck(cudaMemcpyAsync(table.p, staging, bytes, cudaMemcpyHostToDevice, stream), "grouped tables");
+        const uint8_t* tb = table.b();
+        const size_t o_start = size_t(G) * 8, o_ng = o_start + size_t(G + 1) * 4, o_dst = o_ng + 4, o_tok = o_dst + size_t(E) * 4,
+                     o_w = o_tok + size_t(E) * 4;
+        for (int j = 0; j < nt; j += 8)
+            k::native_quantize_q8_1(x + size_t(j) * hidden, xq.b(k::native_q8_1_bytes(hidden, 1) * size_t(j)), hidden, std::min(8, nt - j), stream);
+        auto L = k::native_expert_layout(gu_type, d_type, hidden, ff);
+        L.swiglu_limit = clamp;
+        k::native_expert_grouped(L, reinterpret_cast<const unsigned long long*>(tb), reinterpret_cast<const int32_t*>(tb + o_start),
+                                 reinterpret_cast<const int32_t*>(tb + o_ng), reinterpret_cast<const int32_t*>(tb + o_dst),
+                                 reinterpret_cast<const int32_t*>(tb + o_tok), G, E, xq.p, scratch.p, out.f(), stream);
+        k::ds41_scatter_axpy(out.f(), reinterpret_cast<const int32_t*>(tb + o_tok), reinterpret_cast<const float*>(tb + o_w), E, hidden, sum, stream);
+        return true;
+    }
+};
+
 struct PeerGpu {
     int dev = 1, hidden = 0, ff = 0;
     cudaStream_t stream = nullptr;
@@ -432,6 +495,27 @@ struct PeerGpu {
         extra.clear();
         return true;
     }
+    GroupedRunner grouped_runner;
+    bool grouped(int l, int nt, int K, const int* ids, const float* wts, const float* z) {
+        Guard g(dev);
+        std::map<int, std::vector<std::pair<int, float>>> by;
+        for (int i = 0; i < nt * K; ++i) {
+            const int e = ids[i];
+            if (e >= 0 && pos[size_t(l)][size_t(e)] >= 0) by[e].push_back({i / K, wts[i]});
+        }
+        bool any = !by.empty() || !extra.empty();
+        if (!any) { busy = false; return false; }
+        mark_begin();
+        ck(cudaMemcpyAsync(x.p, z, size_t(nt) * hidden * 4, cudaMemcpyHostToDevice, stream), "peer z");
+        ck(cudaMemsetAsync(out.p, 0, size_t(nt) * hidden * 4, stream), "peer sum");
+        std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>> groups;
+        for (auto& [e, r] : by) groups.push_back({base[size_t(l)] + size_t(pos[size_t(l)][size_t(e)]) * stride[size_t(l)], std::move(r)});
+        grouped_runner.run(gu_type[size_t(l)], d_type[size_t(l)], hidden, ff, clamp[size_t(l)], groups, x.f(), nt, out.f(), stream);
+        if (!extra.empty()) extras(l, nt, z, true);
+        ck(cudaMemcpyAsync(host_out, out.p, size_t(nt) * hidden * 4, cudaMemcpyDeviceToHost, stream), "peer result"), mark_end();
+        busy = true;
+        return true;
+    }
     // decode: the routes resident here (ids[t K + k] with pos >= 0), z host [nt][hidden]; result into host_out (zeroed
     // first); returns whether any ran (then `collect` waits)
     bool decode(int l, int nt, int K, const int* ids, const float* wts, const float* z) {
@@ -463,7 +547,7 @@ struct PeerGpu {
             if (!any) mark_begin();
             any = extras(l, nt, z, any) || any;
         }
-        if (any) ck(cudaMemcpyAsync(host_out, out.p, size_t(nt) * hidden * 4, cudaMemcpyDeviceToHost, stream), "peer result");
+        if (any) ck(cudaMemcpyAsync(host_out, out.p, size_t(nt) * hidden * 4, cudaMemcpyDeviceToHost, stream), "peer result"), mark_end();
         busy = any;
         return any;
     }
@@ -581,7 +665,7 @@ struct PeerGpu {
             if (!busy) mark_begin();
             busy = extras(l, nt, z, busy) || busy;
         }
-        if (busy) ck(cudaMemcpyAsync(host_out, out.p, size_t(nt) * hidden * 4, cudaMemcpyDeviceToHost, stream), "peer result");
+        if (busy) ck(cudaMemcpyAsync(host_out, out.p, size_t(nt) * hidden * 4, cudaMemcpyDeviceToHost, stream), "peer result"), mark_end();
         return busy;
     }
     // STRATA_DS41_DECODE_TIMING: the peer's GPU time per call (from its first upload to its result)
@@ -593,10 +677,10 @@ struct PeerGpu {
         if (!t0) { cudaEventCreate(&t0); cudaEventCreate(&t1); }
         cudaEventRecord(t0, stream);
     }
+    void mark_end() { if (timing && t1) cudaEventRecord(t1, stream); }   // after a call's last operation
     void collect() {   // the last call's result is in host_out
         if (!busy) return;
         Guard g(dev);
-        if (timing) cudaEventRecord(t1, stream);
         ck(cudaStreamSynchronize(stream), "peer");
         if (timing) { float ms = 0; cudaEventElapsedTime(&ms, t0, t1); gpu_ms += ms; }
         busy = false;
@@ -737,7 +821,7 @@ public:
                 if (c.ratio[size_t(l)] > 1) { stash_v_[size_t(l)] = Dev(size_t(c.head_dim) * 4); stash_s_[size_t(l)] = Dev(size_t(c.head_dim) * 4); }
             }
         score_stride_ = context_ + 1;
-        attn_scores_ = Dev(8 * k::ds41_attention_scratch(c.heads));   // up to 8 tokens of ds41_attention_multi
+        attn_scores_ = Dev(16 * k::ds41_attention_scratch(c.heads));   // up to 8 tokens of ds41_attention_multi, and the split parts
         comp_ = Dev(size_t(c.head_dim) * 4);
         ik_ = Dev(size_t(c.index_dim) * 4);
         // the Engram tables (one shared, or one per Engram layer), read with O_DIRECT
@@ -1268,6 +1352,9 @@ public:
     /// After a long prompt: the chunk buffers shrink to STRATA_DS41_DECODE_CHUNK (64) and the GPU expert tier takes
     /// the VRAM, seeded from the profile file or else from the prompt's own routing.
     void prefill_done() {
+        static const bool grow_on = std::getenv("STRATA_DS41_GROW") && std::string(std::getenv("STRATA_DS41_GROW")) == "1" &&
+                                    std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1";
+        if (grow_on) grow();
         rebalance();
         if (!tier_lent_) return;
         ck(cudaStreamSynchronize(stream_), "sync");
@@ -1457,6 +1544,14 @@ public:
     }
 
     // pinned host memory owned by the decoder (released by resize)
+    // pinned memory that resize() keeps (the drafter's, the decode tables')
+    std::vector<std::unique_ptr<void, void (*)(void*)>> keep_bufs_;
+    float* pinned_keep(size_t bytes) {
+        void* h = nullptr;
+        ck(cudaHostAlloc(&h, std::max<size_t>(bytes, 16), cudaHostAllocPortable), "pinned");
+        keep_bufs_.emplace_back(h, [](void* q) { cudaFreeHost(q); });
+        return static_cast<float*>(h);
+    }
     float* pinned(size_t bytes) {
         void* h = nullptr;
         ck(cudaHostAlloc(&h, std::max<size_t>(bytes, 16), cudaHostAllocPortable), "pinned");   // (portable: the peer GPU reads some)
@@ -1929,7 +2024,7 @@ private:
         {
             std::lock_guard<std::mutex> lock(pf_m_);
             for (int q = from; q < upto; ++q)
-                for (size_t e = 1; e < c.engram_layers.size(); ++e) {
+                for (size_t e = 1; e < c.engram_layers.size(); ++e) {   // (table 0 too measured slower: the reads compete)
                     engram_hash(int(e), q, tok_at, rows.data());
                     for (int64_t r : rows)
                         if (engram_ram_.empty() || r >= engram_ram_rows_[e]) pf_queue_.push_back({int(e), r});
@@ -2617,6 +2712,7 @@ private:
         k::ds41_axpy(g_out_.f(), w, g_sum_.f(size_t(i) * c.hidden), c.hidden, stream_);
     }
     std::vector<Dev> dstream_;   // STRATA_DS41_DECODE_STREAM: GPU 0's slots for the CPU's experts
+    GroupedRunner grouped0_;     // STRATA_DS41_DECODE_GROUPED: GPU 0's
     size_t max_stride_ = 0;
     void gpu_experts(int l, int i, const int* ids, const float* wts, int n) {
         const auto& c = cfg_;
@@ -3021,7 +3117,11 @@ private:
         for (int l = 0; l < c.layers; ++l) {
             const float* cnt = rt_count_.data() + size_t(l) * c.experts;
             std::vector<int> ram, gpu;
-            for (int e = 0; e < c.experts; ++e) (where_[size_t(l)][size_t(e)] ? gpu : ram).push_back(e);
+            for (int e = 0; e < c.experts; ++e) {
+                const char w0 = where_[size_t(l)][size_t(e)];
+                if (w0 == 3) continue;   // grown: on GPU 0 and in RAM
+                (w0 ? gpu : ram).push_back(e);
+            }
             std::sort(ram.begin(), ram.end(), [&](int a, int b) { return cnt[a] > cnt[b]; });
             std::sort(gpu.begin(), gpu.end(), [&](int a, int b) { return cnt[a] < cnt[b]; });
             for (size_t j = 0; j < std::min(ram.size(), gpu.size()); ++j) {
@@ -3078,6 +3178,44 @@ private:
                   << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
     }
 
+    // STRATA_DS41_GROW=1 (with STRATA_DS41_DECODE_GROUPED): after the prompt, the chunk buffers shrink to 64 tokens and
+    // the VRAM they free (less STRATA_DS41_GPU_RESERVE_MIB) takes copies of the prompt's most-routed RAM experts
+    // (where_ 3: computed on GPU 0 in decode, still streamed from RAM in prompt passes)
+    Dev grow_arena_;
+    bool grown_ = false;
+    void grow() {
+        const auto& c = cfg_;
+        if (grown_ || packed_.empty() || rt_count_.empty()) return;
+        grown_ = true;
+        if (chunk_ > 64) resize(64);
+        ck(cudaStreamSynchronize(stream_), "grow");
+        size_t f = 0, t = 0;
+        ck(cudaMemGetInfo(&f, &t), "memory info");
+        const size_t keep = size_t(std::getenv("STRATA_DS41_GPU_RESERVE_MIB") ? std::atoi(std::getenv("STRATA_DS41_GPU_RESERVE_MIB")) : 1024) << 20;
+        if (f <= keep + max_stride_) return;
+        const size_t n = (f - keep) / max_stride_;
+        std::vector<std::pair<float, int>> cand;   // (-routes, l * experts + e)
+        for (int l = 0; l < c.layers; ++l)
+            for (int e = 0; e < c.experts; ++e)
+                if (where_[size_t(l)][size_t(e)] == 0 && rt_count_[size_t(l) * c.experts + size_t(e)] > 0)
+                    cand.push_back({-rt_count_[size_t(l) * c.experts + size_t(e)], l * c.experts + e});
+        std::sort(cand.begin(), cand.end());
+        if (cand.size() > n) cand.resize(n);
+        if (cand.empty()) return;
+        grow_arena_ = Dev(cand.size() * max_stride_);
+        for (size_t j = 0; j < cand.size(); ++j) {
+            const int l = cand[j].second / c.experts, e = cand[j].second % c.experts;
+            const size_t stride = stream_stride(l);
+            uint8_t* dst = grow_arena_.b(j * max_stride_);
+            ck(cudaMemcpyAsync(dst, packed_[size_t(l)] + size_t(ram_pos_[size_t(l)][size_t(e)]) * stride, stride, cudaMemcpyHostToDevice, stream_), "grow");
+            slot_[size_t(l)][size_t(e)] = int(slots_.size());
+            slots_.push_back({dst, stride, l * c.experts + e, false, nullptr});
+            where_[size_t(l)][size_t(e)] = 3;
+        }
+        ck(cudaStreamSynchronize(stream_), "grow");
+        std::cerr << "DS41 grow experts=" << cand.size() << " GiB=" << cand.size() * max_stride_ / double(1ull << 30) << "\n";
+    }
+
     // STRATA_DS41_DECODE_MMQ=1 (with STRATA_DS41_RAM_COPY's residency): a short pass's routes to GPU 0's resident
     // experts as one MMQ product per layer (the resident positions in order, those without tokens as empty row
     // ranges) instead of a GEMV chain per route; adds into g_sum_
@@ -3105,7 +3243,7 @@ private:
             dq_bound_ = Dev((size_t(c.experts) + 8) * 4);
             dq_iota_ = Dev((size_t(kDqRows) + 128) * 4);
             mq::iota(dq_iota_.i(), kDqRows + 128, stream_);
-            dq_host_ = reinterpret_cast<int*>(pinned((size_t(kDqRows) * 2 + size_t(c.experts) + 8) * 4));
+            dq_host_ = reinterpret_cast<int*>(pinned_keep((size_t(kDqRows) * 2 + size_t(c.experts) + 8) * 4));
         }
         std::vector<int> qpos(size_t(c.experts), -1);
         for (int q = 0; q < R; ++q) qpos[size_t(ord[size_t(S + q)])] = q;
@@ -3475,8 +3613,21 @@ private:
         if (lane_async) lane_->begin(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
         bool any_gpu = false;
         static const bool decode_mmq = std::getenv("STRATA_DS41_DECODE_MMQ") && std::string(std::getenv("STRATA_DS41_DECODE_MMQ")) == "1";
+        static const bool decode_grouped = std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1" &&
+                                           k::native_expert_supported(experts_[0].f.gu_type, experts_[0].f.d_type, c.hidden, c.ff);
         bool batched = false;
-        if (decode_mmq && std::any_of(gn.begin(), gn.end(), [](int n) { return n > 0; })) {
+        if (decode_grouped && fl_ == c.ff && std::any_of(gn.begin(), gn.end(), [](int n) { return n > 0; })) {
+            ck(cudaMemsetAsync(g_sum_.p, 0, size_t(T) * H * 4, stream_), "tier sum");
+            any_gpu = true;
+            std::map<int, std::vector<std::pair<int, float>>> by;
+            for (int i = 0; i < T; ++i)
+                for (int j = 0; j < gn[size_t(i)]; ++j) by[gids[size_t(i) * 16 + size_t(j)]].push_back({i, gws[size_t(i) * 16 + size_t(j)]});
+            std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>> groups;
+            for (auto& [e, r] : by) groups.push_back({slots_[size_t(slot_[size_t(l)][size_t(e)])].p, std::move(r)});
+            const auto& L = experts_[size_t(l)];
+            batched = grouped0_.run(L.f.gu_type, L.f.d_type, c.hidden, c.ff, c.clamp[size_t(l)], groups, xn_.f(), T, g_sum_.f(), stream_);
+        }
+        if (!batched && decode_mmq && std::any_of(gn.begin(), gn.end(), [](int n) { return n > 0; })) {
             ck(cudaMemsetAsync(g_sum_.p, 0, size_t(T) * H * 4, stream_), "tier sum");
             any_gpu = true;
             batched = resident_mmq(l, T, K, ids.data(), wts.data());
@@ -3497,7 +3648,8 @@ private:
         }
         // STRATA_DS41_PEER_MMQ (follows DECODE_MMQ): the peer GPU's routes by MMQ too (0: its GEMV chains)
         static const bool peer_mmq = decode_mmq && !(std::getenv("STRATA_DS41_PEER_MMQ") && std::string(std::getenv("STRATA_DS41_PEER_MMQ")) == "0");
-        const bool peer = peer_ && (peer_mmq && peer_->mmq ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
+        const bool peer = peer_ && (decode_grouped ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
+                                    : peer_mmq && peer_->mmq ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
                                                              : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
         const auto x1 = std::chrono::steady_clock::now();
         if (lane_async) lane_->finish();
@@ -3694,7 +3846,8 @@ public:
         long drafted = 0, accepted = 0, steps = 0;
         double draft_s = 0, verify_s = 0, inject_s = 0, draft_layers_s = 0, draft_route_s = 0, draft_head_s = 0;
     } dsp_;
-    std::vector<Dev> spec_v_, spec_s_;   // verify passes: each position's compressor value/score (ratio-2 KV sources)
+    std::vector<Dev> spec_v_, spec_s_;
+    Dev dq8_;   // the drafter's quantized activations (STRATA_DS41_DSPARK_Q8)   // verify passes: each position's compressor value/score (ratio-2 KV sources)
     bool spec_save_ = false;
 
     // a BF16 / F32 drafter weight times n tokens (x rows ldx apart), y rows ldy apart; BF16 reads each row once per 8 tokens
@@ -3710,6 +3863,11 @@ public:
                 k::ds41_bf16_gemv_mt(reinterpret_cast<const uint16_t*>(base), x, ldx, idx, m, y + size_t(t0) * ldy, ldy, rows, W.in, stream_);
             else if (W.type == GGML_TYPE_F32 && ldx == W.in && ldy == rows)
                 k::ds41_f32_gemv(reinterpret_cast<const float*>(base), x + size_t(t0) * ldx, y + size_t(t0) * ldy, rows, W.in, stream_, m);
+            else if (k::native_mmvq_supported(W.type) && ldx == W.in && ldy == rows) {   // STRATA_DS41_DSPARK_Q8
+                if (dq8_.bytes < k::native_q8_1_bytes(W.in, 1) * 8) dq8_ = Dev(k::native_q8_1_bytes(W.in, 1) * 8);
+                quantize(x + size_t(t0) * ldx, dq8_.p, W.in, m);
+                mmvq(W.type, base, dq8_.p, y + size_t(t0) * ldy, W.in, rows, m);
+            }
             else
                 throw std::runtime_error("ds41: drafter weight type " + name);
         }
@@ -3752,6 +3910,20 @@ public:
             W.out = 1;
             for (size_t i = 1; i < t.shape.size(); ++i) W.out *= int(t.shape[i]);
             W.row_bytes = ggml_row_size(ggml_type(W.type), W.in);
+            // STRATA_DS41_DSPARK_Q8=1: the BF16 matrices (but the grouped output projection) as Q8_0, read by native MMVQ
+            static const bool q8 = std::getenv("STRATA_DS41_DSPARK_Q8") && std::string(std::getenv("STRATA_DS41_DSPARK_Q8")) == "1";
+            if (q8 && W.type == GGML_TYPE_BF16 && W.out >= 256 && W.in % 32 == 0 && name.find("attn_output_a") == std::string::npos) {
+                const auto v = to_float(GGML_TYPE_BF16, f.tensor_data(t), int64_t(W.in) * W.out);
+                std::vector<uint8_t> qd(ggml_row_size(GGML_TYPE_Q8_0, W.in) * size_t(W.out));
+                ggml_quantize_chunk(GGML_TYPE_Q8_0, v.data(), qd.data(), 0, W.out, W.in, nullptr);
+                W.type = GGML_TYPE_Q8_0;
+                W.row_bytes = ggml_row_size(GGML_TYPE_Q8_0, W.in);
+                W.data = Dev(qd.size());
+                ck(cudaMemcpy(W.data.p, qd.data(), qd.size(), cudaMemcpyHostToDevice), "dspark upload");
+                bytes += qd.size();
+                weights_.emplace("dspark." + name, std::move(W));
+                return;
+            }
             const size_t n = W.row_bytes * size_t(W.out);
             W.data = Dev(n);
             ck(cudaMemcpy(W.data.p, f.tensor_data(t), n, cudaMemcpyHostToDevice), "dspark upload");
@@ -3825,12 +3997,12 @@ public:
         d.logits = Dev(B * size_t(c.vocab) * 4);
         d.rowf = Dev(size_t(d.markov) * 4);
         d.bvec = Dev(size_t(c.vocab) * 4);
-        d.host = pinned(std::max<size_t>(size_t(c.vocab), nt * 2 * 64 + 1024) * 4);
-        d.hx = pinned(B * H * 4);
-        d.info = reinterpret_cast<int*>(pinned(B * 16));
+        d.host = pinned_keep(std::max<size_t>(size_t(c.vocab), nt * 2 * 64 + 1024) * 4);
+        d.hx = pinned_keep(B * H * 4);
+        d.info = reinterpret_cast<int*>(pinned_keep(B * 16));
         d.dtok = Dev((B + 1) * 4);
         d.dconf = Dev(B * 4);
-        d.htok = reinterpret_cast<int*>(pinned((2 * B + 2) * 4));
+        d.htok = reinterpret_cast<int*>(pinned_keep((2 * B + 2) * 4));
         if (!d.conf.empty()) {
             d.conf_dev = Dev(d.conf.size() * 4);
             ck(cudaMemcpy(d.conf_dev.p, d.conf.data(), d.conf.size() * 4, cudaMemcpyHostToDevice), "conf proj");

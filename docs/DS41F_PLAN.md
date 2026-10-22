@@ -589,6 +589,21 @@ With a 4096-token prompt GPU0 keeps only ~11 GiB of experts: the prompt's chunk 
 rest. `STRATA_DS41_PROMPT_BATCH=2048` leaves it 13 GiB: the 4K code prompt then decodes at 21.8 tok/s (GPU hit rate
 0.61), and the prompt runs at 259 instead of 371 tok/s.
 
+Later in the day, on a 140 GiB allocation (36 GiB of Engram in RAM, so ~50 ms of Engram reads per step):
+- `hc_coeff` runs on a thread per comb element, with every sum in the serial order (bit-identical tokens). It had
+  been one thread per token, ~17 us twice per layer.
+- `ATTN_SPLIT=4` splits each token's attention output rows over 4 blocks plus a combine. One-token attention goes
+  from 5.8 to 2.9 ms per token, a verify pass's from 8.3 to 5.6 ms.
+- `DECODE_GROUPED=1` (`native_expert_grouped` over the routed GPU experts of a short pass, on both GPUs) is no
+  faster than the MMQ path.
+- `GROW=1` (with `DECODE_GROUPED`) shrinks the chunk buffers after the prompt and copies the prompt's most-routed RAM
+  experts into the freed VRAM: +675 experts (6.3 GiB) after a 4K prompt, GPU hit rate 0.68 on the 4K code prompt.
+- All together: 19.0 tok/s (wikitext) and 18.3 (code) at 600 tokens.
+- `DSPARK_Q8=1` quantizes the drafter's BF16 matrices (all but the grouped output projection) to Q8_0 at load, read
+  by native MMVQ. A draft goes from 17.5 to 15.0 ms; acceptance is unchanged.
+- Prefetching the first Engram table's rows too was slower: the reads compete with the second table's for Lustre
+  IOPS.
+
 CUDA graphs would not pay. `STRATA_DS41_GRAPH_PROBE=1` (CUDA only) times one plain layer's dense sequence for one
 token (38 kernels): 425 us launched directly, 392 us as a graph. The time is in the small kernels themselves.
 
