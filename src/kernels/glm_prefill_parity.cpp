@@ -340,6 +340,74 @@ void check_fp16_cache() {
         throw std::runtime_error("FP16-cache FP32 gather mismatch");
     std::cout<<"FP16 latent cache write/gather bits passed\n";
 }
+// STRATA_GLM_KV_FORMAT=int8|fp8: rows, scales and both gathers against a host reference of the same arithmetic.
+unsigned char e4m3_reference(float x) {
+    const unsigned char sign = x < 0.f ? 0x80 : 0;
+    const float a = std::fmin(std::fabs(x), 448.f);
+    if (!(a > 0.f)) return sign;
+    int e;
+    std::frexp(a, &e);
+    int exponent = e - 1;
+    if (exponent < -6) { const int q = (int)std::rint(a * 512.f); return sign | (unsigned char)(q >= 8 ? 0x08 : q); }
+    int mantissa = (int)std::rint((a / std::ldexp(1.f, exponent) - 1.f) * 8.f);
+    if (mantissa == 8) { mantissa = 0; ++exponent; }
+    if (exponent > 8 || (exponent == 8 && mantissa > 6)) { exponent = 8; mantissa = 6; }
+    return sign | (unsigned char)((exponent + 7) << 3) | (unsigned char)mantissa;
+}
+float q8_reference(unsigned char c, bool fp8) {
+    if (!fp8) return (float)(signed char)c;
+    const int e = (c >> 3) & 15, m = c & 7;
+    const float v = e ? std::ldexp(1.f + m / 8.f, e - 7) : std::ldexp((float)m, -9);
+    return c & 0x80 ? -v : v;
+}
+void check_q8_cache() {
+    for (int c = 0; c < 256; ++c)
+        if ((c & 0x7f) != 0x7f && c != 0x80 && e4m3_reference(q8_reference(c, true)) != c)
+            throw std::runtime_error("E4M3 code does not round-trip: " + std::to_string(c));
+    constexpr int R = 7, L = 512, B = 3, C = 9;
+    const size_t row = k::glm_q8_row_bytes(L);
+    std::vector<float> rows(R * L);
+    for (size_t i = 0; i < rows.size(); ++i)
+        rows[i] = (i / 64) % 5 == 3 ? 0.f : std::ldexp(float(int(i * 2654435761u % 20011) - 10005), -int(i % 19)) / 7;
+    std::vector<int> ids(B * C), counts{0, 4, 9};
+    for (int b = 0; b < B; ++b) for (int c = 0; c < C; ++c) ids[b * C + c] = (c * 5 + b) % R;
+    Buffer<float> dr(rows);Buffer<int> di(ids), dn(counts), position(std::vector<int>{4});
+    for (const bool fp8 : {false, true}) {
+        std::vector<unsigned char> wanted(R * row, 0);
+        for (int r = 0; r < R; ++r)
+            for (int g = 0; g < L / 64; ++g) {
+                float amax = 0.f;
+                for (int k = 0; k < 64; ++k) amax = std::fmax(amax, std::fabs(rows[r * L + g * 64 + k]));
+                const float scale = amax / (fp8 ? 448.f : 127.f), inverse = scale > 0.f ? 1.f / scale : 0.f;
+                for (int k = 0; k < 64; ++k) {
+                    const float v = rows[r * L + g * 64 + k] * inverse;
+                    wanted[r * row + g * 64 + k] = fp8 ? e4m3_reference(v)
+                        : (unsigned char)(signed char)(int)std::fmin(std::fmax(std::rint(v), -127.f), 127.f);
+                }
+                std::memcpy(&wanted[r * row + L + 4 * g], &scale, 4);
+            }
+        Buffer<unsigned char> cache(R * row);
+        k::glm_cache_rows_q8(dr.p, cache.p, L, 4, 0, nullptr, fp8, nullptr);            // rows 0..3
+        k::glm_cache_rows_q8(dr.p + 4 * L, cache.p, L, 3, 0, position.p, fp8, nullptr); // rows 4..6 at a device position
+        if (cache.get() != wanted) throw std::runtime_error(std::string(fp8 ? "fp8" : "int8") + " cache rows mismatch");
+        Buffer<uint16_t> half(B * C * L);Buffer<float> full(B * C * L);
+        k::glm_mla_gather_q8_f16(cache.p, fp8, di.p, dn.p, half.p, B, C, L, nullptr);
+        k::glm_mla_gather_q8_f32(cache.p, fp8, di.p, dn.p, full.p, B, C, L, nullptr);
+        const auto h = half.get();const auto f = full.get();
+        for (int b = 0; b < B; ++b) for (int c = 0; c < C; ++c) for (int d = 0; d < L; ++d) {
+            const size_t i = ((size_t)b * C + c) * L + d;
+            float v = 0.f;
+            if (c < counts[b]) {
+                const unsigned char *r = &wanted[(size_t)ids[b * C + c] * row];
+                float scale;std::memcpy(&scale, r + L + 4 * (d / 64), 4);
+                v = q8_reference(r[d], fp8) * scale;
+            }
+            if (std::bit_cast<uint32_t>(f[i]) != std::bit_cast<uint32_t>(v)) throw std::runtime_error("8-bit FP32 gather mismatch");
+            if (h[i] != ggml_fp32_to_fp16(v)) throw std::runtime_error("8-bit FP16 gather mismatch");
+        }
+    }
+    std::cout << "8-bit latent cache (int8, fp8 E4M3) rows/scales/gathers passed\n";
+}
 void check_transcode_reference() {
     std::mt19937 rng(7301);
     constexpr int rows=3, cols=512, experts=2;
@@ -412,6 +480,7 @@ int main(int argc, char** argv) {
         check_mixed_partial_rows();
         check_half_attention_reference();
         check_fp16_cache();
+        check_q8_cache();
         check_transcode_reference();
         check_device_positions();
         check_softmax_precision();

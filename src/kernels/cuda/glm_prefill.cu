@@ -803,6 +803,86 @@ __global__ void cache_rows_half(const float *rows, uint16_t *cache, int width, i
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < width * tokens) cache[(size_t)*position * width + i] = __half_as_ushort(__float2half(rows[i]));
 }
+// The 8-bit latent cache (STRATA_GLM_KV_FORMAT=int8|fp8): a row holds `latent` codes, then one FP32 scale per 64
+// values (glm_q8_row_bytes). int8: scale = group absmax / 127, code = rint(x / scale) in [-127, 127].
+// fp8: E4M3 (bias 7, no infinities, largest 448), scale = group absmax / 448, round to nearest even.
+__device__ __forceinline__ unsigned char e4m3_encode(float x) {
+    const unsigned char sign = x < 0.f ? 0x80 : 0;
+    const float a = fminf(fabsf(x), 448.f);
+    if (!(a > 0.f)) return sign;
+    int e;
+    frexpf(a, &e);
+    int exponent = e - 1;   // a in [2^exponent, 2^(exponent + 1))
+    if (exponent < -6) {    // subnormal: multiples of 2^-9
+        const int q = (int)rintf(a * 512.f);
+        return sign | (unsigned char)(q >= 8 ? 0x08 : q);
+    }
+    int mantissa = (int)rintf((a / ldexpf(1.f, exponent) - 1.f) * 8.f);
+    if (mantissa == 8) { mantissa = 0; ++exponent; }
+    if (exponent > 8 || (exponent == 8 && mantissa > 6)) { exponent = 8; mantissa = 6; }
+    return sign | (unsigned char)((exponent + 7) << 3) | (unsigned char)mantissa;
+}
+__device__ __forceinline__ float q8_value(unsigned char c, int fp8) {
+    if (!fp8) return (float)(signed char)c;
+    const int e = (c >> 3) & 15, m = c & 7;
+    const float v = e ? ldexpf(1.f + m / 8.f, e - 7) : ldexpf((float)m, -9);
+    return c & 0x80 ? -v : v;
+}
+// latent / 8 threads per row, eight values each; eight lanes share a 64-value scale.
+__global__ void cache_rows_q8(const float *rows, unsigned char *cache, int latent, int position,
+                              const int *device_position, int fp8) {
+    const int token = blockIdx.x, t = threadIdx.x;
+    const int pos = (device_position ? *device_position : position) + token;
+    const float4 *src = reinterpret_cast<const float4 *>(rows + (size_t)token * latent) + 2 * t;
+    const float4 a = src[0], b = src[1];
+    const float v[8] = {a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w};
+    float amax = 0.f;
+    for (int k = 0; k < 8; ++k) amax = fmaxf(amax, fabsf(v[k]));
+    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 1));
+    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 2));
+    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 4));
+    const float scale = amax / (fp8 ? 448.f : 127.f), inverse = scale > 0.f ? 1.f / scale : 0.f;
+    unsigned char *row = cache + (size_t)pos * (latent + latent / 16);
+    unsigned char codes[8];
+    for (int k = 0; k < 8; ++k)
+        codes[k] = fp8 ? e4m3_encode(v[k] * inverse)
+                       : (unsigned char)(signed char)(int)fminf(fmaxf(rintf(v[k] * inverse), -127.f), 127.f);
+    uint2 packed;
+    memcpy(&packed, codes, 8);
+    reinterpret_cast<uint2 *>(row)[t] = packed;
+    if (!(t & 7)) reinterpret_cast<float *>(row + latent)[t >> 3] = scale;
+}
+// gather_vector_half8 from an 8-bit cache: each value is code * scale, rounded to FP16.
+__global__ void gather_q8_half(const unsigned char *cache, const int *ids, const int *counts, uint16_t *out,
+                               int stride, int latent, int fp8) {
+    const int key = blockIdx.x * 4 + (threadIdx.x >> 6), query = blockIdx.y, t = threadIdx.x & 63;
+    if (key >= stride) return;
+    uint4 *destination = reinterpret_cast<uint4 *>(out + ((int64_t)query * stride + key) * latent);
+    const bool live = key < counts[query];
+    const unsigned char *row = live ? cache + (int64_t)ids[query * stride + key] * (latent + latent / 16) : nullptr;
+    for (int d = t; d < latent / 8; d += 64) {
+        if (!live) { destination[d] = make_uint4(0, 0, 0, 0); continue; }
+        const uint2 packed = reinterpret_cast<const uint2 *>(row)[d];
+        const float scale = reinterpret_cast<const float *>(row + latent)[d >> 3];
+        unsigned char codes[8];
+        memcpy(codes, &packed, 8);
+        uint16_t values[8];
+        for (int k = 0; k < 8; ++k) values[k] = __half_as_ushort(__float2half(q8_value(codes[k], fp8) * scale));
+        uint4 v;
+        memcpy(&v, values, 16);
+        destination[d] = v;
+    }
+}
+__global__ void gather_q8_float(const unsigned char *cache, const int *ids, const int *counts, float *out, int queries,
+                                int stride, int latent, int fp8) {
+    int64_t i = (int64_t)blockIdx.x * 256 + threadIdx.x;
+    if (i >= (int64_t)queries * stride * latent)
+        return;
+    int q = i / (stride * latent), key = i / latent % stride, d = i % latent;
+    if (key >= counts[q]) { out[i] = 0.f; return; }
+    const unsigned char *row = cache + (int64_t)ids[q * stride + key] * (latent + latent / 16);
+    out[i] = q8_value(row[d], fp8) * reinterpret_cast<const float *>(row + latent)[d / 64];
+}
 __global__ void pooling(const float *keys, const float *gates, const float *ape, const float *pk,
                         const float *pg, float *out, int pos, int tokens, int pool, int dim, const int *device_pos, int offset) {
     if (device_pos) pos = *device_pos + offset;
@@ -1604,6 +1684,12 @@ void glm_cache_rows_f16(const float *rows, uint16_t *cache, int width, int token
     cache_rows_half<<<(width * tokens + 255) / 256, 256, 0, (cudaStream_t)s>>>(rows, cache, width, tokens, position);
     check();
 }
+void glm_cache_rows_q8(const float *rows, uint8_t *cache, int latent, int tokens, int position,
+                       const int *device_position, bool fp8, void *s) {
+    if (latent < 64 || latent % 64 || latent / 8 > 1024 || tokens < 0) throw std::invalid_argument("GLM: invalid 8-bit cache rows");
+    if (tokens) cache_rows_q8<<<tokens, latent / 8, 0, (cudaStream_t)s>>>(rows, cache, latent, position, device_position, fp8);
+    check();
+}
 void glm_index_prepare(const float *k, const float *g, const float *a, float *pk, float *pg, float *out,
                        int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
     // The maximum number of completed pools does not depend on the current position.
@@ -1669,6 +1755,20 @@ void glm_mla_gather_h2f(const uint16_t *c, const int *ids, const int *counts, fl
                         int latent, void *s) {
     int64_t n = (int64_t)q * stride * latent;
     if (n) gather_half_widen<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, q, stride, latent);
+    check();
+}
+void glm_mla_gather_q8_f16(const uint8_t *c, bool fp8, const int *ids, const int *counts, uint16_t *out, int q,
+                           int stride, int latent, void *s) {
+    if (q < 1 || q > 65535 || stride < 1 || latent < 64 || latent % 64)
+        throw std::invalid_argument("GLM: invalid 8-bit-cache MLA gather");
+    gather_q8_half<<<dim3((stride + 3) / 4, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent, fp8);
+    check();
+}
+void glm_mla_gather_q8_f32(const uint8_t *c, bool fp8, const int *ids, const int *counts, float *out, int q,
+                           int stride, int latent, void *s) {
+    if (latent < 64 || latent % 64) throw std::invalid_argument("GLM: invalid 8-bit-cache MLA gather");
+    int64_t n = (int64_t)q * stride * latent;
+    if (n) gather_q8_float<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, q, stride, latent, fp8);
     check();
 }
 void glm_mla_softmax_f16(float *scores, const int *counts, uint16_t *out, int heads, int stride, int q, float scale,

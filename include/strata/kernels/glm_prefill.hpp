@@ -137,6 +137,17 @@ void glm_mla_gather_h2h(const uint16_t *cache, const int *ids, const int *counts
                         int stride, int latent, void *stream);
 void glm_mla_gather_h2f(const uint16_t *cache, const int *ids, const int *counts, float *gathered, int queries,
                         int stride, int latent, void *stream);
+// 8-bit latent cache (STRATA_GLM_KV_FORMAT=int8|fp8): a row is `latent` codes, then one FP32 scale per 64 values.
+// int8 codes are rint(x / scale), scale = group absmax / 127; fp8 codes are E4M3 (round to nearest even,
+// saturating at 448), scale = group absmax / 448. latent % 64 == 0.
+constexpr size_t glm_q8_row_bytes(int latent) { return size_t(latent) + size_t(latent) / 16; }
+void glm_cache_rows_q8(const float *rows, uint8_t *cache, int latent, int tokens, int position,
+                       const int *device_position, bool fp8, void *stream);
+// Gathers of the dequantized rows (code * scale), as FP16 and as FP32.
+void glm_mla_gather_q8_f16(const uint8_t *cache, bool fp8, const int *ids, const int *counts, uint16_t *gathered,
+                           int queries, int stride, int latent, void *stream);
+void glm_mla_gather_q8_f32(const uint8_t *cache, bool fp8, const int *ids, const int *counts, float *gathered,
+                           int queries, int stride, int latent, void *stream);
 void glm_mla_softmax(float *scores, const int *counts, int heads, int stride, int queries, float scale,
                      void *stream);
 // Softmax over FP16 scores into FP16 probabilities (STRATA_GLM_MLA_F16_OUT).
