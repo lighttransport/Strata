@@ -604,6 +604,23 @@ Later in the day, on a 140 GiB allocation (36 GiB of Engram in RAM, so ~50 ms of
 - Prefetching the first Engram table's rows too was slower: the reads compete with the second table's for Lustre
   IOPS.
 
+**Full node** (181 GiB, 72 CPUs, 36 lane threads), every option above on (with `ATTN_SPLIT=4`, `DSPARK_Q8=1`,
+mixed profile and rebalance), 600-token prompts, 64 tokens:
+
+| pack | Engram in RAM | prompt | tokens per step | decode tok/s |
+|---|---|---|---|---|
+| IQ2_XXSE4 | 76 GiB (74 %) | wikitext | 2.78 | 25.3 (DSpark) / 21.9 (plain) |
+| IQ2_XXSE4 | 76 GiB (74 %) | code | 3.76 | 21.2 (0.9 s of Engram reads) |
+| IQ2_XXSE3 | 79 GiB (all) | wikitext | 2.56 | 30.7 |
+| IQ2_XXSE3 | 79 GiB (all) | code | 3.71 | 34.6 |
+
+With Engram entirely in RAM (IQ2_XXSE3, KL 0.314 vs 0.289) a verify step falls to ~85 ms and decode reaches 31-35
+tok/s. IQ2_XXSE4's remaining gap is its second table's file reads.
+
+One-token passes now send the peer GPU's routes through its GEMV chains even with `DECODE_MMQ=1`. Its MMQ product
+spans all of its ~200 resident experts, and plain decode spent more time waiting on it (9.3 ms per token) than on
+the CPU lane (4.8 ms).
+
 CUDA graphs would not pay. `STRATA_DS41_GRAPH_PROBE=1` (CUDA only) times one plain layer's dense sequence for one
 token (38 kernels): 425 us launched directly, 392 us as a graph. The time is in the small kernels themselves.
 

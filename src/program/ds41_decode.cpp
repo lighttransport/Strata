@@ -3649,7 +3649,7 @@ private:
         // STRATA_DS41_PEER_MMQ (follows DECODE_MMQ): the peer GPU's routes by MMQ too (0: its GEMV chains)
         static const bool peer_mmq = decode_mmq && !(std::getenv("STRATA_DS41_PEER_MMQ") && std::string(std::getenv("STRATA_DS41_PEER_MMQ")) == "0");
         const bool peer = peer_ && (decode_grouped ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
-                                    : peer_mmq && peer_->mmq ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
+                                    : peer_mmq && peer_->mmq && T > 1 ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
                                                              : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
         const auto x1 = std::chrono::steady_clock::now();
         if (lane_async) lane_->finish();
