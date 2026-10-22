@@ -883,8 +883,12 @@ __global__ void gather_q8_float(const unsigned char *cache, const int *ids, cons
     const unsigned char *row = cache + (int64_t)ids[q * stride + key] * (latent + latent / 16);
     out[i] = q8_value(row[d], fp8) * reinterpret_cast<const float *>(row + latent)[d / 64];
 }
+__device__ __forceinline__ void store_pooled(float *out, size_t i, float v) { out[i] = v; }
+// FP16 pooled keys (STRATA_GLM_INDEX_KEYS=f16): the value rounded as half_cast rounds it.
+__device__ __forceinline__ void store_pooled(uint16_t *out, size_t i, float v) { out[i] = __half_as_ushort(__float2half(v)); }
+template <class Out>
 __global__ void pooling(const float *keys, const float *gates, const float *ape, const float *pk,
-                        const float *pg, float *out, int pos, int tokens, int pool, int dim, const int *device_pos, int offset) {
+                        const float *pg, Out *out, int pos, int tokens, int pool, int dim, const int *device_pos, int offset) {
     if (device_pos) pos = *device_pos + offset;
     int d = blockIdx.x * 256 + threadIdx.x, first = pos / pool, last = (pos + tokens) / pool;
     if (d >= (last - first) * dim)
@@ -904,7 +908,7 @@ __global__ void pooling(const float *keys, const float *gates, const float *ape,
         sum += w;
         value += w * k;
     }
-    out[p * dim + c] = value / sum;
+    store_pooled(out, (size_t)p * dim + c, value / sum);
 }
 __global__ void pending(const float *keys, const float *gates, float *pk, float *pg, int pos, int tokens,
                         int pool, int dim, const int *device_pos, int offset) {
@@ -1690,14 +1694,23 @@ void glm_cache_rows_q8(const float *rows, uint8_t *cache, int latent, int tokens
     if (tokens) cache_rows_q8<<<tokens, latent / 8, 0, (cudaStream_t)s>>>(rows, cache, latent, position, device_position, fp8);
     check();
 }
-void glm_index_prepare(const float *k, const float *g, const float *a, float *pk, float *pg, float *out,
-                       int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
+template <class Out>
+static void index_prepare(const float *k, const float *g, const float *a, float *pk, float *pg, Out *out,
+                          int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
     // The maximum number of completed pools does not depend on the current position.
     int n = (device_pos ? (tokens + pool - 1) / pool : (pos + tokens) / pool - pos / pool) * dim;
     if (n)
         pooling<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(k, g, a, pk, pg, out, pos, tokens, pool, dim, device_pos, offset);
     pending<<<(pool * dim + 255) / 256, 256, 0, (cudaStream_t)s>>>(k, g, pk, pg, pos, tokens, pool, dim, device_pos, offset);
     check();
+}
+void glm_index_prepare(const float *k, const float *g, const float *a, float *pk, float *pg, float *out,
+                       int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
+    index_prepare(k, g, a, pk, pg, out, pos, tokens, pool, dim, s, device_pos, offset);
+}
+void glm_index_prepare_f16(const float *k, const float *g, const float *a, float *pk, float *pg, uint16_t *out,
+                           int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
+    index_prepare(k, g, a, pk, pg, out, pos, tokens, pool, dim, s, device_pos, offset);
 }
 void glm_index_reduce(const float *d, const float *w, float *out, int h, int pools, int q, int pos, int pool,
                       int dim, void *s, const int *device_pos, int offset) {

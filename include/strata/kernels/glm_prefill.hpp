@@ -109,6 +109,10 @@ void glm_cache_rows_f16(const float *rows, uint16_t *cache, int width, int token
 void glm_index_prepare(const float *keys, const float *gates, const float *ape, float *pending_keys,
                        float *pending_gates, float *pooled, int pos, int tokens, int pool, int dim,
                        void *stream, const int *device_pos = nullptr, int position_offset = 0);
+// The same with FP16 pooled keys (STRATA_GLM_INDEX_KEYS=f16), each rounded as glm_f16 rounds it.
+void glm_index_prepare_f16(const float *keys, const float *gates, const float *ape, float *pending_keys,
+                           float *pending_gates, uint16_t *pooled, int pos, int tokens, int pool, int dim,
+                           void *stream, const int *device_pos = nullptr, int position_offset = 0);
 void glm_index_reduce(const float *dots, const float *weights, float *scores, int heads, int pools,
                       int queries, int query_pos, int pool, int dim, void *stream,
                       const int *device_pos = nullptr, int position_offset = 0);

@@ -338,7 +338,17 @@ void check_fp16_cache() {
     auto e=expected.get();auto w=widened.get();
     for(size_t i=0;i<w.size();++i)if(std::bit_cast<uint32_t>(w[i])!=std::bit_cast<uint32_t>(ggml_fp16_to_fp32(e[i])))
         throw std::runtime_error("FP16-cache FP32 gather mismatch");
-    std::cout<<"FP16 latent cache write/gather bits passed\n";
+    // STRATA_GLM_INDEX_KEYS=f16: the FP16 pooled keys are the FP32 ones rounded by glm_f16.
+    constexpr int P=4,D=128,T=11,start=2,pools=(start+T)/P;
+    std::vector<float> keys(T*D),gates(T*D),ape(P*D),pend(P*D);
+    for(size_t i=0;i<keys.size();++i){keys[i]=float(int(i*7%23)-11)/5;gates[i]=float(int(i*5%17)-8)/4;}
+    for(size_t i=0;i<ape.size();++i){ape[i]=float(int(i%9)-4)/8;pend[i]=float(int(i*3%13)-6)/6;}
+    Buffer<float> dk(keys),dg(gates),da(ape),pk1(pend),pg1(pend),pk2(pend),pg2(pend),full(pools*D);Buffer<uint16_t> rounded(pools*D),halfk(pools*D);
+    k::glm_index_prepare(dk.p,dg.p,da.p,pk1.p,pg1.p,full.p,start,T,P,D,nullptr);
+    k::glm_index_prepare_f16(dk.p,dg.p,da.p,pk2.p,pg2.p,halfk.p,start,T,P,D,nullptr);
+    k::glm_f16(full.p,rounded.p,pools*D,nullptr);
+    if(rounded.get()!=halfk.get()||pk1.get()!=pk2.get()||pg1.get()!=pg2.get())throw std::runtime_error("FP16 pooled keys mismatch");
+    std::cout<<"FP16 latent cache write/gather bits passed, FP16 pooled keys passed\n";
 }
 // STRATA_GLM_KV_FORMAT=int8|fp8: rows, scales and both gathers against a host reference of the same arithmetic.
 unsigned char e4m3_reference(float x) {

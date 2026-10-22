@@ -671,7 +671,12 @@ struct GpuPrefill {
     }
     static size_t arena_bytes(int width, size_t context) {
         const size_t tile = std::min(width, mla_prefill_tile()), pools = std::max<size_t>(1, context / 4);
-        const size_t mla = tile * (2052 * (512 + 64) + 2 * 64 * 512 + 33 * pools) * 4
+        // STRATA_GLM_INDEX_BLOCK_POOLS: the 32 heads' index dots cover one key block, not every pool (1 GB less
+        // at a 1M context); the scores still cover every pool.
+        const char *block_env = std::getenv("STRATA_GLM_INDEX_BLOCK_POOLS");
+        const size_t block = block_env ? (size_t)std::max(0, std::atoi(block_env)) : 0;
+        const size_t index = block && block < pools ? 32 * block + pools : 33 * pools;
+        const size_t mla = tile * (2052 * (512 + 64) + 2 * 64 * 512 + index) * 4
                          + (size_t)width * 176 * 1024 + MiB;
         // The per-token MLA buffers (q, value, indexer queries) outgrow the allowance above once the context passes
         // 8192 tokens and the tile's pooled scores fill the arena; give them their own room.
@@ -1737,6 +1742,28 @@ class Decoder {
     const bool kv_q8 = kv_format == KvFormat::Int8 || kv_format == KvFormat::Fp8;
     size_t kv_row_bytes() const {
         return kv_q8 ? k::glm_q8_row_bytes(m.kv_rank) : size_t(m.kv_rank) * (kv_f16 ? 2 : 4);
+    }
+    // Opt-in FP16 pooled indexer keys (STRATA_GLM_INDEX_KEYS=f16; f32 is the default): 64 instead of 128 bytes per
+    // pool row, 0.8 GB less at a 1M context. The keys are scored by the FP16 GEMM that STRATA_GLM_MLA_INDEX_F16
+    // uses in prefill (queries rounded to FP16, FP32 accumulation), in prefill and decode alike.
+    const bool index_keys_f16 = [] {
+        const char *v = std::getenv("STRATA_GLM_INDEX_KEYS");
+        if (!v || std::string(v) == "f32") return false;
+        if (std::string(v) == "f16") return true;
+        throw std::invalid_argument("GLM: STRATA_GLM_INDEX_KEYS must be f32 or f16");
+    }();
+    size_t pooled_key_bytes() const { return size_t(m.index_dim) * (index_keys_f16 ? 2 : 4); }
+    std::unique_ptr<strata::prefill::Gemm> index_gemm;
+    std::unique_ptr<Device> index_gemm_workspace;
+    // Decode has no prefill GEMM; create the FP16 index GEMM with the states, outside any graph capture.
+    void prepare_index_gemm() {
+        if (!index_keys_f16 || index_gemm) return;
+        index_gemm_workspace = std::make_unique<Device>(4 * MiB);
+        auto gemm = std::make_unique<strata::prefill::Gemm>();
+        std::string error;
+        if (!gemm->init_external(stream, nullptr, 0, index_gemm_workspace->p, index_gemm_workspace->bytes, error))
+            throw std::runtime_error(error);
+        index_gemm = std::move(gemm);
     }
     // Opt-in: compute prefill indexer dots in blocks of this many pooled keys (4 tokens each) so their scratch
     // stops growing with context (STRATA_GLM_INDEX_BLOCK_POOLS; 0 = one block, the default). Narrower GEMMs may
@@ -6718,6 +6745,9 @@ private:
         auto &knb = weight(p + "indexer.k_norm.bias");
         k::glm_layer_norm_batch(ik.f(), knw.f(), knb.f(), ikn.f(), idim, B, 1e-6, stream);
         auto &ape = weight(p + "indexer_compressor_ape.weight");
+        if (index_keys_f16 && (!row_sequences.empty() || split_mla))
+            throw std::invalid_argument("GLM: FP16 pooled indexer keys support one sequence without split MLA");
+        auto *pooled16 = index_keys_f16 ? (uint16_t *)state.pooled->p : nullptr;
         if (!row_sequences.empty()) {
             for (int t = 0; t < B; ++t) {
                 auto &rs = row_state(t, l);
@@ -6726,19 +6756,26 @@ private:
             }
         } else if (capturing_history) {
             for (int t = 0; t < B; ++t) {
+                if (pooled16)
+                    k::glm_index_prepare_f16(ikn.f(t * idim), gate.f(t * idim), ape.f(), state.keys->f(),
+                                             state.gates->f(), pooled16, position + t, 1, pool_size, idim, stream, device_pos, t);
+                else
                 k::glm_index_prepare(ikn.f(t * idim), gate.f(t * idim), ape.f(), state.keys->f(),
                                      state.gates->f(), state.pooled->f(), position + t, 1, pool_size, idim, stream, device_pos, t);
                 capture_state(state.keys.get(), t);
                 capture_state(state.gates.get(), t);
             }
-        } else
+        } else if (pooled16)
+            k::glm_index_prepare_f16(ikn.f(), gate.f(), ape.f(), state.keys->f(), state.gates->f(), pooled16,
+                                     position, B, pool_size, idim, stream, device_pos);
+        else
             k::glm_index_prepare(ikn.f(), gate.f(), ape.f(), state.keys->f(), state.gates->f(), state.pooled->f(),
                                  position, B, pool_size, idim, stream, device_pos);
         // All persistent MLA state is now updated; a draft resynchronization does not consume the attention
         // output or the following feed-forward output (STRATA_GLM_MTP_SYNC_STATE_ONLY).
         if (state_only) return;
         inspect("index_norm", ikn.f(), (size_t)B * idim, stream);
-        inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
+        if (!pooled16) inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
         int pools = capacity / pool_size, ntile = std::min(tile, B);
         const bool block_index = fast && index_block_pools && index_block_pools < pools;
@@ -6787,6 +6824,7 @@ private:
             const uint16_t *cache16 = nullptr;  // STRATA_GLM_KV_FORMAT=f16 rows, in place of `cache`
             const uint8_t *cache8 = nullptr;    // STRATA_GLM_KV_FORMAT=int8|fp8 rows, in place of `cache`
             bool fp8 = false;
+            const uint16_t *pooled16 = nullptr; // STRATA_GLM_INDEX_KEYS=f16 keys, in place of `pooled`
         };
         auto run_tiles = [&, B, heads, latent, dim, ih, idim, pool_size, pools, tile](const Tiles &d, bool stoppable) {
             const float one = 1, zero = 0;
@@ -6836,10 +6874,11 @@ private:
                 const int scored_pools = active_index_pools ? (at + count) / pool_size : pools;
                 if (block_index && !d.back) {
                     // Blocked indexer: the same products and per-pool sums, one key block at a time.
-                    const bool f16 = mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill();
+                    const bool f16 = (mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill()) || d.pooled16;
+                    auto *index_product = d.gemm ? d.gemm : index_gemm.get();
                     if (f16 && scored_pools) {
                         const size_t pn = (size_t)pools * idim, qn = (size_t)count * ih * idim;
-                        if (t == 0 || !index_pool16) {
+                        if (!d.pooled16 && (t == 0 || !index_pool16)) {
                             if (!index_pool16 || index_pool16->bytes < pn * 2) index_pool16 = std::make_unique<Device>(pn * 2);
                             k::glm_f16(pooled_rows, (uint16_t *)index_pool16->p, (int64_t)pn, d.stream);
                         }
@@ -6850,8 +6889,9 @@ private:
                         const int n = std::min(index_block_pools, pools - first);
                         const int scored = std::clamp(scored_pools - first, 0, n);
                         if (scored && f16)
-                            d.gemm->f16((uint16_t *)index_q16->p, (uint16_t *)index_pool16->p + (size_t)first * idim,
-                                        d.dots, count * ih, scored, idim, index_block_pools);
+                            index_product->f16((uint16_t *)index_q16->p,
+                                               (d.pooled16 ? d.pooled16 : (uint16_t *)index_pool16->p) + (size_t)first * idim,
+                                               d.dots, count * ih, scored, idim, index_block_pools);
                         else if (scored)
                             check(cublasSgemm(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, scored, count * ih, idim, &one,
                                               pooled_rows + (size_t)first * idim, idim, d.iq + (size_t)t * ih * idim,
@@ -6860,21 +6900,26 @@ private:
                                                   n, pools, count, at, pool_size, idim, d.stream, device_pos, d.first + t);
                     }
                 } else {
-                if (scored_pools && mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill()) {
+                if (scored_pools && ((mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill()) || d.pooled16)) {
                     // Pooled rows only grow within this call, so one cast covers every tile; rows beyond a tile's
-                    // scored_pools are not read.
+                    // scored_pools are not read. FP16 pooled keys need no cast.
                     const size_t pn = (size_t)pools * idim, qn = (size_t)count * ih * idim;
-                    if (t == 0 || !index_pool16) {
+                    if (!d.pooled16 && (t == 0 || !index_pool16)) {
                         if (!index_pool16 || index_pool16->bytes < pn * 2) index_pool16 = std::make_unique<Device>(pn * 2);
                         k::glm_f16(pooled_rows, (uint16_t *)index_pool16->p, (int64_t)pn, d.stream);
                     }
                     if (!index_q16 || index_q16->bytes < qn * 2) index_q16 = std::make_unique<Device>(qn * 2);
                     k::glm_f16(d.iq + (size_t)t * ih * idim, (uint16_t *)index_q16->p, (int64_t)qn, d.stream);
-                    d.gemm->f16((uint16_t *)index_q16->p, (uint16_t *)index_pool16->p, d.dots, count * ih, scored_pools,
-                                idim, pools);
+                    (d.gemm ? d.gemm : index_gemm.get())->f16((uint16_t *)index_q16->p,
+                        d.pooled16 ? d.pooled16 : (uint16_t *)index_pool16->p, d.dots, count * ih, scored_pools, idim, pools);
                 } else if (scored_pools)
                     check(cublasSgemm(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, scored_pools, count * ih, idim, &one,
                                       pooled_rows, idim, d.iq + (size_t)t * ih * idim, idim, &zero, d.dots, pools));
+                // ACTIVE_POOLS: the same sums for the scored pools only; selection reads no pool beyond them.
+                if (active_index_pools && scored_pools < pools)
+                    k::glm_index_reduce_block(d.dots, d.iw + (size_t)t * ih, d.scores, ih, pools, 0, scored_pools, pools,
+                                              count, at, pool_size, idim, d.stream, device_pos, d.first + t);
+                else
                 k::glm_index_reduce(d.dots, d.iw + (size_t)t * ih, d.scores, ih, pools, count, at, pool_size,
                                     idim, d.stream, device_pos, d.first + t);
                 }
@@ -7010,12 +7055,12 @@ private:
                 cache_rows = kv_stage->f();
             }
         }
-        Tiles local{blas, stream, state.pooled->f(), cache_rows, iq.f(), iw.f(), q.f(),
+        Tiles local{blas, stream, pooled16 ? nullptr : state.pooled->f(), cache_rows, iq.f(), iw.f(), q.f(),
                     q8_mla ? nullptr : weight(p + "attn_k_b.weight", true).f(),
                     q8_mla ? nullptr : weight(p + "attn_v_b.weight", true).f(),
                     value.f(), dots.f(), scores.f(), aq.f(), av.f(), gathered.f(), attn.f(),
                     (int *)ids.p, (int *)counts.p, 0, B};
-        local.cache16 = cache16; local.cache8 = cache8; local.fp8 = fp8;
+        local.cache16 = cache16; local.cache8 = cache8; local.fp8 = fp8; local.pooled16 = pooled16;
         if (q8_mla) {
             local.wk8 = weight(p + "attn_k_b.weight").p;
             local.wv8 = weight(p + "attn_v_b.weight").p;
@@ -7135,7 +7180,8 @@ private:
             return;
         }
         auto &state = states[l];
-        if (kv_format != KvFormat::F32) throw std::invalid_argument("GLM: STRATA_GLM_KV_FORMAT other than f32 requires GPU MLA");
+        if (kv_format != KvFormat::F32 || index_keys_f16)
+            throw std::invalid_argument("GLM: STRATA_GLM_KV_FORMAT / STRATA_GLM_INDEX_KEYS other than f32 require GPU MLA");
         const int heads = m.attention_heads, latent = m.kv_rank, idim = m.index_dim;
         // The local artifact is NoPE with 256-dimensional Q/K and V heads.
         const int dim = artifact.at(p + "attn_k_b.weight").tensor->shape[0];
@@ -7506,9 +7552,10 @@ private:
                 s.keys = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
                 s.gates = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
                 s.pooled =
-                    std::make_unique<Device>(std::max<size_t>(1, ctx / m.index_pool) * m.index_dim * 4, true);
+                    std::make_unique<Device>(std::max<size_t>(1, ctx / m.index_pool) * pooled_key_bytes(), true);
             }
         }
+        prepare_index_gemm();
         if (expert_bytes) {
             size_t moe_layers = 0;
             for (const auto &layer : m.layers)
@@ -8846,7 +8893,7 @@ private:
         state.cache = make_kv_cache(capacity * kv_row_bytes());
         state.keys = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
         state.gates = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
-        state.pooled = std::make_unique<Device>(std::max<size_t>(1, capacity / m.index_pool) * m.index_dim * 4, true);
+        state.pooled = std::make_unique<Device>(std::max<size_t>(1, capacity / m.index_pool) * pooled_key_bytes(), true);
         for (auto *b : {state.cache.get(), state.keys.get(), state.gates.get(), state.pooled.get()})
             check(cudaMemsetAsync(b->p, 0, b->bytes, stream));
         check(cudaStreamSynchronize(stream));
@@ -10121,7 +10168,7 @@ private:
         return out;
     }
     size_t latent_row_bytes() const { return kv_row_bytes(); }
-    size_t pooled_row_bytes() const { return size_t(m.index_dim) * 4; }
+    size_t pooled_row_bytes() const { return pooled_key_bytes(); }
     // The fixed buffers (KDA states, index rings, the draft block's), the positions and the last target hidden row,
     // at the current position.  With export_rows below it makes an image; taken alone during a prefill at a position
     // that is a multiple of the index pool, its rows can be copied after the prefill (they are append-only).
