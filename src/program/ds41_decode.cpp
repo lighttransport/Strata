@@ -1600,6 +1600,94 @@ public:
     /// Teacher forcing for --check-force: fills a host vector with the reference tensor (name, layer); false if none.
     std::function<bool(const std::string&, int, std::vector<float>&)> reference;
 
+    /// Batched sessions (STRATA_DS41_SESSIONS): S independent sequences decoded together, token t of a pass being
+    /// session t's next token. Each session's window ring (window + 8 slots), compressed caches and ratio-2 stash live
+    /// in per-layer buffers [S][...]; a session's prompt runs through the single-sequence state (forward), then park(s)
+    /// copies that state in and clears it for the next prompt. Any KV storage (STRATA_DS41_KV).
+    void sessions_init(int S) {
+        const auto& c = cfg_;
+        if (S < 1) throw std::invalid_argument("ds41: sessions");
+        sessions_ = S;
+        ring_b_ = c.window + 8;
+        const size_t hd = size_t(c.head_dim), rw = size_t(row_width());
+        size_t bytes = 0;
+        for (auto* v : {&bwin_, &bcache_, &bstash_v_, &bstash_s_}) {
+            v->clear();
+            v->resize(size_t(c.layers));
+        }
+        for (int l = 0; l < c.layers; ++l) {
+            bwin_[size_t(l)] = Dev(size_t(S) * ring_b_ * hd * 4);
+            ck(cudaMemsetAsync(bwin_[size_t(l)].p, 0, bwin_[size_t(l)].bytes, stream_), "session rings");
+            bytes += bwin_[size_t(l)].bytes;
+            if (c.kv_src[size_t(l)] != l || c.ratio[size_t(l)] < 1) continue;
+            bcache_[size_t(l)] = Dev(size_t(S) * rows_b(l) * kv_row_bytes());
+            bytes += bcache_[size_t(l)].bytes;
+            if (c.ratio[size_t(l)] > 1) {
+                bstash_v_[size_t(l)] = Dev(size_t(S) * hd * 4);
+                bstash_s_[size_t(l)] = Dev(size_t(S) * hd * 4);
+                bytes += 2 * size_t(S) * hd * 4;
+            }
+        }
+        shist_.assign(size_t(S), {});
+        tpos_dev_ = Dev(size_t(4) * S * 4);
+        tpos_host_ = reinterpret_cast<int*>(pinned_keep(size_t(4) * S * 4));
+        const size_t scratch = size_t(2 * S + 2) * k::ds41_attention_scratch(c.heads);   // the scores, then the split parts
+        if (attn_scores_.bytes < scratch) attn_scores_ = Dev(scratch);
+        ck(cudaStreamSynchronize(stream_), "sessions");
+        std::cerr << "DS41 sessions=" << S << " state_MiB=" << bytes / double(1 << 20) << " ring=" << ring_b_ << "\n";
+    }
+    /// The single-sequence state (a prompt just run) into session s; then that state starts empty.
+    void park(int s) {
+        const auto& c = cfg_;
+        const int P = int(history_.size());
+        const size_t hd = size_t(c.head_dim);
+        for (int l = 0; l < c.layers; ++l) {
+            for (int q = std::max(0, P - c.window); q < P;) {   // the window's positions, in runs contiguous in both rings
+                const int a = q % ring_, b = q % ring_b_, run = std::min({P - q, ring_ - a, ring_b_ - b});
+                ck(cudaMemcpyAsync(bwin_[size_t(l)].f((size_t(s) * ring_b_ + size_t(b)) * hd), windows_[size_t(l)].f(size_t(a) * hd),
+                                   size_t(run) * hd * 4, cudaMemcpyDeviceToDevice, stream_), "park window");
+                q += run;
+            }
+            if (c.kv_src[size_t(l)] != l || c.ratio[size_t(l)] < 1) continue;
+            const int r = c.ratio[size_t(l)];
+            if (P / r > 0)
+                ck(cudaMemcpyAsync(bcache_[size_t(l)].b(size_t(s) * rows_b(l) * kv_row_bytes()), caches_[size_t(l)].p,
+                                   size_t(P / r) * kv_row_bytes(), cudaMemcpyDeviceToDevice, stream_), "park cache");
+            if (r > 1) {
+                ck(cudaMemcpyAsync(bstash_v_[size_t(l)].f(size_t(s) * hd), stash_v_[size_t(l)].p, hd * 4, cudaMemcpyDeviceToDevice, stream_), "park stash");
+                ck(cudaMemcpyAsync(bstash_s_[size_t(l)].f(size_t(s) * hd), stash_s_[size_t(l)].p, hd * 4, cudaMemcpyDeviceToDevice, stream_), "park stash");
+            }
+        }
+        shist_[size_t(s)] = history_;
+        reset_sequence();
+    }
+    /// An empty single-sequence state (position 0 next).
+    void reset_sequence() {
+        ck(cudaStreamSynchronize(stream_), "reset");
+        history_.clear();
+        for (auto& w : windows_) ck(cudaMemsetAsync(w.p, 0, w.bytes, stream_), "reset ring");
+        ck(cudaStreamSynchronize(stream_), "reset");
+    }
+    int session_pos(int s) const { return int(shist_[size_t(s)].size()); }
+    /// One token for each of the S sessions (tokens[s] at session s's next position): every session's logits, [S][vocab].
+    const std::vector<float>& forward_sessions(const int* tokens, int S) {
+        if (S != sessions_) throw std::invalid_argument("ds41: session count");
+        if (chunk_ < S) resize(S);
+        for (int i = 0; i < S; ++i) {
+            const int q = int(shist_[size_t(i)].size());
+            if (q + 1 > context_) throw std::runtime_error("ds41: context exhausted");
+            tpos_host_[i] = q;
+            tpos_host_[S + i] = i * ring_b_ + q % ring_b_;                                        // window slot
+            tpos_host_[2 * S + i] = i * (context_ + 1) + q;                                      // ratio-1 cache row
+            tpos_host_[3 * S + i] = q % 2 ? i * (context_ / 2 + 1) + q / 2 : -1;                 // ratio-2 row (odd positions)
+            shist_[size_t(i)].push_back(tokens[i]);
+        }
+        ck(cudaMemcpyAsync(tpos_dev_.p, tpos_host_, size_t(4) * S * 4, cudaMemcpyHostToDevice, stream_), "session positions");
+        sess_ = true;
+        struct Off { bool& b; ~Off() { b = false; } } off{sess_};
+        return forward(tokens, S, 0, true);
+    }
+
     /// One token at position pos (positions must arrive in order from 0). Returns the logits on the host.
     const std::vector<float>& step(int token, int pos) { return forward(&token, 1, pos, false); }
 
@@ -1611,11 +1699,11 @@ public:
         const auto step0 = std::chrono::steady_clock::now();
         struct Done { double& t; std::chrono::steady_clock::time_point s; ~Done() { t += std::chrono::duration<double>(std::chrono::steady_clock::now() - s).count(); } } done{prof_[0], step0};
         if (T < 1 || T > chunk_) throw std::invalid_argument("ds41: chunk size");
-        if (pos != int(history_.size())) throw std::logic_error("ds41: positions must be consecutive from 0");
+        if (!sess_ && pos != int(history_.size())) throw std::logic_error("ds41: positions must be consecutive from 0");
         if (pos + T > context_) throw std::runtime_error("ds41: context exhausted");
         pos0_ = pos;
         tokens_ = T;
-        const bool hook = T == 1;
+        const bool hook = T == 1 && !sess_;
         // embeddings: Q6_K rows dequantized on the host
         {
             const auto& t = art_.at("token_embd.weight");
@@ -1631,7 +1719,7 @@ public:
         // the rotation tables of each position: [0] plain forward, [1] plain back, [2] compressed forward, [3] back,
         // [4] compressed forward at pos - 1 (a ratio-2 group's row stands for its first position)
         for (int i = 0; i < T; ++i) {
-            const int p = pos + i;
+            const int p = sess_ ? tpos_host_[i] : pos + i;
             float* cs = rope_host_.data() + size_t(i) * kTables * 64;
             rope_table(c.rope_plain, c.rope_dim, p, 1.0f, cs);
             rope_table(c.rope_plain, c.rope_dim, p, -1.0f, cs + 64);
@@ -1640,13 +1728,15 @@ public:
             rope_table(c.rope_compressed, c.rope_dim, std::max(p - 1, 0), 1.0f, cs + 256);
         }
         ck(cudaMemcpyAsync(cs_.p, rope_host_.data(), size_t(T) * kTables * 64 * 4, cudaMemcpyHostToDevice, stream_), "rope");
-        history_.insert(history_.end(), tokens, tokens + T);
+        if (!sess_) history_.insert(history_.end(), tokens, tokens + T);
         if (T >= stream_min_) stream_begin();   // the producer starts on layer 0's experts while the trunk runs
         // every Engram layer's rows, [engram][token][cols x dim]
         {
             const auto g0 = std::chrono::steady_clock::now();
             for (size_t e = 0; e < c.engram_layers.size(); ++e)
-                for (int i = 0; i < T; ++i) gather_engram(int(e), i, pos + i);
+                for (int i = 0; i < T; ++i)
+                    if (sess_) gather_engram(int(e), i, tpos_host_[i], shist_[size_t(i)]);
+                    else gather_engram(int(e), i, pos + i, history_);
             // STRATA_DS41_ENGRAM_ASYNC (1): the first Engram layer's rows now, the later layers' rows on a background
             // thread that the layer waits for (their reads overlap the layers before it)
             static const bool async = !(std::getenv("STRATA_DS41_ENGRAM_ASYNC") && std::string(std::getenv("STRATA_DS41_ENGRAM_ASYNC")) == "0");
@@ -1688,7 +1778,7 @@ public:
             const std::string p = "blk." + std::to_string(l) + ".";
             if (gpu_timing_ && producer_.joinable()) mark(0);
             if (dtiming_ && T <= 8) dmark(0);
-            if (dsp_.on) capture_features(l);
+            if (dsp_.on && !sess_) capture_features(l);
             if (const int e = c.engram_index(l); e >= 0) {
                 if (e > 0 && engram_later_.joinable()) {   // the background rows
                     const auto w0 = std::chrono::steady_clock::now();
@@ -2007,11 +2097,11 @@ private:
     }
 
     // the Engram rows of token i (position pos) for the e-th Engram layer, into engram_host_
-    void gather_engram(int e, int i, int pos) {
+    void gather_engram(int e, int i, int pos, const std::vector<int32_t>& hist) {
         const auto& c = cfg_;
         const int cols = c.engram_cols();
         std::vector<int64_t> rows(static_cast<size_t>(cols));
-        engram_hash(e, pos, [&](int q) { return history_[size_t(q)]; }, rows.data());
+        engram_hash(e, pos, [&](int q) { return hist[size_t(q)]; }, rows.data());
         const size_t per_token = size_t(cols) * c.engram_dim;
         float* v = engram_host_.data() + (size_t(e) * chunk_ + size_t(i)) * per_token;
         for (int j = 0; j < cols; ++j) engram_reqs_.push_back({rows[size_t(j)], v + size_t(j) * c.engram_dim, e});
@@ -2262,7 +2352,7 @@ private:
         const int ratio = c.ratio[size_t(l)];
         const int fwd = ratio ? 2 : 0, back = ratio ? 3 : 1;
         const int nope = c.head_dim - c.rope_dim, pairs = c.rope_dim / 2, step = kTables * 64;
-        const bool hook = T == 1 && observe;
+        const bool hook = T == 1 && observe && !sess_;
         if (dtiming_ && T <= 8) dmark(1);
         quantize_xn();
         mat_xn(p + "attn_q_a.weight", qa_.f());
@@ -2276,6 +2366,8 @@ private:
         mat_xn(p + "attn_kv.weight", kv_.f());
         k::glm_rms_norm_rows(kv_.f(), w(p + "attn_kv_a_norm.weight"), kvn_.f(), c.head_dim, T, c.rms_eps, stream_);
         k::ds41_rope(kvn_.f(), T, c.head_dim, nope, pairs, table(0, fwd), stream_, 1, step);
+        if (sess_) k::ds41_scatter_rows(kvn_.f(), T, c.head_dim, tpos_dev_.i() + T, bwin_[size_t(l)].f(), size_t(c.head_dim), stream_);
+        else
         for (int i = 0; i < T;) {   // contiguous runs of ring slots
             const int slot = (pos0_ + i) % ring_, run = std::min(T - i, ring_ - slot);
             ck(cudaMemcpyAsync(windows_[size_t(l)].f(size_t(slot) * c.head_dim), kvn_.f(size_t(i) * c.head_dim),
@@ -2286,14 +2378,47 @@ private:
         const float* comp_rows = nullptr;
         const int src = ratio ? c.kv_src[size_t(l)] : -1, ts = ratio ? c.topk_src[size_t(l)] : -1;
         if (ratio) {
-            if (src == l) compress(l);
-            comp_rows = caches_[size_t(src)].f();
-            if (ts == l) { index(l); sel_on_gpu_[size_t(l)] = gpu_sel_; }
+            if (src == l) { if (sess_) compress_sessions(l); else compress(l); }
+            comp_rows = sess_ ? (kv_half_ ? nullptr : bcache_[size_t(src)].f()) : caches_[size_t(src)].f();
+            if (ts == l) { if (sess_) index_sessions(l); else index(l); sel_on_gpu_[size_t(l)] = gpu_sel_; }
         }
         const float* sinks = w(p + "attn_sinks.weight");
         const float scale = 1.0f / std::sqrt(float(c.head_dim));
         if (dtiming_ && T <= 8) dmark(3);
-        if (T >= 16) {   // one launch for the pass: per-token {first slot, window rows, selected rows}
+        if (sess_) {   // sessions: one launch pair, each token over its own ring and cache
+            int* info = attn_info_;
+            int bound = 1;
+            for (int i = 0; i < T; ++i) {
+                const int pos = tpos_host_[i], rows = std::min(pos + 1, c.window);
+                const int nsel = ratio && (pos + 1) / ratio > 0 ? std::min(c.index_top_k, (pos + 1) / ratio) : 0;   // the bound (count on the GPU)
+                info[4 * i] = (pos - rows + 1) % ring_b_;
+                info[4 * i + 1] = rows;
+                info[4 * i + 2] = nsel;
+                info[4 * i + 3] = 0;
+                bound = std::max(bound, rows + nsel);
+            }
+            ck(cudaMemcpyAsync(attn_info_dev_.p, info, size_t(T) * 16, cudaMemcpyHostToDevice, stream_), "attention info");
+            const size_t rw = size_t(row_width());
+            const int* sel = ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i();
+            int sel_stride = c.index_top_k;
+            size_t css = ratio ? rows_b(src) * rw : 0;
+            if (kv_half_ && ratio) {   // FP16 / Q8_0: each token's selected rows as floats, [T][top_k][rw]
+                if (T > kGatherTokens) throw std::runtime_error("ds41: sessions wider than the gather buffer");
+                if (kv_kind_ == 1)
+                    k::ds41_gather_sel_h(reinterpret_cast<const uint16_t*>(bcache_[size_t(src)].p), int(rw), sel, c.index_top_k, T, 0, ratio,
+                                         kv_sel_.f(), stream_, tpos_dev_.i(), rows_b(src) * rw);
+                else
+                    k::ds41_gather_sel_q8(bcache_[size_t(src)].b(), kv_row_bytes(), int(rw), sel, c.index_top_k, T, 0, ratio, kv_sel_.f(), stream_,
+                                          tpos_dev_.i(), rows_b(src) * kv_row_bytes());
+                comp_rows = kv_sel_.f();
+                sel = sel_iota_.i();   // row j of each token's block
+                sel_stride = 0;
+                css = size_t(c.index_top_k) * rw;
+            }
+            k::ds41_attention_multi(q_.f(), T, c.heads, c.head_dim, bwin_[size_t(l)].f(), ring_b_, attn_info_dev_.i(), bound, comp_rows,
+                                    row_width(), sel, sel_stride, ratio ? sel_cnt_[size_t(ts)].i() : nullptr, sinks, scale, attn_scores_.f(),
+                                    att_.f(), stream_, size_t(ring_b_) * c.head_dim, css);
+        } else if (T >= 16) {   // one launch for the pass: per-token {first slot, window rows, selected rows}
             int* info = attn_info_;
             for (int i = 0; i < T; ++i) {
                 const int pos = pos0_ + i, rows = std::min(pos + 1, c.window);
@@ -2414,6 +2539,74 @@ private:
         }
         mat(p + "attn_output_b.weight", oa_.f(), y_.f(), T);
         if (hook) observe("attn_out", l, y_.f(), size_t(c.hidden));
+    }
+
+    size_t rows_b(int l) const { return size_t(context_ / cfg_.ratio[size_t(l)] + 1); }   // a session's cache rows (layer l)
+    // session 0's indexer keys of a KV source (FP16: the pointer cast to float*)
+    const float* session_keys(int src) const {
+        return kv_kind_ == 1 ? reinterpret_cast<const float*>(reinterpret_cast<const uint16_t*>(bcache_[size_t(src)].p) + cfg_.head_dim)
+                             : bcache_[size_t(src)].f(cfg_.head_dim);
+    }
+    // sessions: the compressor's rows of the pass's odd (ratio 2) or all (ratio 1) positions into each session's cache
+    void compress_sessions(int l) {
+        const auto& c = cfg_;
+        const int T = tokens_, ratio = c.ratio[size_t(l)];
+        if (ratio > 2) throw std::runtime_error("ds41: only compress ratios 1 and 2");
+        const std::string p = "blk." + std::to_string(l) + ".";
+        mat(p + "attn_compressor_kv.weight", xn_.f(), comp_v_.f(), T);
+        if (ratio > 1) mat(p + "attn_compressor_gate.weight", xn_.f(), comp_s_.f(), T);
+        const size_t hd = size_t(c.head_dim), rw = size_t(row_width()), id = size_t(c.index_dim);
+        float* merged = att_.f();   // free until this layer's attention
+        float* normed = att_.f(size_t(T) * hd);
+        float* rows = att_.f(2 * size_t(T) * hd);
+        float* keys = rows + size_t(T) * rw;
+        float* knormed = keys + size_t(T) * id;
+        k::ds41_compress_sessions(comp_v_.f(), comp_s_.f(), ratio > 1 ? bstash_v_[size_t(l)].f() : nullptr, ratio > 1 ? bstash_s_[size_t(l)].f() : nullptr,
+                                  c.head_dim, tpos_dev_.i(), ratio, T, merged, stream_);
+        k::glm_rms_norm_rows(merged, w(p + "attn_compressor_norm.weight"), normed, c.head_dim, T, c.rms_eps, stream_);
+        ck(cudaMemcpy2DAsync(rows, rw * 4, normed, hd * 4, hd * 4, size_t(T), cudaMemcpyDeviceToDevice, stream_), "rows");
+        mat(p + "indexer.attn_k.weight", normed, keys, T);   // from the RoPE-free latent
+        k::glm_rms_norm_rows(keys, w(p + "indexer.k_norm.weight"), knormed, c.index_dim, T, c.rms_eps, stream_);
+        ck(cudaMemcpy2DAsync(rows + hd, rw * 4, knormed, id * 4, id * 4, size_t(T), cudaMemcpyDeviceToDevice, stream_), "index rows");
+        const float* cs = table(0, ratio == 1 ? 2 : 4);   // a ratio-2 row stands for its group's first position
+        k::ds41_rope(rows + hd, T, int(rw), c.index_dim - c.rope_dim, c.rope_dim / 2, cs, stream_, 1, kTables * 64);
+        k::ds41_rope(rows, T, int(rw), c.head_dim - c.rope_dim, c.rope_dim / 2, cs, stream_, 1, kTables * 64);
+        const int* dst_row = tpos_dev_.i() + (ratio == 1 ? 2 : 3) * T;
+        if (kv_kind_ == 0) {
+            k::ds41_scatter_rows(rows, T, int(rw), dst_row, bcache_[size_t(l)].f(), rw, stream_);
+            return;
+        }
+        uint8_t* packed = reinterpret_cast<uint8_t*>(knormed + size_t(T) * id);   // the rows as stored, then scattered
+        if (kv_kind_ == 1) k::glm_f16(rows, reinterpret_cast<uint16_t*>(packed), int64_t(T) * int64_t(rw), stream_);
+        else k::ds41_quant_rows_q8(rows, T, int(rw), packed, kv_row_bytes(), stream_);
+        k::ds41_scatter_bytes(packed, T, kv_row_bytes(), dst_row, bcache_[size_t(l)].p, kv_row_bytes(), stream_);
+    }
+    // sessions: each token's top-k over its own session's visible rows, on the GPU
+    void index_sessions(int l) {
+        const auto& c = cfg_;
+        const int T = tokens_, ratio = c.ratio[size_t(l)];
+        const std::string p = "blk." + std::to_string(l) + ".";
+        if (T > score_tile_) throw std::runtime_error("ds41: sessions wider than the score tile");
+        mat(p + "indexer.attn_q_b.weight", qr_.f(), iq_.f(), T);
+        k::ds41_rope(iq_.f(), T * c.index_heads, c.index_dim, c.index_dim - c.rope_dim, c.rope_dim / 2, table(0, 2), stream_,
+                     c.index_heads, kTables * 64);
+        mat(p + "indexer.proj.weight", xn_.f(), iw_.f(), T);
+        const int src = c.kv_src[size_t(l)];
+        const float w_scale = 1.0f / std::sqrt(float(c.index_dim * c.index_heads));
+        int widest = 0;
+        for (int i = 0; i < T; ++i) widest = std::max(widest, (tpos_host_[i] + 1) / ratio);
+        const auto i0 = std::chrono::steady_clock::now();
+        if (kv_kind_ == 2)
+            k::ds41_index_score_q8(iq_.f(), c.index_heads, c.index_dim, bcache_[size_t(src)].b(), kv_row_bytes(), c.head_dim, 0, ratio, T, widest,
+                                   iw_.f(), w_scale, scores_.f(), score_stride_, stream_, tpos_dev_.i(), rows_b(src) * kv_row_bytes());
+        else
+            k::ds41_index_score_sessions(iq_.f(), c.index_heads, c.index_dim, session_keys(src), row_width(), rows_b(src) * size_t(row_width()),
+                                         tpos_dev_.i(), widest, ratio, T, iw_.f(), w_scale, scores_.f(), score_stride_, stream_, kv_kind_ == 1);
+        const int mode = c.candidate_source == l ? 1 : c.candidate_source >= 0 && c.candidate_source < l ? 2 : 0;
+        k::ds41_index_topk(scores_.f(), score_stride_, T, 0, ratio, c.index_top_k, sel_[size_t(l)].i(), sel_cnt_[size_t(l)].i(), mode,
+                           static_cast<uint8_t*>(cand_dev_.p), cand_stride_, c.candidate_block, c.candidate_blocks, stream_, tpos_dev_.i());
+        prof_[5] += std::chrono::duration<double>(std::chrono::steady_clock::now() - i0).count();
+        gpu_sel_ = true;
     }
 
     // the KV-source layer's compressor: one compressed row per `ratio` positions, in position order
@@ -3796,6 +3989,14 @@ private:
     int rcap_min_ = 8192;
     std::vector<std::unique_ptr<void, void (*)(void*)>> pinned_bufs_;
     int chunk_ = 256, ring_ = 0, pos0_ = 0, tokens_ = 1, score_stride_ = 0, score_tile_ = 1;
+    // batched sessions (sessions_init): per-layer [S][...] rings, caches, ratio-2 stashes; each session's tokens;
+    // per pass the positions, window slots and cache rows [4][S] (pinned, and on the device)
+    int sessions_ = 0, ring_b_ = 0;
+    bool sess_ = false;   // a pass of sessions
+    std::vector<Dev> bwin_, bcache_, bstash_v_, bstash_s_;
+    std::vector<std::vector<int32_t>> shist_;
+    Dev tpos_dev_;
+    int* tpos_host_ = nullptr;
     // STRATA_DS41_KV=f16: the compressed caches in FP16 (half the bytes; the indexer reads them so, attention reads
     // each pass's selected rows gathered back to floats in kv_sel_ through the identity selection sel_iota_)
     // (=q8: Q8_0 rows, an FP16 scale per 32 values)
@@ -4637,6 +4838,74 @@ bool is_ds41(const std::string& path) {
     }
 }
 
+// STRATA_DS41_SESSIONS: every session's prompt, then `steps` greedy tokens for all of them in passes of one token per
+// session. STRATA_DS41_SESSION_CHECK=n: afterwards the first n sessions again, alone (prompt, then plain decoding), and
+// their tokens against the batched ones.
+int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int steps) {
+    const size_t V = size_t(d.config().vocab);
+    auto argmax = [](const float* v, size_t n) { return int(std::max_element(v, v + n) - v); };
+    auto offset = [&](int s) { return size_t(s) * size_t(L) % (prompt.size() - size_t(L) + 1); };
+    auto prefill = [&](int s) {   // session s's prompt on the single-sequence state; its first token
+        const int* toks = prompt.data() + offset(s);
+        std::vector<float> last;
+        for (int i = 0; i < L; i += d.chunk()) {
+            const int n = std::min(L - i, d.chunk());
+            const auto& out = d.forward(toks + i, n, i, false);
+            last.assign(out.end() - std::ptrdiff_t(V), out.end());
+        }
+        return argmax(last.data(), V);
+    };
+    d.sessions_init(S);
+    const auto p0 = std::chrono::steady_clock::now();
+    std::vector<int> next(size_t(S), 0);
+    for (int s = 0; s < S; ++s) {
+        next[size_t(s)] = prefill(s);
+        d.park(s);
+    }
+    const auto p1 = std::chrono::steady_clock::now();
+    std::fill(std::begin(d.prof_), std::end(d.prof_), 0.0);
+    d.tier_hits_ = d.tier_all_ = 0;
+    d.prefill_done();
+    std::fill(std::begin(d.xt_), std::end(d.xt_), 0.0);
+    const auto t2 = std::chrono::steady_clock::now();
+    std::vector<std::vector<int>> out(static_cast<size_t>(S));
+    for (int k = 0; k < steps; ++k) {
+        for (int s = 0; s < S; ++s) out[size_t(s)].push_back(next[size_t(s)]);
+        if (k + 1 == steps) break;
+        const auto& lg = d.forward_sessions(next.data(), S);
+        for (int s = 0; s < S; ++s) next[size_t(s)] = argmax(lg.data() + size_t(s) * V, V);
+    }
+    const auto t3 = std::chrono::steady_clock::now();
+    const double prefill_s = std::chrono::duration<double>(p1 - p0).count(), decode_s = std::chrono::duration<double>(t3 - t2).count();
+    std::cerr << "DS41 profile_s step=" << d.prof_[0] << " gpu_to_router=" << d.prof_[1] << " cpu_experts=" << d.prof_[2]
+              << " gpu_tier_hit=" << (d.tier_all_ > 0 ? d.tier_hits_ / d.tier_all_ : 0) << " engram=" << d.prof_[4] << " index_host=" << d.prof_[5]
+              << " head=" << d.prof_[6] << " (ffn: enqueue " << d.xt_[0] << " lane " << d.xt_[1] << " peer " << d.xt_[2] << ")\n";
+    for (int s = 0; s < std::min(S, 4); ++s) {
+        std::cout << "tokens[" << s << "]:";
+        for (int t : out[size_t(s)]) std::cout << ' ' << t;
+        std::cout << "\n";
+    }
+    const double passes = std::max(1, steps - 1);
+    std::cerr << "DS41 sessions=" << S << " prompt=" << L << " prefill_s=" << prefill_s << " generated=" << steps << " pass_ms="
+              << decode_s * 1e3 / passes << " decode_tok_s=" << S * passes / std::max(decode_s, 1e-9)
+              << " per_session_tok_s=" << passes / std::max(decode_s, 1e-9) << "\n";
+    const int check = std::getenv("STRATA_DS41_SESSION_CHECK") ? std::min(S, std::atoi(std::getenv("STRATA_DS41_SESSION_CHECK"))) : 0;
+    for (int s = 0; s < check; ++s) {
+        d.reset_sequence();
+        int tok = prefill(s), same = 0, prefix = -1;
+        for (int k = 0; k < steps; ++k) {
+            const bool eq = tok == out[size_t(s)][size_t(k)];
+            same += eq;
+            if (!eq && prefix < 0) prefix = k;
+            if (k + 1 == steps) break;
+            const auto& lg = d.step(tok, L + k);
+            tok = argmax(lg.data(), V);
+        }
+        std::cerr << "DS41 session_check s=" << s << " same=" << same << "/" << steps << " first_diff=" << prefix << "\n";
+    }
+    return 0;
+}
+
 int run(int argc, char** argv) {
     if (argc < 3) {
         std::cerr << "usage: strata-glm-decode DS41-MODEL.gguf <ids|@file> [steps] [--threads=N] [--context=N] "
@@ -4661,7 +4930,14 @@ int run(int argc, char** argv) {
     }
     const auto prompt = parse_ids(argv[2]);
     if (prompt.empty()) throw std::invalid_argument("ds41: empty prompt");
-    if (!context) context = int(prompt.size()) + steps + 1;
+    // STRATA_DS41_SESSIONS=S: S sessions decoded together, session s's prompt the STRATA_DS41_SESSION_LEN (prompt / S)
+    // tokens from s x that length (wrapping inside the prompt)
+    const int sessions = std::getenv("STRATA_DS41_SESSIONS") ? std::max(0, std::atoi(std::getenv("STRATA_DS41_SESSIONS"))) : 0;
+    const int slen = !sessions ? 0 : std::getenv("STRATA_DS41_SESSION_LEN") ? std::atoi(std::getenv("STRATA_DS41_SESSION_LEN"))
+                                                                           : int(prompt.size()) / sessions;
+    if (sessions && (slen < 1 || slen > int(prompt.size()))) throw std::invalid_argument("ds41: session length");
+    const int plen = sessions ? slen : int(prompt.size());
+    if (!context) context = plen + steps + 1;
     const auto t0 = std::chrono::steady_clock::now();
     // a long prompt runs as one layer-major pass (up to STRATA_DS41_PROMPT_BATCH, 4096 tokens): every expert crosses
     // PCIe once per pass; shorter prompts take chunks of STRATA_DS41_PREFILL_CHUNK (256) with the CPU lane
@@ -4670,13 +4946,14 @@ int run(int argc, char** argv) {
         const char* v = std::getenv("STRATA_DS41_PROMPT_BATCH");
         const int batch = v ? std::max(1, std::atoi(v)) : 4096;
         const int stream_min = std::getenv("STRATA_DS41_STREAM_MIN") ? std::atoi(std::getenv("STRATA_DS41_STREAM_MIN")) : 1024;
-        if (int(prompt.size()) >= stream_min && !std::getenv("STRATA_DS41_PREFILL_CHUNK") && check_dir.empty())
-            chunk = std::min(int(prompt.size()), batch);
+        if (plen >= stream_min && !std::getenv("STRATA_DS41_PREFILL_CHUNK") && check_dir.empty())
+            chunk = std::min(plen, batch);
     }
     Decoder d(argv[1], context, threads, chunk);
     if (const char* r = std::getenv("STRATA_DS41_ROUTES")) d.log_routes(r);
     const auto t1 = std::chrono::steady_clock::now();
     std::cerr << "DS41 load_s=" << std::chrono::duration<double>(t1 - t0).count() << " threads=" << threads << "\n";
+    if (sessions) return run_sessions(d, prompt, sessions, slen, steps);
     // --check: every observed tensor of every prompt position against the dump's s<pos>/<name>-<layer>.bin
     int position = 0;
     double worst = 0, kl_sum = 0;

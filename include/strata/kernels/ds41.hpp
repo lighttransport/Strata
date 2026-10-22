@@ -41,12 +41,13 @@ void ds41_attention(const float* q, int heads, int dim, const float* window, int
                     float scale, float* scores, float* out, void* stream, const int* nsel_dev = nullptr);
 /// (nsel_dev: the selected rows' count read on the device, at most nsel - the launch's bound)
 size_t ds41_attention_scratch(int heads);
-/// ds41_attention for `tokens` queries in one launch: info[4 t..] = {first slot, window rows, selected rows (with
+/// ds41_attention for `tokens` queries in one launch (wss, css: token t's window and comp at t wss, t css floats -
+/// batched sessions); info[4 t..] = {first slot, window rows, selected rows (with
 /// nsel_dev: the bound, the count at nsel_dev[t]), -} on the device; bound >= every token's rows; scores: tokens x
 /// ds41_attention_scratch(heads) bytes.
 void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info, int bound,
                           const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, const float* sinks,
-                          float scale, float* scores, float* out, void* stream);
+                          float scale, float* scores, float* out, void* stream, size_t wss = 0, size_t css = 0);
 /// ds41_attention for `tokens` queries at once (prefill): info[4 t..] = {first window slot, window rows, selected rows,
 /// unused} per token, its selected rows at sel + t sel_stride; window row r of token t is slot (first + r) % ring.
 /// q, out: [tokens][heads][dim]. dim 256 or 512, heads % 8 == 0.
@@ -65,7 +66,7 @@ void ds41_index_score_batched(const float* q, int heads, int dim, const float* k
 /// and count [tokens]. mode 1: also the top cand_k blocks of `block` rows by their maxima (the newest pinned) as
 /// flags cand [tokens][cand_stride]; mode 2: only rows in cand's flagged blocks.
 void ds41_index_topk(const float* score, int score_stride, int tokens, int pos0, int ratio, int k, int* sel, int* count, int mode,
-                     uint8_t* cand, int cand_stride, int block, int cand_k, void* stream);
+                     uint8_t* cand, int cand_stride, int block, int cand_k, void* stream, const int* tpos = nullptr);
 /// info[4 t + 2] = count[t] where the token sees a compressed row, else 0.
 void ds41_patch_info(int* info, const int* count, int tokens, int pos0, int ratio, void* stream);
 /// ds41_compress2 of consecutive pairs: out[r] from rows 2r and 2r + 1 of v and s ([2 rows][n]).
@@ -114,14 +115,18 @@ void ds41_confidence(const float* cw, const float* x, int hidden, const float* r
 /// keys: with half, an FP16 cache (IEEE half bits; the pointer cast to float*) - for ds41_index_score*.
 /// An FP16 cache's selected rows as floats: out[(t topk + j) rw ..] = cache[sel[t topk + j] rw ..] for each token's
 /// first min(topk, (pos0 + t + 1) / ratio) picks.
-void ds41_gather_sel_h(const uint16_t* cache, int rw, const int* sel, int topk, int tokens, int pos0, int ratio, float* out, void* stream);
+void ds41_gather_sel_h(const uint16_t* cache, int rw, const int* sel, int topk, int tokens, int pos0, int ratio, float* out, void* stream,
+                       const int* tpos = nullptr, size_t css = 0);
+/// (tpos, css: batched sessions - token t at position tpos[t], its cache at t css elements (FP16) / bytes (Q8_0))
 /// Q8_0 caches (rows of row_bytes: per 32 values an FP16 scale and 32 int8): the index scores (keys from value
 /// key_off; rows: (pos0 + t + 1) / ratio per token, or fixed_rows > 0 for all), the selected rows' gather as in
 /// ds41_gather_sel_h, and float rows [rows][rw] stored as such rows.
 void ds41_index_score_q8(const float* q, int heads, int dim, const uint8_t* cache, size_t row_bytes, int key_off, int pos0, int ratio, int tokens,
-                         int fixed_rows, const float* w, float w_scale, float* score, int score_stride, void* stream);
+                         int fixed_rows, const float* w, float w_scale, float* score, int score_stride, void* stream,
+                         const int* tpos = nullptr, size_t css = 0);
 void ds41_gather_sel_q8(const uint8_t* cache, size_t row_bytes, int rw, const int* sel, int topk, int tokens, int pos0, int ratio, float* out,
-                        void* stream);
+                        void* stream, const int* tpos = nullptr,
+                        size_t css = 0);
 void ds41_quant_rows_q8(const float* x, int rows, int rw, uint8_t* out, size_t row_bytes, void* stream);
 /// GEMM index scoring: a Q8_0 cache's keys [row0, row0 + rows) as FP16 [rows][dim]; and the reduction of the
 /// products c [tokens][heads][rows] (c[(t heads + h) rows + r] = k_r . q_th) into
@@ -129,6 +134,16 @@ void ds41_quant_rows_q8(const float* x, int rows, int rw, uint8_t* out, size_t r
 void ds41_keys_q8_f16(const uint8_t* cache, size_t row_bytes, int key_off, int dim, int row0, int rows, uint16_t* out, void* stream);
 void ds41_index_reduce(const float* c, int rows, int tokens, int heads, const float* w, float w_scale, int pos0, int ratio, int row0,
                        float* score, int score_stride, void* stream);
+/// Batched sessions: token t of a pass is session t at position tpos[t] (device). The index scores of each token over
+/// its own cache (keys + t kss, (tpos[t] + 1) / ratio rows, max_rows the bound); the compressor step (ratio 1: out = v;
+/// ratio 2: even positions stash v, s into stash_* [tokens][n], odd ones merge with it into out); and row t of src
+/// [rows][width] to dst + dst_row[t] dst_stride (dst_row[t] < 0: skipped).
+void ds41_index_score_sessions(const float* q, int heads, int dim, const float* keys, int key_stride, size_t kss, const int* tpos, int max_rows,
+                               int ratio, int tokens, const float* w, float w_scale, float* score, int score_stride, void* stream, bool half = false);
+void ds41_compress_sessions(const float* v, const float* s, float* stash_v, float* stash_s, int n, const int* tpos, int ratio, int tokens,
+                            float* out, void* stream);
+void ds41_scatter_bytes(const void* src, int rows, size_t row_bytes, const int* dst_row, void* dst, size_t dst_pitch, void* stream);
+void ds41_scatter_rows(const float* src, int rows, int width, const int* dst_row, float* dst, size_t dst_stride, void* stream);
 /// dst[b][a][j] = src[a][b][j] (a < na, b < nb, j < width floats): [tokens][groups][w] <-> [groups][tokens][w].
 void ds41_swap_blocks(const float* src, float* dst, int na, int nb, int width, void* stream);
 /// dst[t ld_dst + j] = mean over the 4 hyper-connection streams of h[t][s][j].
