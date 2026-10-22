@@ -658,7 +658,7 @@ Reading the table:
 - On IQ2_XXSE4 the Engram reads come first: IQ2_XXSE43 (KL 0.307) removes them as well as IQ2_XXSE3 does.
 - Once Engram is in RAM, the dense kernels, the CPU lane and the draft are the levers. All three together reach ~41.
 
-**Batched sessions** (one pass carries every session's tokens; not implemented):
+**Batched sessions** (one pass carries every session's tokens; forecast before the implementation, measured in 8g):
 
 | sessions | 1 | 2 | 4 | 8 |
 |---|---|---|---|---|
@@ -700,6 +700,65 @@ single-token BF16 kernel, one CPU-lane group per route, no MMQ.
 - Against a run without the drafter, tokens can differ at near ties. The drafter's 8 GB moves experts from GPU0
   to the CPU lane, whose Q8_K activations round differently from the GPU's Q8_1: up to ~0.5 in a logit gap.
 - The default (batched) verify numerics also differ only by rounding.
+
+## 8g. Batched sessions on 2x V100 (measured 2026-10-23)
+
+`STRATA_DS41_SESSIONS=S` decodes S independent sequences together: each pass carries one token per session.
+- **Prompts.** Each session's prompt runs through the single-sequence path. `park(s)` then copies that state into
+  per-session buffers: the window ring (window + 8 slots), the compressed caches, the ratio-2 compressor stash and
+  the token history (for the Engram hash). It then clears the single-sequence state for the next prompt.
+- **Per-session kernels.** Attention, the compressor, index scoring and top-k each take per-token positions and
+  per-token window/cache offsets, so each step is still one launch for all sessions. FP32, FP16 and Q8 KV
+  (`STRATA_DS41_KV`) all work; with FP16 and Q8 each token's selected rows are gathered to floats from its own cache.
+- **Shared code.** The dense layers, the MoE (GPU tier, peer GPU, CPU lane) and Engram see an ordinary pass of S
+  tokens. The CPU lane already groups a layer's routes by expert, so each CPU expert is read once per pass.
+- **Options.** `STRATA_DS41_SESSION_LEN` is each session's prompt length; session s takes the slice starting at
+  s x that length. `STRATA_DS41_SESSION_CHECK=n` re-runs the first n sessions alone and compares their tokens.
+
+**Results.** Full node, 36 lane threads, mixed profile, rebalance, Engram 76 GiB (IQ2_XXSE4) or 70 GiB
+(IQ2_XXSE3). 256-token prompts from the wikitext prompt file, plain greedy decoding, 24 tokens per session.
+Aggregate tok/s counts every session's tokens:
+
+| sessions | pack / variant | pass (ms) | aggregate tok/s | per session |
+|---|---|---|---|---|
+| 1 | IQ2_XXSE4 (Engram 64 GiB) | 61 | 16.3 | 16.3 |
+| 8 | IQ2_XXSE4 | 174 | 45.9 | 5.7 |
+| 16 | IQ2_XXSE4 | 297 | 53.9 | 3.4 |
+| 16 | IQ2_XXSE4, `DECODE_GROUPED=1` | 284 | 56.4 | 3.5 |
+| 16 | IQ2_XXSE3 (Engram all in RAM) | 262 | **61.2** | 3.8 |
+| 32 | IQ2_XXSE4 | 612 | 52.3 | 1.6 |
+
+Single-session plain decode on the same node is 21.9-22.3 tok/s, so 16 sessions reach about 2.5-2.8x.
+
+What bounds a 16-session pass (IQ2_XXSE4, ~290 ms):
+- **MoE, ~170-180 ms.** The CPU lane takes ~70 ms per pass. That is about 30 distinct CPU experts per layer at
+  ~9 MB each, read at memory bandwidth. The host then waits another ~40 ms for the peer GPU's experts.
+- **Dense layers, ~95 ms.** The breakdown is Engram and pre-mix 20-31 ms (10 with Engram in RAM), q 20, attention
+  15, attention output 27, the rest ~10. Below `GEMM_MIN` (32 tokens), MMVQ handles at most 8 columns per launch,
+  so the dense weights are re-read every 8 tokens.
+- **32 sessions cross `GEMM_MIN`.** The dense projections then dequantize to FP16 for cuBLAS (attention output
+  111 ms, q 69 ms per pass), so 32 sessions are no faster than 16. Moving the GEMM path down to 16 tokens without
+  int8 MMQ falls to 33.8 tok/s at 16 sessions.
+
+Fixed on the way: `resident_mmq` took at most 64 routes per pass (T x top-k). Past 10 sessions the GPU-resident
+experts fell back to per-token GEMV chains: 16 sessions ran at 39.0 tok/s, 410 ms per pass. It now takes 512.
+
+**Exactness.** Batched passes round like multi-token passes (MMVQ over several columns, MMQ experts), not like
+one-token passes. `SESSION_CHECK=4` (16 tokens each) shows:
+- FP32 KV: 3 of 4 sessions identical; the fourth matches its first 8 tokens.
+- FP16 and Q8 KV: 2 of 4 identical; the others diverge after 5-13 tokens.
+
+Once one token differs, the rest of that session differs. Near-tie rounding fits this pattern, but it has not been
+confirmed against logit margins.
+
+**Next.**
+1. Dense projections through int8 MMQ for 16+ token passes (`STRATA_DENSE_MMQ=1` with `GEMM_MIN=16`): each weight
+   is read once per pass.
+2. The peer GPU's multi-token expert path: why it finishes ~40 ms after the CPU lane.
+3. Engram fully in RAM.
+
+If the dense part falls to ~50 ms and the peer stops trailing the lane, a 32-session pass becomes bound by the CPU
+lane (~150 ms). That is about 120-150 tok/s aggregate.
 
 ## 9. Next steps (in order)
 
