@@ -54,7 +54,7 @@ void ExpertLane::pin(int thread) {
 
 void ExpertLane::barrier() {
     const unsigned s = sense_.load(std::memory_order_acquire);
-    if (arrived_.fetch_add(1, std::memory_order_acq_rel) + 1 == threads_) {
+    if (arrived_.fetch_add(1, std::memory_order_acq_rel) + 1 == (async_ ? threads_ - 1 : threads_)) {
         arrived_.store(0, std::memory_order_relaxed);
         sense_.store(s + 1, std::memory_order_release);
     } else {
@@ -63,24 +63,29 @@ void ExpertLane::barrier() {
 }
 
 void ExpertLane::worker(int thread) {
+    // STRATA_DS41_LANE_SPIN (16384): pauses before an idle worker sleeps (spinning workers slow the thread that
+    // enqueues the GPU's work when they share its cores)
+    static const unsigned spin_max = [] { const char* v = std::getenv("STRATA_DS41_LANE_SPIN"); return v ? unsigned(std::max(1, std::atoi(v))) : (1u << 14); }();
     unsigned seen = 0;
     for (;;) {
         unsigned spins = 0;
         while (start_.load(std::memory_order_acquire) == seen) {
             if (stop_.load(std::memory_order_relaxed)) return;
-            if (++spins < (1u << 14)) pause();
+            if (++spins < spin_max) pause();
             else if (sleep_) start_.wait(seen, std::memory_order_acquire);   // idle (GPU work, streamed prefill): sleep
             else std::this_thread::yield();
         }
         if (stop_.load(std::memory_order_acquire)) return;
         seen = start_.load(std::memory_order_acquire);
         phase_work(thread);
+        if (async_) done_.fetch_add(1, std::memory_order_acq_rel);
     }
 }
 
 // The three phases of one layer for one thread; each ends at a barrier every thread reaches.
 void ExpertLane::phase_work(int t) {
-    const int T = threads_;
+    const int T = async_ ? threads_ - 1 : threads_;   // begin(): threads 1.. only
+    if (async_) --t;
     const cpu::NativeFmt& f = layer_->f;
     const size_t act_bytes = f.act_bytes, h_bytes = f.h_bytes;
     const size_t gate_bytes = layer_->gate_stride ? layer_->gate_stride : f.gu_row * size_t(ff_);
@@ -134,6 +139,48 @@ void ExpertLane::phase_work(int t) {
     barrier();
 }
 
+void ExpertLane::prepare(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k) {
+    if (layer.f.n_embd != hidden_ || layer.f.n_ff != ff_) throw std::invalid_argument("ds41 expert lane: format geometry");
+    layer_ = &layer;
+    nt_ = nt;
+    top_k_ = top_k;
+    // group the routes by expert (the order of the groups does not change any value)
+    // STRATA_DS41_VERIFY_EXACT=1: one group per route, so a token's rows round as when it is alone
+    static const bool split = std::getenv("STRATA_DS41_VERIFY_EXACT") && std::string(std::getenv("STRATA_DS41_VERIFY_EXACT")) == "1";
+    groups_.clear();
+    if (split) {
+        for (int e = 0; e < nt * top_k; ++e)
+            if (ids[e] >= 0) groups_.push_back({ids[e], {e}});
+    } else {
+        std::map<int, std::vector<int>> by_expert;
+        for (int e = 0; e < nt * top_k; ++e)
+            if (ids[e] >= 0) by_expert[ids[e]].push_back(e);   // negative: handled elsewhere (the GPU tier)
+        for (auto& [expert, entries] : by_expert) groups_.push_back({expert, std::move(entries)});
+    }
+    act_.resize(size_t(nt) * layer.f.act_bytes);
+    hidden_buf_.resize(size_t(nt) * size_t(top_k) * size_t(ff_));
+    out_.resize(size_t(nt) * size_t(top_k) * size_t(hidden_));
+    hq_.resize(size_t(nt) * size_t(top_k) * layer.f.h_bytes);
+    for (int t = 0; t < nt; ++t)
+        cpu::native_quant_act(layer.f, z + size_t(t) * size_t(hidden_), act_.data() + size_t(t) * layer.f.act_bytes);
+}
+
+void ExpertLane::collect(const int32_t* ids, const float* w, float* y) {
+    for (int t = 0; t < nt_; ++t) {
+        float* yt = y + size_t(t) * size_t(hidden_);
+        bool first = true;
+        for (int k = 0; k < top_k_; ++k) {
+            if (ids[t * top_k_ + k] < 0) continue;
+            const float* o = out_.data() + size_t(t * top_k_ + k) * size_t(hidden_);
+            const float wk = w[t * top_k_ + k];
+            if (first) for (int j = 0; j < hidden_; ++j) yt[j] = o[j] * wk;
+            else for (int j = 0; j < hidden_; ++j) yt[j] += o[j] * wk;
+            first = false;
+        }
+        if (first) std::fill(yt, yt + hidden_, 0.0f);
+    }
+}
+
 void ExpertLane::run(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, const float* w, int top_k,
                      float* y) {
     if (nt < 1 || top_k < 1) throw std::invalid_argument("ds41 expert lane: token count");
@@ -141,38 +188,36 @@ void ExpertLane::run(const LaneLayer& layer, const float* z, int nt, const int32
         std::fill(y, y + size_t(nt) * size_t(hidden_), 0.0f);
         return;
     }
-    if (layer.f.n_embd != hidden_ || layer.f.n_ff != ff_) throw std::invalid_argument("ds41 expert lane: format geometry");
-    layer_ = &layer;
-    nt_ = nt;
-    top_k_ = top_k;
-    // group the routes by expert (the order of the groups does not change any value)
-    std::map<int, std::vector<int>> by_expert;
-    for (int e = 0; e < nt * top_k; ++e)
-        if (ids[e] >= 0) by_expert[ids[e]].push_back(e);   // negative: handled elsewhere (the GPU tier)
-    groups_.clear();
-    for (auto& [expert, entries] : by_expert) groups_.push_back({expert, std::move(entries)});
-    act_.resize(size_t(nt) * layer.f.act_bytes);
-    hidden_buf_.resize(size_t(nt) * size_t(top_k) * size_t(ff_));
-    out_.resize(size_t(nt) * size_t(top_k) * size_t(hidden_));
-    hq_.resize(size_t(nt) * size_t(top_k) * layer.f.h_bytes);
-    for (int t = 0; t < nt; ++t)
-        cpu::native_quant_act(layer.f, z + size_t(t) * size_t(hidden_), act_.data() + size_t(t) * layer.f.act_bytes);
+    async_ = false;
+    prepare(layer, z, nt, ids, top_k);
     start_.fetch_add(1, std::memory_order_acq_rel);
     start_.notify_all();
     phase_work(0);
-    for (int t = 0; t < nt; ++t) {
-        float* yt = y + size_t(t) * size_t(hidden_);
-        bool first = true;
-        for (int k = 0; k < top_k; ++k) {
-            if (ids[t * top_k + k] < 0) continue;
-            const float* o = out_.data() + size_t(t * top_k + k) * size_t(hidden_);
-            const float wk = w[t * top_k + k];
-            if (first) for (int j = 0; j < hidden_; ++j) yt[j] = o[j] * wk;
-            else for (int j = 0; j < hidden_; ++j) yt[j] += o[j] * wk;
-            first = false;
-        }
-        if (first) std::fill(yt, yt + hidden_, 0.0f);
+    collect(ids, w, y);
+}
+
+void ExpertLane::begin(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, const float* w, int top_k, float* y) {
+    if (nt < 1 || top_k < 1) throw std::invalid_argument("ds41 expert lane: token count");
+    ids_ = ids;
+    w_ = w;
+    y_ = y;
+    idle_ = std::all_of(ids, ids + size_t(nt) * size_t(top_k), [](int32_t i) { return i < 0; });
+    if (idle_) { nt_ = nt; return; }
+    if (threads_ < 2) { async_ = false; prepare(layer, z, nt, ids, top_k); phase_work(0); return; }
+    async_ = true;
+    done_.store(0, std::memory_order_relaxed);
+    prepare(layer, z, nt, ids, top_k);
+    start_.fetch_add(1, std::memory_order_acq_rel);
+    start_.notify_all();
+}
+
+void ExpertLane::finish() {
+    if (idle_) { std::fill(y_, y_ + size_t(nt_) * size_t(hidden_), 0.0f); return; }
+    if (async_) {
+        while (done_.load(std::memory_order_acquire) < threads_ - 1) pause();
+        async_ = false;
     }
+    collect(ids_, w_, y_);
 }
 
 }  // namespace strata::ds41

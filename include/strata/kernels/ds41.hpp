@@ -38,8 +38,15 @@ void ds41_rope(float* x, int rows, int stride, int offset, int pairs, const floa
 /// Window row r is slot (window_first + r) % window_ring of `window`.
 void ds41_attention(const float* q, int heads, int dim, const float* window, int window_first, int window_ring,
                     int window_rows, const float* comp, int comp_stride, const int* sel, int nsel, const float* sinks,
-                    float scale, float* scores, float* out, void* stream);
+                    float scale, float* scores, float* out, void* stream, const int* nsel_dev = nullptr);
+/// (nsel_dev: the selected rows' count read on the device, at most nsel - the launch's bound)
 size_t ds41_attention_scratch(int heads);
+/// ds41_attention for `tokens` queries in one launch: info[4 t..] = {first slot, window rows, selected rows (with
+/// nsel_dev: the bound, the count at nsel_dev[t]), -} on the device; bound >= every token's rows; scores: tokens x
+/// ds41_attention_scratch(heads) bytes.
+void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info, int bound,
+                          const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, const float* sinks,
+                          float scale, float* scores, float* out, void* stream);
 /// ds41_attention for `tokens` queries at once (prefill): info[4 t..] = {first window slot, window rows, selected rows,
 /// unused} per token, its selected rows at sel + t sel_stride; window row r of token t is slot (first + r) % ring.
 /// q, out: [tokens][heads][dim]. dim 256 or 512, heads % 8 == 0.
@@ -86,5 +93,27 @@ void ds41_f32_gemv(const float* w, const float* x, float* y, int rows, int in, v
 void ds41_to_bf16(const float* x, uint16_t* y, int64_t n, void* stream);
 /// y = W x with BF16 W, per token as ds41_f32_gemv.
 void ds41_bf16_gemv(const uint16_t* w, const float* x, float* y, int rows, int in, void* stream, int tokens = 1);
+/// y[t ldy + r] = W[r] . x[rows[t] ldx] for n <= 8 tokens, each BF16 row of W [out][in] read once (in % 64 == 0).
+void ds41_bf16_gemv_mt(const uint16_t* w, const float* x, int ldx, const int* rows, int n, float* y, int ldy, int out, int in,
+                       void* stream);
+/// The same over MXFP4 rows (ggml block_mxfp4, row_bytes apart; in % 32 == 0).
+void ds41_mxfp4_gemv_mt(const uint8_t* w, size_t row_bytes, const float* x, int ldx, const int* rows, int n, float* y, int ldy,
+                        int out, int in, void* stream);
+/// DSV4 MoE routing per token on the device: sqrt(softplus(logit)) scores, top-k on score + bias, the picked scores
+/// normalized (when asked) times scale: ids/w [tokens][k].
+void ds41_moe_route(const float* logits, const float* bias, int tokens, int experts, int k, float scale, bool normalize, int* ids, float* w,
+                    void* stream);
+/// y[p ldy + r] = W_{ids[p]}[r] . x[(p / div) ldx] for `pairs` pairs, MXFP4 experts expert_bytes apart (in % 32 == 0).
+void ds41_mxfp4_moe(const uint8_t* w, size_t expert_bytes, size_t row_bytes, const int* ids, int pairs, const float* x, int ldx, int div,
+                    float* y, int ldy, int out, int in, void* stream);
+/// DSpark's Markov chain on the device: row = w1[tok[i]] as floats (dim BF16); tok[i + 1] = argmax v (the first of equal
+/// maxima); conf[i] = sigmoid(cw . [x (hidden); row (dim)]).
+void ds41_markov_row(const uint16_t* w1, int dim, const int* tok, int i, float* row, void* stream);
+void ds41_argmax_into(const float* v, int n, int* tok, int i, void* stream);
+void ds41_confidence(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i, void* stream);
+/// dst[b][a][j] = src[a][b][j] (a < na, b < nb, j < width floats): [tokens][groups][w] <-> [groups][tokens][w].
+void ds41_swap_blocks(const float* src, float* dst, int na, int nb, int width, void* stream);
+/// dst[t ld_dst + j] = mean over the 4 hyper-connection streams of h[t][s][j].
+void ds41_stream_mean(const float* h, float* dst, size_t ld_dst, int n, int tokens, void* stream);
 
 }  // namespace strata::kernels

@@ -537,6 +537,83 @@ against llama.cpp-ds41 on a CPU node):
 - What remains of Engram is the second table's file reads, which are latency bound (~50 ms per row).
 - A pack with a Q3_K Engram, IQ2_XXSE3 (~79 GiB, both tables in memory), is being quantized for the gate.
 
+## 8e. Decode on 2x V100: speculative decoding with DSpark (measured 2026-10-22)
+
+All of this is opt-in (`STRATA_DS41_*`), on IQ2_XXSE4, in a 160-168 GiB / 64-CPU allocation (52-60 GiB of Engram in
+RAM). Prompts: a 600-token wikitext prompt and a 600 / 4096-token C++ prompt; 64 greedy tokens.
+
+**Plain decode** went from 10.3 to about 18 tok/s at 600 tokens of context:
+- `ENGRAM_PINNED=1`: the Engram rows' host buffer pinned. The pageable upload had made the host wait for the whole
+  GPU stream at layers 1 and 14 (the "Engram" 34 ms per token was that wait, not the filesystem).
+- `GPU_TOPK_MIN=1`: the indexer's top-k on the GPU for one-token passes too. The per-token attention reads the
+  selected count from the device (`nsel_dev`); the first version took the batched kernel instead and corrupted the
+  output.
+- One-token output projection without the group pack copies; lane spin 256; 32 CPU lane threads (of the
+  allocation's 32 cores: 36 threads stall the spin barriers).
+
+**DSpark** (`DSPARK=<gguf>`): the 3-layer DSV4.1 drafter of `llama.cpp`'s `dflash` arch, on GPU0 (8 GB):
+- MXFP4 experts and BF16 trunk through few-token GEMVs with the activations in LDS (`ds41_mxfp4_gemv_mt`,
+  `ds41_bf16_gemv_mt`); its keys from the target's stream means at layers 37-39 (fc, norm, attn_kv).
+- The target verifies [anchor, drafts] in one pass; `rewind()` drops the rejected positions (token history, the
+  ratio-2 compressor's open group).
+- `DSPARK_N=5`, `DSPARK_PMIN=0.4` (the confidence head truncates the draft).
+- llama.cpp on a CPU node accepts 74 % (code) / 54 % (prose) of 4 drafts per step on this pack.
+
+Verify passes needed their own work:
+- `DECODE_MMQ=1`: one MMQ product per layer for GPU0's resident experts, and MMQ on GPU1.
+- `ATTN_MULTI=1`: one launch for the pass's tokens.
+- `OUT_REGROUP=1`, `SHARE_Q8=1`.
+- `LANE_ASYNC=1`: the CPU lane's workers start while the main thread enqueues the GPU work.
+- `ENGRAM_PREFETCH=1`: the second Engram table's file rows of each drafted token are read into the page cache as the
+  draft decides it. Verify passes read 5x the rows; this cut their stall from 53 to ~12 ms.
+
+**Residency is domain specific.** The routing profile picks the GPU-resident experts. A wikitext profile gives a
+0.62-0.67 GPU hit rate on wikitext but 0.135-0.18 on code. Two fixes:
+- a mixed profile (wikitext 8K + code 4K routes): 0.56 on both;
+- `REBALANCE=N`: after the prompt, swap up to N of the prompt's most-routed RAM experts with the least-routed resident
+  ones (5-12 s once). With it, the 4K code prompt goes from 0.135 to 0.53.
+
+| IQ2_XXSE4, 2x V100 | context | tokens per step | decode tok/s |
+|---|---|---|---|
+| plain (wikitext) | 600 | 1 | ~18 |
+| DSpark (wikitext, wikitext profile) | 600 | 2.7-2.9 | 20-22 |
+| DSpark (code, mixed profile) | 600 | 4.3 | 21.8 |
+| plain (code, wikitext profile) | 4K | 1 | 7.1 |
+| plain (code, + rebalance) | 4K | 1 | 9.1 |
+| DSpark (code, + rebalance) | 4K | 3.7 | 19.8-20.4 |
+| DSpark (wikitext) | 4K | 2.0 | 14.0 |
+| DSpark, mixed profile + rebalance: wikitext / code | 600 | 2.6 / 3.8 | 18.6 / 20.9 |
+| DSpark, mixed profile + rebalance: code / wikitext | 4K | 3.4 / 2.1 | 19.9 / 13.7 |
+
+With a 4096-token prompt GPU0 keeps only ~11 GiB of experts: the prompt's chunk buffers and the drafter take the
+rest. `STRATA_DS41_PROMPT_BATCH=2048` leaves it 13 GiB: the 4K code prompt then decodes at 21.8 tok/s (GPU hit rate
+0.61), and the prompt runs at 259 instead of 371 tok/s.
+
+CUDA graphs would not pay. `STRATA_DS41_GRAPH_PROBE=1` (CUDA only) times one plain layer's dense sequence for one
+token (38 kernels): 425 us launched directly, 392 us as a graph. The time is in the small kernels themselves.
+
+Where a verify step goes (600 tokens, about 2.7 tokens per step, ~120 ms):
+- draft 16 ms
+- CPU lane 30-40 ms
+- GPU experts and peer merge ~15 ms
+- small dense kernels ~28 ms
+- Engram ~12 ms
+
+The CPU lane runs at ~0.12 ms per IQ2_XXS expert on 32 threads (`LANE_BENCH=1`), and verify passes route ~7 experts
+per layer to it.
+
+Tried and slower: streaming CPU experts to the GPUs at decode (`DECODE_STREAM`; PCIe at 0.33 ms per expert), routing
+the drafter on the GPU (`DSPARK_GPU_ROUTE`), the AVX-512 clamped IQ rows, IQ1SXE4 (its IQ1_S CPU rows are slower per
+expert, and its Engram files sit on one OST).
+
+**Exactness.** `VERIFY_EXACT=1` makes a verify pass round as one-token passes do: GEMVs per column, the
+single-token BF16 kernel, one CPU-lane group per route, no MMQ.
+- With it and the same residency (`DSPARK_OFF=1` loads the drafter but decodes plainly), the speculative output at
+  4K context is bit-identical to greedy decoding: 24 tokens, every top-2 logit margin (`MARGINS=1`).
+- Against a run without the drafter, tokens can differ at near ties. The drafter's 8 GB moves experts from GPU0
+  to the CPU lane, whose Q8_K activations round differently from the GPU's Q8_1: up to ~0.5 in a logit gap.
+- The default (batched) verify numerics also differ only by rounding.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;

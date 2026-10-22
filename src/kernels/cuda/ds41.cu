@@ -8,6 +8,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cuda_runtime.h>
+#if defined(__CUDACC__) && !defined(__HIP_PLATFORM_AMD__)
+#include <cuda_fp16.h>
+#include <mma.h>
+#define STRATA_DS41_WMMA 1
+#endif
 #include <stdexcept>
 #include <string>
 
@@ -125,12 +130,14 @@ __device__ inline const float* attn_row(const float* window, Ring ring, int wrow
 
 // scores[h][r] = scale q_h.k_r for kHeadGroup heads x kRowChunk rows; a warp per row, the group's queries in LDS
 __global__ void __launch_bounds__(256) attn_scores_kernel(const float* q, int dim, const float* window, Ring ring, int wrows,
-        const float* comp, int comp_stride, const int* sel, int rows, float scale, float* scores) {
+        const float* comp, int comp_stride, const int* sel, int rows, float scale, float* scores, const int* nsel_dev) {
     extern __shared__ float qs[];   // kHeadGroup x dim
     const int h0 = blockIdx.x * kHeadGroup, tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
+    const int n = nsel_dev ? min(rows, wrows + *nsel_dev) : rows;   // the selected rows' count on the device: rows is the bound
+    if (blockIdx.y * kRowChunk >= n) return;
     for (int i = tid; i < kHeadGroup * dim; i += 256) qs[i] = q[size_t(h0) * dim + i];
     __syncthreads();
-    for (int r = blockIdx.y * kRowChunk + warp; r < min(rows, (blockIdx.y + 1) * kRowChunk); r += 8) {
+    for (int r = blockIdx.y * kRowChunk + warp; r < min(n, (blockIdx.y + 1) * kRowChunk); r += 8) {
         const float* k = attn_row(window, ring, wrows, comp, comp_stride, sel, dim, r);
         float acc[kHeadGroup];
 #pragma unroll
@@ -150,19 +157,20 @@ __global__ void __launch_bounds__(256) attn_scores_kernel(const float* q, int di
 
 // softmax with the sink per head, then out[h][d] for kHeadGroup heads x kDimChunk dims
 __global__ void __launch_bounds__(256) attn_out_kernel(const float* scores, int dim, const float* window, Ring ring, int wrows,
-        const float* comp, int comp_stride, const int* sel, int rows, const float* sinks, float* out) {
-    extern __shared__ float p[];    // kHeadGroup x rows
+        const float* comp, int comp_stride, const int* sel, int rows, const float* sinks, float* out, const int* nsel_dev) {
+    extern __shared__ float p[];    // kHeadGroup x rows (rows: the bound; n of them used)
     __shared__ float inv[kHeadGroup];
     const int h0 = blockIdx.x * kHeadGroup, tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
+    const int n = nsel_dev ? min(rows, wrows + *nsel_dev) : rows;
     // warp h: head h0 + h's max, exponentials and sum
     {
         const int h = warp;   // 8 warps, kHeadGroup heads
         const float* sc = scores + size_t(h0 + h) * kMaxRows;
         float mx = sinks[h0 + h];
-        for (int r = lane; r < rows; r += 32) mx = fmaxf(mx, sc[r]);
+        for (int r = lane; r < n; r += 32) mx = fmaxf(mx, sc[r]);
         for (int d = 16; d; d /= 2) mx = fmaxf(mx, __shfl_xor_sync(0xffffffff, mx, d));
         float sum = 0;
-        for (int r = lane; r < rows; r += 32) { const float e = expf(sc[r] - mx); p[h * rows + r] = e; sum += e; }
+        for (int r = lane; r < n; r += 32) { const float e = expf(sc[r] - mx); p[h * rows + r] = e; sum += e; }
         sum = warp_sum(sum);
         if (!lane) inv[h] = 1.0f / (sum + expf(sinks[h0 + h] - mx));
     }
@@ -172,10 +180,86 @@ __global__ void __launch_bounds__(256) attn_out_kernel(const float* scores, int 
     float acc[kHeadGroup / 2];
 #pragma unroll
     for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] = 0;
-    for (int r = 0; r < rows; ++r) {
+    for (int r = 0; r < n; ++r) {
         const float v = attn_row(window, ring, wrows, comp, comp_stride, sel, dim, r)[d];
 #pragma unroll
         for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] += p[(hs + 2 * j) * rows + r] * v;
+    }
+#pragma unroll
+    for (int j = 0; j < kHeadGroup / 2; ++j) out[size_t(h0 + hs + 2 * j) * dim + d] = acc[j] * inv[hs + 2 * j];
+}
+
+
+// ds41_attention for a few tokens in one launch: token t = blockIdx.z, info[t] = {first slot, window rows, selected
+// rows (the bound when the count is on the device), -}; q, out at t heads dim, sel at t sel_stride, scores at
+// t heads kMaxRows
+__global__ void __launch_bounds__(256) attn_scores_multi_kernel(const float* q, int heads, int dim, const float* window, int ring_size,
+        const int4* info, const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, float scale,
+        float* scores) {
+    extern __shared__ float qs[];
+    const int t = blockIdx.z;
+    const int4 in = info[t];
+    const Ring ring{in.x, ring_size};
+    const int n = in.y + (nsel_dev ? min(in.z, nsel_dev[t]) : in.z);
+    if (blockIdx.y * kRowChunk >= n) return;
+    q += size_t(t) * heads * dim;
+    sel += size_t(t) * sel_stride;
+    scores += size_t(t) * heads * kMaxRows;
+    const int h0 = blockIdx.x * kHeadGroup, tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
+    for (int i = tid; i < kHeadGroup * dim; i += 256) qs[i] = q[size_t(h0) * dim + i];
+    __syncthreads();
+    for (int r = blockIdx.y * kRowChunk + warp; r < min(n, (blockIdx.y + 1) * kRowChunk); r += 8) {
+        const float* k = attn_row(window, ring, in.y, comp, comp_stride, sel, dim, r);
+        float acc[kHeadGroup];
+#pragma unroll
+        for (int h = 0; h < kHeadGroup; ++h) acc[h] = 0;
+        for (int i = lane; i < dim; i += 32) {
+            const float kv = k[i];
+#pragma unroll
+            for (int h = 0; h < kHeadGroup; ++h) acc[h] += qs[h * dim + i] * kv;
+        }
+#pragma unroll
+        for (int h = 0; h < kHeadGroup; ++h) {
+            const float v = warp_sum(acc[h]);
+            if (!lane) scores[size_t(h0 + h) * kMaxRows + r] = v * scale;
+        }
+    }
+}
+
+__global__ void __launch_bounds__(256) attn_out_multi_kernel(const float* scores, int heads, int dim, const float* window, int ring_size,
+        const int4* info, const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, int bound,
+        const float* sinks, float* out) {
+    extern __shared__ float p[];    // kHeadGroup x bound
+    __shared__ float inv[kHeadGroup];
+    const int t = blockIdx.z;
+    const int4 in = info[t];
+    const Ring ring{in.x, ring_size};
+    const int n = in.y + (nsel_dev ? min(in.z, nsel_dev[t]) : in.z);
+    sel += size_t(t) * sel_stride;
+    scores += size_t(t) * heads * kMaxRows;
+    out += size_t(t) * heads * dim;
+    const int h0 = blockIdx.x * kHeadGroup, tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
+    {
+        const int h = warp;
+        const float* sc = scores + size_t(h0 + h) * kMaxRows;
+        float mx = sinks[h0 + h];
+        for (int r = lane; r < n; r += 32) mx = fmaxf(mx, sc[r]);
+        for (int d = 16; d; d /= 2) mx = fmaxf(mx, __shfl_xor_sync(0xffffffff, mx, d));
+        float sum = 0;
+        for (int r = lane; r < n; r += 32) { const float e = expf(sc[r] - mx); p[h * bound + r] = e; sum += e; }
+        sum = warp_sum(sum);
+        if (!lane) inv[h] = 1.0f / (sum + expf(sinks[h0 + h] - mx));
+    }
+    __syncthreads();
+    const int d = blockIdx.y * kDimChunk + tid % kDimChunk, hs = tid / kDimChunk;
+    if (d >= dim) return;
+    float acc[kHeadGroup / 2];
+#pragma unroll
+    for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] = 0;
+    for (int r = 0; r < n; ++r) {
+        const float v = attn_row(window, ring, in.y, comp, comp_stride, sel, dim, r)[d];
+#pragma unroll
+        for (int j = 0; j < kHeadGroup / 2; ++j) acc[j] += p[(hs + 2 * j) * bound + r] * v;
     }
 #pragma unroll
     for (int j = 0; j < kHeadGroup / 2; ++j) out[size_t(h0 + hs + 2 * j) * dim + d] = acc[j] * inv[hs + 2 * j];
@@ -385,6 +469,112 @@ __global__ void __launch_bounds__(256) attn_tiled_kernel(const float* q, int hea
         for (int c = 0; c < chunks; ++c) ot[size_t(h) * dim + c * kDC + pd] = acc[c][k] * f * inv;
     }
 }
+
+#ifdef STRATA_DS41_WMMA
+// Batched attention on tensor cores (Volta+, STRATA_DS41_ATTN_WMMA=1): block (token, 16-head group), 4 warps. Q and each
+// 32-row key tile in shared memory as FP16; S = Q K^T and O += P V with WMMA 16x16x16 (FP32 accumulation, O kept in
+// shared memory so the online softmax can rescale its rows); scores, softmax and the sink in FP32 as the tiled kernel.
+namespace wm = nvcuda::wmma;
+constexpr int kWG = 16, kWR = 32, kWD = 512, kWLQ = kWD + 8, kWLO = kWD + 4, kWLS = kWR + 4, kWLP = kWR + 8;
+constexpr size_t kWmmaShared = size_t(kWG * kWLQ + kWR * kWLQ) * 2 + size_t(kWG * kWLO + 2 * kWG * kWLS) * 4 + size_t(kWG * kWLP) * 2;
+__global__ void __launch_bounds__(128) attn_wmma_kernel(const float* q, int heads, const float* window, int ring, const int4* info,
+        const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale, float* out) {
+#if __CUDA_ARCH__ >= 700
+    extern __shared__ __align__(32) unsigned char wsm[];
+    half* qs = reinterpret_cast<half*>(wsm);                 // [16][kWLQ]
+    half* ks = qs + kWG * kWLQ;                              // [32][kWLQ]: keys = values
+    float* os = reinterpret_cast<float*>(ks + kWR * kWLQ);   // [16][kWLO]
+    float* s0 = os + kWG * kWLO;                             // [16][kWLS] two K halves of S
+    float* s1 = s0 + kWG * kWLS;
+    half* ps = reinterpret_cast<half*>(s1 + kWG * kWLS);     // [16][kWLP]
+    __shared__ float m_run[kWG], l_run[kWG], fac[kWG];
+    const int t = blockIdx.x, h0 = blockIdx.y * kWG, th = threadIdx.x, warp = th / 32;
+    const int4 in = info[t];
+    const int first = in.x, wrows = in.y, rows = in.y + in.z;
+    const int* tsel = sel + size_t(t) * sel_stride;
+    const float* qt = q + (size_t(t) * heads + h0) * kWD;
+    for (int i = th; i < kWG * kWD; i += 128) qs[(i / kWD) * kWLQ + i % kWD] = __float2half(qt[i]);
+    for (int i = th; i < kWG * kWLO; i += 128) os[i] = 0.0f;
+    if (th < kWG) { m_run[th] = -INFINITY; l_run[th] = 0.0f; }
+    __syncthreads();
+    for (int r0 = 0; r0 < rows; r0 += kWR) {
+        for (int i = th; i < kWR * kWD / 4; i += 128) {   // the tile's rows, FP16
+            const int r = i / (kWD / 4), c4 = i % (kWD / 4), rr = r0 + r;
+            float4 v = make_float4(0, 0, 0, 0);
+            if (rr < rows) {
+                const float* row = rr < wrows ? window + size_t((first + rr) % ring) * kWD : comp + size_t(tsel[rr - wrows]) * comp_stride;
+                v = *reinterpret_cast<const float4*>(row + 4 * c4);
+            }
+            half* d = ks + r * kWLQ + 4 * c4;
+            d[0] = __float2half(v.x); d[1] = __float2half(v.y); d[2] = __float2half(v.z); d[3] = __float2half(v.w);
+        }
+        __syncthreads();
+        {   // S: warp w takes columns (w % 2) 16 of the tile over half (w / 2) of the dims
+            const int n0 = (warp % 2) * 16, k0 = (warp / 2) * (kWD / 2);
+            wm::fragment<wm::accumulator, 16, 16, 16, float> acc;
+            wm::fill_fragment(acc, 0.0f);
+            for (int k = k0; k < k0 + kWD / 2; k += 16) {
+                wm::fragment<wm::matrix_a, 16, 16, 16, half, wm::row_major> a;
+                wm::fragment<wm::matrix_b, 16, 16, 16, half, wm::col_major> b;
+                wm::load_matrix_sync(a, qs + k, kWLQ);
+                wm::load_matrix_sync(b, ks + n0 * kWLQ + k, kWLQ);
+                wm::mma_sync(acc, a, b, acc);
+            }
+            wm::store_matrix_sync((warp / 2 ? s1 : s0) + n0, acc, kWLS, wm::mem_row_major);
+        }
+        __syncthreads();
+        {   // online softmax: 8 threads per head, 4 columns each
+            const int h = th / 8, c0 = (th % 8) * 4;
+            float sv[4], mt = -INFINITY;
+#pragma unroll
+            for (int j = 0; j < 4; ++j) {
+                const int c = c0 + j;
+                sv[j] = r0 + c < rows ? (s0[h * kWLS + c] + s1[h * kWLS + c]) * scale : -INFINITY;
+                mt = fmaxf(mt, sv[j]);
+            }
+            for (int o = 4; o; o /= 2) mt = fmaxf(mt, __shfl_xor_sync(0xffffffff, mt, o, 8));
+            const float mo = m_run[h], mn = fmaxf(mo, mt);
+            const float f = mo == -INFINITY ? 0.0f : expf(mo - mn);
+            float sum = 0;
+#pragma unroll
+            for (int j = 0; j < 4; ++j) {
+                const float e = sv[j] == -INFINITY ? 0.0f : expf(sv[j] - mn);
+                ps[h * kWLP + c0 + j] = __float2half(e);
+                sum += e;
+            }
+            for (int o = 4; o; o /= 2) sum += __shfl_xor_sync(0xffffffff, sum, o, 8);
+            __syncwarp();
+            if (th % 8 == 0) { l_run[h] = l_run[h] * f + sum; m_run[h] = mn; fac[h] = f; }
+        }
+        __syncthreads();
+        for (int i = th; i < kWG * kWD; i += 128) os[(i / kWD) * kWLO + i % kWD] *= fac[i / kWD];
+        __syncthreads();
+        // O += P V: warp w takes 8 of the 32 column tiles
+        for (int tile = warp; tile < kWD / 16; tile += 4) {
+            wm::fragment<wm::accumulator, 16, 16, 16, float> acc;
+            wm::load_matrix_sync(acc, os + tile * 16, kWLO, wm::mem_row_major);
+#pragma unroll
+            for (int k = 0; k < kWR; k += 16) {
+                wm::fragment<wm::matrix_a, 16, 16, 16, half, wm::row_major> a;
+                wm::fragment<wm::matrix_b, 16, 16, 16, half, wm::row_major> b;
+                wm::load_matrix_sync(a, ps + k, kWLP);
+                wm::load_matrix_sync(b, ks + k * kWLQ + tile * 16, kWLQ);
+                wm::mma_sync(acc, a, b, acc);
+            }
+            wm::store_matrix_sync(os + tile * 16, acc, kWLO, wm::mem_row_major);
+        }
+        __syncthreads();
+    }
+    float* ot = out + (size_t(t) * heads + h0) * kWD;
+    for (int i = th; i < kWG * kWD; i += 128) {
+        const int h = i / kWD;
+        const float sink = sinks[h0 + h], M = fmaxf(m_run[h], sink);
+        const float f = m_run[h] == -INFINITY ? 0.0f : expf(m_run[h] - M);
+        ot[i] = os[h * kWLO + i % kWD] * f / (l_run[h] * f + expf(sink - M));
+    }
+#endif
+}
+#endif
 
 // one warp per key row
 __global__ void index_score_kernel(const float* q, int heads, int dim, const float* keys, int key_stride, int rows,
@@ -707,6 +897,229 @@ __global__ void to_bf16_kernel(const float* x, uint16_t* y, int64_t n) {
 
 unsigned blocks(int n, int per) { return unsigned((n + per - 1) / per); }
 
+
+
+// dst[b][a][j] = src[a][b][j] for a < na, b < nb, j < width (floats)
+__global__ void swap_blocks_kernel(const float* src, float* dst, int na, int nb, int width) {
+    const int a = blockIdx.y, b = blockIdx.z;
+    const float* s = src + (size_t(a) * nb + b) * width;
+    float* d = dst + (size_t(b) * na + a) * width;
+    for (int j = blockIdx.x * blockDim.x + threadIdx.x; j < width; j += gridDim.x * blockDim.x) d[j] = s[j];
+}
+// ---- DSpark drafter: few-token GEMVs that read each weight row once ----
+constexpr int kMtMax = 8;   // tokens per launch
+struct MtRows { int n; int row[kMtMax]; };   // the x rows of the launch's tokens
+
+__device__ __forceinline__ float bf16f(uint16_t v) { return __uint_as_float(uint32_t(v) << 16); }
+
+// 8 rows per block (a warp each) over K tiles of x staged in LDS for the n tokens: y[t ldy + r] = W[r] . x[rows.row[t] ldx]
+constexpr int kMtTile = 512;
+// each lane: 16 BF16 of the tile (two 16-byte loads), so a warp has 1 KiB of the row in flight
+__global__ void __launch_bounds__(256) bf16_gemv_mt_kernel(const uint16_t* __restrict__ w, const float* __restrict__ x, int ldx, MtRows rows,
+                                                           float* y, int ldy, int out, int in) {
+    __shared__ float xs[kMtMax][kMtTile];
+    const int r = blockIdx.x * 8 + threadIdx.x / 32, lane = threadIdx.x % 32;
+    const uint16_t* wr = w + size_t(min(r, out - 1)) * in;
+    float acc[kMtMax] = {};
+    for (int k0 = 0; k0 < in; k0 += kMtTile) {
+        const int kn = min(kMtTile, in - k0);
+        __syncthreads();
+        for (int i = threadIdx.x; i < rows.n * kn; i += 256) xs[i / kn][i % kn] = x[size_t(rows.row[i / kn]) * ldx + k0 + i % kn];
+        __syncthreads();
+        const int k = lane * 16;
+        if (k < kn) {
+            const uint4* src = reinterpret_cast<const uint4*>(wr + k0 + k);
+            const uint4 u0 = src[0], u1 = src[1];
+            const uint32_t q[8] = {u0.x, u0.y, u0.z, u0.w, u1.x, u1.y, u1.z, u1.w};
+#pragma unroll
+            for (int t = 0; t < kMtMax; ++t)
+                if (t < rows.n) {
+                    float s2 = 0;
+#pragma unroll
+                    for (int j = 0; j < 8; ++j)
+                        s2 += __uint_as_float(q[j] << 16) * xs[t][k + 2 * j] + __uint_as_float(q[j] & 0xffff0000u) * xs[t][k + 2 * j + 1];
+                    acc[t] += s2;
+                }
+        }
+    }
+    if (r >= out) return;
+#pragma unroll
+    for (int t = 0; t < kMtMax; ++t) {
+        float v = acc[t];
+        for (int o = 16; o; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o);
+        if (lane == 0 && t < rows.n) y[size_t(t) * ldy + r] = v;
+    }
+}
+
+// MXFP4 (ggml block_mxfp4: an E8M0 scale and 16 bytes, the low nibbles values 0..15, the high ones 16..31): each warp
+// loads its row's tile (16 blocks, 272 bytes) with word loads into LDS, then two lanes per block decode it
+__constant__ float kFp4[16] = {0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12};
+__global__ void __launch_bounds__(256) mxfp4_gemv_mt_kernel(const uint8_t* __restrict__ w, size_t row_bytes, const float* __restrict__ x, int ldx,
+                                                            MtRows rows, float* y, int ldy, int out, int in) {
+    __shared__ float xs[kMtMax][kMtTile];
+    __shared__ uint32_t wt[8][68];   // 16 blocks x 17 bytes per warp
+    const int r = blockIdx.x * 8 + threadIdx.x / 32, lane = threadIdx.x % 32, warp = threadIdx.x / 32;
+    const uint8_t* wr = w + size_t(min(r, out - 1)) * row_bytes;
+    const int half = lane & 1, bl = lane / 2;
+    const uint8_t* wb = reinterpret_cast<const uint8_t*>(wt[warp]);
+    float acc[kMtMax] = {};
+    for (int k0 = 0; k0 < in; k0 += kMtTile) {
+        const int kn = min(kMtTile, in - k0), nb = kn / 32;
+        __syncthreads();
+        for (int i = threadIdx.x; i < rows.n * kn; i += 256) xs[i / kn][i % kn] = x[size_t(rows.row[i / kn]) * ldx + k0 + i % kn];
+        const uint8_t* tile = wr + size_t(k0 / 32) * 17;
+        if ((reinterpret_cast<uintptr_t>(tile) & 3) == 0) {
+            for (int i = lane; i < (nb * 17 + 3) / 4; i += 32) wt[warp][i] = reinterpret_cast<const uint32_t*>(tile)[i];
+        } else {
+            for (int i = lane; i < nb * 17; i += 32) reinterpret_cast<uint8_t*>(wt[warp])[i] = tile[i];
+        }
+        __syncthreads();
+        if (bl < nb) {
+            const uint8_t* blk = wb + bl * 17;
+            const uint32_t e = blk[0];
+            const float d = e < 2 ? __uint_as_float(0x00200000u << e) : __uint_as_float((e - 1) << 23);   // 2^(e - 128)
+            float v[16];
+#pragma unroll
+            for (int j = 0; j < 16; ++j) {
+                const uint8_t q = blk[1 + j];
+                v[j] = kFp4[half ? q >> 4 : q & 15] * d;
+            }
+            const int base = bl * 32 + half * 16;
+#pragma unroll
+            for (int t = 0; t < kMtMax; ++t)
+                if (t < rows.n) {
+                    float s2 = 0;
+#pragma unroll
+                    for (int j = 0; j < 16; ++j) s2 += v[j] * xs[t][base + j];
+                    acc[t] += s2;
+                }
+        }
+    }
+    if (r >= out) return;
+#pragma unroll
+    for (int t = 0; t < kMtMax; ++t) {
+        float v = acc[t];
+        for (int o = 16; o; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o);
+        if (lane == 0 && t < rows.n) y[size_t(t) * ldy + r] = v;
+    }
+}
+
+// DSpark MoE on the device: per token (block) sqrt(softplus) scores, top-k on score + bias, normalized weights x scale
+__global__ void moe_route_kernel(const float* logits, const float* bias, int experts, int k, float scale, int normalize, int* ids, float* w) {
+    extern __shared__ float sc[];   // experts scores, then experts selection keys
+    const int t = blockIdx.x;
+    float* prob = sc;
+    float* key = sc + experts;
+    for (int e = threadIdx.x; e < experts; e += blockDim.x) {
+        const float x = logits[size_t(t) * experts + e];
+        const float sp = x > 20.0f ? x : log1pf(expf(x));
+        prob[e] = sqrtf(sp);
+        key[e] = prob[e] + bias[e];
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        float sum = 0;
+        int pick[16];
+        for (int j = 0; j < k; ++j) {
+            int best = 0;
+            for (int e = 1; e < experts; ++e) if (key[e] > key[best]) best = e;
+            pick[j] = best;
+            key[best] = -INFINITY;
+            sum += prob[best];
+        }
+        for (int j = 0; j < k; ++j) {
+            float v = prob[pick[j]];
+            if (normalize && k > 1) v /= sum + 1e-20f;
+            ids[t * k + j] = pick[j];
+            w[t * k + j] = v * scale;
+        }
+    }
+}
+
+// pair p: y[p ldy + r] = W_{ids[p]}[r] . x[(p / div) ldx] (MXFP4 experts expert_bytes apart), 8 rows per block
+__global__ void __launch_bounds__(256) mxfp4_moe_kernel(const uint8_t* __restrict__ w, size_t expert_bytes, size_t row_bytes, const int* ids,
+                                                        const float* __restrict__ x, int ldx, int div, float* y, int ldy, int out, int in) {
+    __shared__ float xs[kMtTile];
+    const int p = blockIdx.y, r = blockIdx.x * 8 + threadIdx.x / 32, lane = threadIdx.x % 32;
+    const uint8_t* wr = w + size_t(ids[p]) * expert_bytes + size_t(min(r, out - 1)) * row_bytes;
+    const float* xp = x + size_t(p / div) * ldx;
+    const int half = lane & 1, bl = lane / 2;
+    float acc = 0;
+    for (int k0 = 0; k0 < in; k0 += kMtTile) {
+        const int kn = min(kMtTile, in - k0);
+        __syncthreads();
+        for (int i = threadIdx.x; i < kn; i += 256) xs[i] = xp[k0 + i];
+        __syncthreads();
+        if (bl * 32 < kn) {
+            const uint8_t* blk = wr + size_t(k0 / 32 + bl) * 17;
+            const uint32_t e = blk[0];
+            const float d = e < 2 ? __uint_as_float(0x00200000u << e) : __uint_as_float((e - 1) << 23);
+            const int base = bl * 32 + half * 16;
+            float s = 0;
+#pragma unroll
+            for (int j = 0; j < 16; ++j) {
+                const uint8_t q = blk[1 + j];
+                s += kFp4[half ? q >> 4 : q & 15] * xs[base + j];
+            }
+            acc += s * d;
+        }
+    }
+    for (int o = 16; o; o >>= 1) acc += __shfl_xor_sync(0xffffffffu, acc, o);
+    if (lane == 0 && r < out) y[size_t(p) * ldy + r] = acc;
+}
+
+// DSpark's Markov chain on the device: row = w1[tok[i]] (BF16 -> f32); the argmax of v (the first of equal maxima)
+// into tok[i + 1]; conf[i] = sigmoid(cw . [x; row])
+__global__ void markov_row_kernel(const uint16_t* w1, int dim, const int* tok, int i, float* row) {
+    const uint16_t* r = w1 + size_t(tok[i]) * dim;
+    for (int j = threadIdx.x; j < dim; j += blockDim.x) row[j] = __uint_as_float(uint32_t(r[j]) << 16);
+}
+__global__ void __launch_bounds__(1024) argmax_kernel(const float* v, int n, int* tok, int i) {
+    __shared__ float bv[32];
+    __shared__ int bi[32];
+    float best = -INFINITY;
+    int at = 0x7fffffff;
+    for (int j = threadIdx.x; j < n; j += 1024)
+        if (v[j] > best) { best = v[j]; at = j; }
+    for (int o = 16; o; o >>= 1) {
+        const float ov = __shfl_xor_sync(0xffffffffu, best, o);
+        const int oi = __shfl_xor_sync(0xffffffffu, at, o);
+        if (ov > best || (ov == best && oi < at)) { best = ov; at = oi; }
+    }
+    if (threadIdx.x % 32 == 0) { bv[threadIdx.x / 32] = best; bi[threadIdx.x / 32] = at; }
+    __syncthreads();
+    if (threadIdx.x < 32) {
+        best = bv[threadIdx.x];
+        at = bi[threadIdx.x];
+        for (int o = 16; o; o >>= 1) {
+            const float ov = __shfl_xor_sync(0xffffffffu, best, o);
+            const int oi = __shfl_xor_sync(0xffffffffu, at, o);
+            if (ov > best || (ov == best && oi < at)) { best = ov; at = oi; }
+        }
+        if (threadIdx.x == 0) tok[i + 1] = at;
+    }
+}
+__global__ void conf_kernel(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i) {
+    __shared__ float part[32];
+    float s = 0;
+    for (int j = threadIdx.x; j < hidden + dim; j += blockDim.x) s += cw[j] * (j < hidden ? x[j] : row[j - hidden]);
+    s = warp_sum(s);
+    if (threadIdx.x % 32 == 0) part[threadIdx.x / 32] = s;
+    __syncthreads();
+    if (threadIdx.x < 32) {
+        s = threadIdx.x < blockDim.x / 32 ? part[threadIdx.x] : 0;
+        s = warp_sum(s);
+        if (threadIdx.x == 0) conf[i] = 1.0f / (1.0f + expf(-s));
+    }
+}
+// dst[t][j] = mean over the 4 streams of h[t][s][j]
+__global__ void stream_mean_kernel(const float* __restrict__ h, float* dst, size_t ld_dst, int n, int tokens) {
+    const int t = blockIdx.y;
+    for (int j = blockIdx.x * blockDim.x + threadIdx.x; j < n; j += gridDim.x * blockDim.x) {
+        const float* ht = h + size_t(t) * 4 * n;
+        dst[size_t(t) * ld_dst + j] = 0.25f * (ht[j] + ht[n + j] + ht[2 * n + j] + ht[3 * n + j]);
+    }
+}
 }  // namespace
 
 void ds41_hc_coeff(const float* mixes, const float* scale, const float* base, float* coeff, int iterations, float eps,
@@ -739,17 +1152,17 @@ void ds41_rope(float* x, int rows, int stride, int offset, int pairs, const floa
 
 void ds41_attention(const float* q, int heads, int dim, const float* window, int window_first, int window_ring,
                     int window_rows, const float* comp, int comp_stride, const int* sel, int nsel, const float* sinks,
-                    float scale, float* scores, float* out, void* stream) {
+                    float scale, float* scores, float* out, void* stream, const int* nsel_dev) {
     const Ring ring{window_first, window_ring};
     const int rows = window_rows + nsel;
     if (rows > kMaxRows || rows < 1 || heads % kHeadGroup || dim % kDimChunk) throw std::invalid_argument("ds41_attention: shape");
     const dim3 g1(unsigned(heads / kHeadGroup), unsigned((rows + kRowChunk - 1) / kRowChunk));
     attn_scores_kernel<<<g1, 256, size_t(kHeadGroup) * dim * sizeof(float), (cudaStream_t)stream>>>(
-        q, dim, window, ring, window_rows, comp, comp_stride, sel, rows, scale, scores);
+        q, dim, window, ring, window_rows, comp, comp_stride, sel, rows, scale, scores, nsel_dev);
     check("attention scores");
     const dim3 g2(unsigned(heads / kHeadGroup), unsigned(dim / kDimChunk));
     attn_out_kernel<<<g2, 256, size_t(kHeadGroup) * rows * sizeof(float), (cudaStream_t)stream>>>(
-        scores, dim, window, ring, window_rows, comp, comp_stride, sel, rows, sinks, out);
+        scores, dim, window, ring, window_rows, comp, comp_stride, sel, rows, sinks, out, nsel_dev);
     check("attention out");
 }
 
@@ -757,6 +1170,20 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
                             const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale,
                             float* out, void* stream) {
     static const bool v1 = std::getenv("STRATA_DS41_ATTN_V1") != nullptr;
+#ifdef STRATA_DS41_WMMA
+    static const bool wmma = std::getenv("STRATA_DS41_ATTN_WMMA") && std::string(std::getenv("STRATA_DS41_ATTN_WMMA")) == "1";
+    if (wmma && dim == kWD && heads % kWG == 0) {
+        static bool configured = false;
+        if (!configured) {
+            cudaFuncSetAttribute(attn_wmma_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, int(kWmmaShared));
+            configured = true;
+        }
+        attn_wmma_kernel<<<dim3(unsigned(tokens), unsigned(heads / kWG)), 128, kWmmaShared, (cudaStream_t)stream>>>(
+            q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
+        check("attention wmma");
+        return;
+    }
+#endif
     if (!v1 && dim == kTileDim && heads % kTG == 0) {
         const size_t shared = size_t(kTG * kTileDim + kTR * kDCP + kTR * kTG) * sizeof(float);
         static bool configured = false;
@@ -870,6 +1297,78 @@ void ds41_to_bf16(const float* x, uint16_t* y, int64_t n, void* stream) {
 void ds41_bf16_gemv(const uint16_t* w, const float* x, float* y, int rows, int in, void* stream, int tokens) {
     bf16_gemv_kernel<<<dim3(unsigned(rows), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(w, x, y, rows, in);
     check("bf16_gemv");
+}
+
+void ds41_bf16_gemv_mt(const uint16_t* w, const float* x, int ldx, const int* rows, int n, float* y, int ldy, int out, int in,
+                       void* stream) {
+    if (n < 1 || n > kMtMax || in % 64) throw std::invalid_argument("ds41_bf16_gemv_mt: shape");
+    MtRows r{n, {}};
+    for (int t = 0; t < n; ++t) r.row[t] = rows[t];
+    bf16_gemv_mt_kernel<<<unsigned((out + 7) / 8), 256, 0, (cudaStream_t)stream>>>(w, x, ldx, r, y, ldy, out, in);
+    check("bf16_gemv_mt");
+}
+
+void ds41_mxfp4_gemv_mt(const uint8_t* w, size_t row_bytes, const float* x, int ldx, const int* rows, int n, float* y, int ldy,
+                        int out, int in, void* stream) {
+    if (n < 1 || n > kMtMax || in % 32) throw std::invalid_argument("ds41_mxfp4_gemv_mt: shape");
+    MtRows r{n, {}};
+    for (int t = 0; t < n; ++t) r.row[t] = rows[t];
+    mxfp4_gemv_mt_kernel<<<unsigned((out + 7) / 8), 256, 0, (cudaStream_t)stream>>>(w, row_bytes, x, ldx, r, y, ldy, out, in);
+    check("mxfp4_gemv_mt");
+}
+
+void ds41_stream_mean(const float* h, float* dst, size_t ld_dst, int n, int tokens, void* stream) {
+    stream_mean_kernel<<<dim3(unsigned((n + 255) / 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(h, dst, ld_dst, n, tokens);
+    check("stream_mean");
+}
+
+void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info, int bound,
+                          const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, const float* sinks,
+                          float scale, float* scores, float* out, void* stream) {
+    if (bound > kMaxRows || bound < 1 || heads % kHeadGroup || dim % kDimChunk || tokens < 1) throw std::invalid_argument("ds41_attention_multi: shape");
+    const dim3 g1(unsigned(heads / kHeadGroup), unsigned((bound + kRowChunk - 1) / kRowChunk), unsigned(tokens));
+    attn_scores_multi_kernel<<<g1, 256, size_t(kHeadGroup) * dim * sizeof(float), (cudaStream_t)stream>>>(
+        q, heads, dim, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, nsel_dev, scale, scores);
+    check("attention multi scores");
+    const dim3 g2(unsigned(heads / kHeadGroup), unsigned(dim / kDimChunk), unsigned(tokens));
+    attn_out_multi_kernel<<<g2, 256, size_t(kHeadGroup) * bound * sizeof(float), (cudaStream_t)stream>>>(
+        scores, heads, dim, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, nsel_dev, bound, sinks, out);
+    check("attention multi out");
+}
+
+void ds41_swap_blocks(const float* src, float* dst, int na, int nb, int width, void* stream) {
+    swap_blocks_kernel<<<dim3(unsigned((width + 255) / 256 < 8 ? (width + 255) / 256 : 8), unsigned(na), unsigned(nb)), 256, 0,
+                         (cudaStream_t)stream>>>(src, dst, na, nb, width);
+    check("swap_blocks");
+}
+
+void ds41_moe_route(const float* logits, const float* bias, int tokens, int experts, int k, float scale, bool normalize, int* ids, float* w,
+                    void* stream) {
+    if (k > 16) throw std::invalid_argument("ds41_moe_route: k");
+    moe_route_kernel<<<unsigned(tokens), 128, size_t(2 * experts) * sizeof(float), (cudaStream_t)stream>>>(logits, bias, experts, k, scale,
+                                                                                                       normalize ? 1 : 0, ids, w);
+    check("moe_route");
+}
+
+void ds41_mxfp4_moe(const uint8_t* w, size_t expert_bytes, size_t row_bytes, const int* ids, int pairs, const float* x, int ldx, int div,
+                    float* y, int ldy, int out, int in, void* stream) {
+    if (in % 32) throw std::invalid_argument("ds41_mxfp4_moe: shape");
+    mxfp4_moe_kernel<<<dim3(unsigned((out + 7) / 8), unsigned(pairs)), 256, 0, (cudaStream_t)stream>>>(w, expert_bytes, row_bytes, ids, x, ldx,
+                                                                                                    div, y, ldy, out, in);
+    check("mxfp4_moe");
+}
+
+void ds41_markov_row(const uint16_t* w1, int dim, const int* tok, int i, float* row, void* stream) {
+    markov_row_kernel<<<1, 256, 0, (cudaStream_t)stream>>>(w1, dim, tok, i, row);
+    check("markov_row");
+}
+void ds41_argmax_into(const float* v, int n, int* tok, int i, void* stream) {
+    argmax_kernel<<<1, 1024, 0, (cudaStream_t)stream>>>(v, n, tok, i);
+    check("argmax");
+}
+void ds41_confidence(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i, void* stream) {
+    conf_kernel<<<1, 512, 0, (cudaStream_t)stream>>>(cw, x, hidden, row, dim, conf, i);
+    check("confidence");
 }
 
 }  // namespace strata::kernels

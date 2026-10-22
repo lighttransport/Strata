@@ -41,6 +41,10 @@ public:
     /// z: [nt][hidden]; ids, w: [nt][top_k]; y: [nt][hidden] (written). A negative id is a route computed elsewhere: it
     /// adds nothing here (a token with none of its routes here gets zeros).
     void run(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, const float* w, int top_k, float* y);
+    /// run() in two halves: begin() starts the work on the other threads (the caller's thread is free until
+    /// finish(), which waits for them and writes y). ids, w, z and y must stay valid until finish().
+    void begin(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, const float* w, int top_k, float* y);
+    void finish();
     int threads() const { return threads_; }
 
 private:
@@ -66,6 +70,14 @@ private:
     std::atomic<unsigned> sense_{0};
     std::atomic<bool> stop_{false};
     bool sleep_ = true;
+    // begin()/finish(): threads 1.. do the work; the caller collects
+    bool async_ = false, idle_ = false;
+    std::atomic<int> done_{0};
+    const int32_t* ids_ = nullptr;
+    const float* w_ = nullptr;
+    float* y_ = nullptr;
+    void prepare(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k);
+    void collect(const int32_t* ids, const float* w, float* y);
 };
 
 }  // namespace strata::ds41
