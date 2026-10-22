@@ -311,8 +311,12 @@ class Fp4NativeExecutor {
         }
         void evict() {
             auto victim=experts.end();
-            for(auto it=experts.begin();it!=experts.end();++it)
-                if(!protected_experts.count(it->first)&&(victim==experts.end()||it->second.use<victim->second.use))victim=it;
+            // Lent entries go last: they hold the oldest clocks, and a prompt
+            // longer than one batch lends them again for every batch.
+            for(int pass=0;pass<2&&victim==experts.end();++pass)
+                for(auto it=experts.begin();it!=experts.end();++it)
+                    if(!protected_experts.count(it->first)&&(pass||!lent.count(it->first))&&
+                       (victim==experts.end()||it->second.use<victim->second.use))victim=it;
             if(victim==experts.end())throw std::runtime_error("GLM FP4: insufficient GPU memory for bounded working set");
             if(!async_eviction)check(cudaStreamSynchronize(stream));cache_bytes-=victim->second.bytes;
             if(lent.erase(victim->first)) {
@@ -437,6 +441,13 @@ class Fp4NativeExecutor {
     const bool route_affinity_secondary=strata_env_is_one("STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY");
     std::map<int,std::unique_ptr<Device>> route_affinity_bonuses;
     const long long decode_reserve_mib=strata_env_value_ll("STRATA_GLM_FP4_DECODE_RESERVE_MIB",-1);
+    // STRATA_GLM_FP4_CACHE_SHRINK0_MIB (diagnostic): GPU0's prefill and decode expert caches are this much
+    // smaller, as a long context's latent cache would make them, with the attention state of a short one.
+    const long long cache_shrink0_mib=strata_env_value_ll("STRATA_GLM_FP4_CACHE_SHRINK0_MIB",0);
+    size_t shrink0(const Context& c,size_t limit)const {
+        if(&c!=contexts.front().get()||!cache_shrink0_mib)return limit;
+        const size_t bytes=size_t(cache_shrink0_mib)*MiB;return limit>bytes?limit-bytes:0;
+    }
     uint64_t route_drop_tokens=0,route_drop_candidates=0,route_drop_count=0;
     double route_drop_share_sum=0,route_drop_share_max=0;
     double route_drop_multiplier_max=1;
@@ -1053,6 +1064,10 @@ class Fp4NativeExecutor {
     // prefill or decode transition joins first.
     std::vector<std::future<void>> restore_work;
     bool restore_pending=false;
+    // Streamed batches since the last decode. A batch that follows another
+    // meets the layers in the same cyclic order, so LRU admissions would
+    // evict the layer's cached experts before their jobs reach them.
+    int stream_followups=0;
     void join_restore() {
         if(!restore_pending)return;
         restore_pending=false;
@@ -1419,6 +1434,7 @@ public:
             throw std::invalid_argument("GLM FP4: ROUTE_DROP must be in [0,ROUTE_DROP_CAP], CAP in [0.5,0.75], MAX in [0,7]");
         if(decode_reserve_mib!=-1 && (decode_reserve_mib<256 || decode_reserve_mib>8192))
             throw std::invalid_argument("GLM FP4: DECODE_RESERVE_MIB must be in [256,8192], or -1 for the original per-device reserves");
+        if(cache_shrink0_mib<0||cache_shrink0_mib>16384)throw std::invalid_argument("GLM FP4: CACHE_SHRINK0_MIB must be in [0,16384]");
         if(route_drop_fraction>0)std::cerr<<"FP4_ROUTE_DROP lossy=1 cpu_only=1 fraction="<<route_drop_fraction
             <<" cap="<<route_drop_cap<<" max_routes="<<route_drop_max<<" renormalize="<<route_renorm_enabled<<" draft=0\n";
         if(cpu_q8_enabled)std::cerr<<"FP4_CPU_Q8 lossy=1 mode="<<(cpu::glm_fp4_q8_vnni_available()?"vnni":"scalar")<<'\n';
@@ -1523,7 +1539,7 @@ public:
             const size_t reserve=cache_reserve(*ctx,std::max<size_t>(
                 (ctx.get()==contexts.front().get()?4096:1024)*MiB,size_t(width)*4096*24));
             const size_t available=std::min(free,Device::limit()>Device::live()?Device::limit()-Device::live():0);
-            ctx->cache_limit=available>reserve?available-reserve:0;
+            ctx->cache_limit=shrink0(*ctx,available>reserve?available-reserve:0);
             ctx->prefill_cache_limit=ctx->cache_limit;
             if(ctx->cache_limit<64*MiB)throw std::runtime_error("GLM FP4: less than 64 MiB available for expert cache");
             std::cerr<<"FP4_DEVICE device="<<ctx->device<<" cache_limit_MiB="<<ctx->cache_limit/MiB
@@ -1579,7 +1595,7 @@ public:
         route_affinity_bonuses.clear();
         if(prefill_bank_enabled)release_banks();
         if(prefill_stream_enabled)release_prefill_stream();
-        decode_phase=true;
+        decode_phase=true;stream_followups=0;
         for(auto& c:contexts) {
             c->phase=2;
             DeviceScope scope(c->device);check(cudaStreamSynchronize(c->stream));c->scratch.clear();c->release_upload();
@@ -1610,6 +1626,11 @@ public:
             }
             const size_t available=std::min(free,Device::limit()>Device::live()?Device::limit()-Device::live():0);
             c->cache_limit=c->cache_bytes+(available>reserve?available-reserve:0);
+            if(cache_shrink0_mib) {
+                c->cache_limit=shrink0(*c,c->cache_limit);
+                while(c->cache_bytes>c->cache_limit)c->evict();
+                std::cerr<<"FP4_CACHE_SHRINK device="<<c->device<<" MiB="<<cache_shrink0_mib<<" limit_MiB="<<c->cache_limit/MiB<<'\n';
+            }
             if(decode_reserve_mib>=0||cache_total_free)std::cerr<<"FP4_DECODE_CACHE device="<<c->device
                 <<" reserve_MiB="<<reserve/MiB<<" limit_MiB="<<c->cache_limit/MiB<<'\n';
             for(const auto& [layer,_]:c->frequency)select(*c,layer);
@@ -1682,6 +1703,9 @@ public:
     void dense(const std::string& name,const float* x,float* y,int nt,cudaStream_t caller) {
         if(prefill_bank_enabled&&!decode_phase&&nt>=4096&&name.starts_with("blk.0.")&&!contexts.front()->bank)
             ensure_prefill_banks();
+        // A prompt longer than one batch: the previous batch's restore may
+        // still be pending; finish it so this batch can lend the entries again.
+        if(prefill_stream_enabled&&!decode_phase&&nt>=4096&&name.starts_with("blk.0."))join_restore();
         if(prefill_stream_enabled&&!decode_phase&&nt>=4096&&name.starts_with("blk.0.")&&!contexts.front()->stream_ring) {
             // Start the first routed layer's uploads behind the dense layers.
             if(ensure_prefill_stream()) {
@@ -2344,13 +2368,15 @@ public:
                 // original pipeline: job j+1 is prepared before job j finishes.
                 std::vector<char> hit(jobs.size()+1,0);
                 auto prepare_hit=[&](size_t j) {
-                    if(j>=jobs.size())return;
+                    if(j>=jobs.size()||hit[j])return;
                     const auto key=std::make_pair(layer,jobs[j]);
                     if(auto it=c.experts.find(key);it!=c.experts.end()) {
                         ++c.hits;it->second.use=++c.clock;c.protected_experts.insert(key);hit[j]=1;
                     }
                 };
                 prepare_hit(0);
+                // A following batch marks every hit first (see stream_followups).
+                if(stream_followups>0)for(size_t j=1;j<jobs.size();++j)prepare_hit(j);
                 auto* table=static_cast<int*>(c.buffer("stream_route_ids",std::max<size_t>(route_table.size(),1)*4).p);
                 c.buffer("expert_x_half",max_rows*4096*2);
                 c.buffer("expert_gate",max_rows*2048*4);c.buffer("expert_up",max_rows*2048*4);
@@ -2772,7 +2798,7 @@ public:
             else release_banks();
         }
         // Free the ring before batched draft priming and decode.
-        if(stream_layer&&layer==44)release_prefill_stream(true);
+        if(stream_layer&&layer==44){release_prefill_stream(true);++stream_followups;}
     }
     void report(bool flush_profile=true)const {
         if(grouped_scatter)for(const auto& c:contexts)std::cerr<<"FP4_GROUPED_SCATTER_STATS device="<<c->device

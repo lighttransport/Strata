@@ -1719,6 +1719,16 @@ class Decoder {
     // over PCIe (zero copy; every read goes through the gather kernels). A prefill chunk first copies the rows
     // before it into a VRAM staging buffer, released before the decode tier is sized. Indexer keys stay on the GPU.
     const bool host_kv = strata_env_truthy_one("STRATA_GLM_KV_HOST");
+    // Opt-in FP16 latent cache (STRATA_GLM_KV_FORMAT=f16; f32 is the default): half the bytes, 3.4 GB instead of
+    // 6.8 GB at a 256K context. Each row is rounded once when written, as the FP16 prefill gather rounds the FP32
+    // rows, so that gather reads the same keys; FP32 readers (decode) see the rounded rows.
+    const bool kv_f16 = [] {
+        const char *v = std::getenv("STRATA_GLM_KV_FORMAT");
+        if (!v || std::string(v) == "f32") return false;
+        if (std::string(v) == "f16") return true;
+        throw std::invalid_argument("GLM: STRATA_GLM_KV_FORMAT must be f32 or f16");
+    }();
+    size_t kv_row_bytes() const { return size_t(m.kv_rank) * (kv_f16 ? 2 : 4); }
     // Opt-in: compute prefill indexer dots in blocks of this many pooled keys (4 tokens each) so their scratch
     // stops growing with context (STRATA_GLM_INDEX_BLOCK_POOLS; 0 = one block, the default). Narrower GEMMs may
     // round differently, so this is not bit-identical to the default.
@@ -1749,6 +1759,7 @@ class Decoder {
     std::unique_ptr<Device> kv_stage;
     bool kv_stage_failed = false, split_mla_host_kv_reported = false;
     std::unique_ptr<Device> make_kv_cache(size_t bytes) {
+        if (kv_f16 && host_kv) throw std::invalid_argument("GLM: the FP16 latent cache does not support STRATA_GLM_KV_HOST");
         if (!host_kv) return std::make_unique<Device>(bytes, true);
         host_kv_blocks.push_back(std::make_unique<MappedHost>(bytes));
         void *device = nullptr;
@@ -2570,6 +2581,7 @@ class Decoder {
     std::vector<std::vector<uint8_t>> host_quant;
     std::vector<cpu::ExpertJobMulti> host_jobs;
     bool capture_hidden = false;
+    const bool long_context_hidden = strata_env_truthy_one("STRATA_GLM_FP4_LONG_CONTEXT");
     bool dflash_enabled = false;
     bool dflash_gpu_top16 = false;
     bool dflash_adaptive_depth = false;
@@ -6624,7 +6636,17 @@ private:
         }
         auto &raw = buf("mla_raw", latent * B);
         mat(p + "attn_kv_a_mqa.weight", x, raw.f());
-        if (!row_sequences.empty()) {
+        if (kv_f16 && (!row_sequences.empty() || split_mla))
+            throw std::invalid_argument("GLM: the FP16 latent cache supports one sequence without split MLA");
+        auto *cache16 = kv_f16 ? (uint16_t *)state.cache->p : nullptr;
+        const float *latent_rows = kv_f16 ? nullptr : state.cache->f((size_t)position * latent);
+        if (kv_f16) {
+            auto &normalized = buf("mla_cache_rows", latent * B);
+            norm(p + "attn_kv_a_norm.weight", raw.f(), normalized.f(), latent);
+            if (device_pos) k::glm_cache_rows_f16(normalized.f(), cache16, latent, B, device_pos, stream);
+            else k::glm_f16(normalized.f(), cache16 + (size_t)position * latent, (int64_t)B * latent, stream);
+            latent_rows = normalized.f();
+        } else if (!row_sequences.empty()) {
             auto &normalized = buf("mla_cache_rows", latent * B);
             norm(p + "attn_kv_a_norm.weight", raw.f(), normalized.f(), latent);
             for (int t = 0; t < B; ++t)
@@ -6652,7 +6674,7 @@ private:
         inspect("query_norm", qr.f(), (size_t)B * m.q_rank, stream);
         inspect("query", q.f(), (size_t)B * heads * dim, stream);
         inspect("latent_raw", raw.f(), (size_t)B * latent, stream);
-        inspect("latent_norm", state.cache->f((size_t)position * latent), (size_t)B * latent, stream);
+        inspect("latent_norm", latent_rows, (size_t)B * latent, stream);
         inspect("index_query", iq.f(), (size_t)B * ih * idim, stream);
         inspect("index_weight", iw.f(), (size_t)B * ih, stream);
         inspect("index_key", ik.f(), (size_t)B * idim, stream);
@@ -6727,6 +6749,7 @@ private:
             float *aq_all = nullptr, *av_all = nullptr;
             const uint16_t *dense_keys = nullptr;
             int dense_rows = 0;
+            const uint16_t *cache16 = nullptr;  // STRATA_GLM_KV_FORMAT=f16 rows, in place of `cache`
         };
         auto run_tiles = [&, B, heads, latent, dim, ih, idim, pool_size, pools, tile](const Tiles &d, bool stoppable) {
             const float one = 1, zero = 0;
@@ -6832,7 +6855,10 @@ private:
                     // excluded from both attention products.
                     const int attention_stride = shared_keys ? std::min(d.dense_rows, stride) : stride;
                     const auto *keys = shared_keys ? d.dense_keys : (uint16_t *)d.gathered;
-                    if (!shared_keys)
+                    if (!shared_keys && d.cache16)
+                        k::glm_mla_gather_h2h(d.cache16, d.ids, d.counts, (uint16_t *)d.gathered,
+                                             count, stride, latent, d.stream);
+                    else if (!shared_keys)
                         k::glm_mla_gather_f16(cache_rows, d.ids, d.counts, (uint16_t *)d.gathered,
                                              count, stride, latent, d.stream);
                     k::glm_f16(d.aq, d.aq16, (int64_t)count * heads * latent, d.stream);
@@ -6881,7 +6907,8 @@ private:
                     }
                     continue;
                 }
-                k::glm_mla_gather(cache_rows, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
+                if (d.cache16) k::glm_mla_gather_h2f(d.cache16, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
+                else k::glm_mla_gather(cache_rows, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
                 // STRATA_GLM_MLA_KERNELS=1, one query: two decode kernels instead of the strided-batched SGEMMs.
                 if (mla_one_kernels && count == 1 && !graph_mla() && !d.back) {
                     const size_t scratch = k::glm_mla_one_scratch_bytes(stride, latent, heads);
@@ -6924,7 +6951,7 @@ private:
             (void)B;
         };
         const bool q8_mla = !fast && floating_q8_weight(p + "attn_k_b.weight") && floating_q8_weight(p + "attn_v_b.weight");
-        const float *cache_rows = state.cache->f();
+        const float *cache_rows = kv_f16 ? nullptr : state.cache->f();
         if (host_kv && !device_pos && row_sequences.empty() && B >= host_kv_stage_min) {
             // Prefill reads ~2,048 rows per query; copy the rows written so far (this chunk's included) to VRAM once.
             const size_t need = ((size_t)position + B) * latent * 4;
@@ -6947,6 +6974,7 @@ private:
                     q8_mla ? nullptr : weight(p + "attn_v_b.weight", true).f(),
                     value.f(), dots.f(), scores.f(), aq.f(), av.f(), gathered.f(), attn.f(),
                     (int *)ids.p, (int *)counts.p, 0, B};
+        local.cache16 = cache16;
         if (q8_mla) {
             local.wk8 = weight(p + "attn_k_b.weight").p;
             local.wv8 = weight(p + "attn_v_b.weight").p;
@@ -6963,8 +6991,9 @@ private:
             local.attn16 = (uint16_t *)buf("mla_scores16", ((size_t)ntile * heads * stride + 1) / 2).p;
         }
         if (dense_prefix_rows) {
-            auto *keys = (uint16_t *)buf("mla_dense_keys16", ((size_t)dense_prefix_rows * latent + 1) / 2).p;
-            k::glm_f16(cache_rows, keys, (int64_t)dense_prefix_rows * latent, stream);
+            // An FP16 cache already holds these keys.
+            auto *keys = cache16 ? cache16 : (uint16_t *)buf("mla_dense_keys16", ((size_t)dense_prefix_rows * latent + 1) / 2).p;
+            if (!cache16) k::glm_f16(cache_rows, keys, (int64_t)dense_prefix_rows * latent, stream);
             local.dense_keys = keys;
             local.dense_rows = dense_prefix_rows;
             if (!dense_mla_prefix_reported) {
@@ -7064,6 +7093,7 @@ private:
             return;
         }
         auto &state = states[l];
+        if (kv_f16) throw std::invalid_argument("GLM: the FP16 latent cache requires GPU MLA");
         const int heads = m.attention_heads, latent = m.kv_rank, idim = m.index_dim;
         // The local artifact is NoPE with 256-dimensional Q/K and V heads.
         const int dim = artifact.at(p + "attn_k_b.weight").tensor->shape[0];
@@ -7430,7 +7460,7 @@ private:
                 s.conv_k = std::make_unique<Device>(conv, true);
                 s.conv_v = std::make_unique<Device>(conv, true);
             } else {
-                s.cache = make_kv_cache(ctx * m.kv_rank * 4);
+                s.cache = make_kv_cache(ctx * kv_row_bytes());
                 s.keys = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
                 s.gates = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
                 s.pooled =
@@ -8767,7 +8797,7 @@ private:
         if (m.draft_layers.size() != 1 || states.size() > m.layers.size()) return;
         states.emplace_back();
         auto &state = states.back();
-        state.cache = make_kv_cache(capacity * m.kv_rank * 4);
+        state.cache = make_kv_cache(capacity * kv_row_bytes());
         state.keys = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
         state.gates = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
         state.pooled = std::make_unique<Device>(std::max<size_t>(1, capacity / m.index_pool) * m.index_dim * 4, true);
@@ -8847,6 +8877,15 @@ private:
     }
     void set_mtp_cpu_experts(bool enabled) { mtp_cpu_experts = enabled; }
     int token_position() const { return position; }
+    // STRATA_GLM_FP4_LONG_CONTEXT=1: a request reserves its target hidden rows once. Growing them batch by
+    // batch doubles the capacity, which briefly holds 1.5x the rows (6.4 GB at a 256K prompt) beside the
+    // host's model copy.
+    void reserve_hidden(size_t rows) {
+        if (capture_hidden && long_context_hidden && target_hidden.capacity() < rows * m.hidden) {
+            target_hidden.reserve(rows * m.hidden);
+            std::cerr << "TARGET_HIDDEN reserved_MiB=" << target_hidden.capacity() * 4.0 / MiB << '\n';
+        }
+    }
     // STRATA_GLM_MTP_SYNC_STATE_ONLY=1: a draft resynchronization step (head=false) updates only the draft layer's
     // persistent attention state and skips the attention output, MoE and head, which nothing reads; the next
     // proposal starts from the verified target hidden state. Draft proposals are unchanged.
@@ -10034,7 +10073,7 @@ private:
         for (auto &state : states) if (state.cache) out.push_back(&state);
         return out;
     }
-    size_t latent_row_bytes() const { return size_t(m.kv_rank) * 4; }
+    size_t latent_row_bytes() const { return kv_row_bytes(); }
     size_t pooled_row_bytes() const { return size_t(m.index_dim) * 4; }
     // The fixed buffers (KDA states, index rings, the draft block's), the positions and the last target hidden row,
     // at the current position.  With export_rows below it makes an image; taken alone during a prefill at a position
@@ -12131,6 +12170,7 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
             live.clear();
             std::cerr << "RESPONSE_PREPARE kind=" << kind << " reused=" << resumed
                       << " ms=" << millis(start, Clock::now()) << '\n';
+            decoder.reserve_hidden(tokens.size() + size_t(std::max(count, 0)) + 64);
             if (prefix_entries) std::cout << "RESUME " << resumed << '\n' << std::flush;
             decoder.set_cancel([&request] { return bool(*request.cancel); });
             std::vector<float> logits;

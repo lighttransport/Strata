@@ -103,6 +103,9 @@ void glm_kda_output_batch(const float *x, const float *gate, const float *weight
 void glm_decode_position(int *position, int value, void *stream);
 void glm_cache_rows(const float *rows, float *cache, int width, int tokens,
                     const int *position, void *stream);
+// FP16 latent cache (STRATA_GLM_KV_FORMAT=f16): the rows rounded as glm_f16 rounds them.
+void glm_cache_rows_f16(const float *rows, uint16_t *cache, int width, int tokens,
+                        const int *position, void *stream);
 void glm_index_prepare(const float *keys, const float *gates, const float *ape, float *pending_keys,
                        float *pending_gates, float *pooled, int pos, int tokens, int pool, int dim,
                        void *stream, const int *device_pos = nullptr, int position_offset = 0);
@@ -127,6 +130,12 @@ void glm_mla_values_one(const float *keys, const float *p, float *out, float *sc
 void glm_mla_gather(const float *cache, const int *ids, const int *counts, float *gathered, int queries,
                     int stride, int latent, void *stream);
 void glm_mla_gather_f16(const float *cache, const int *ids, const int *counts, uint16_t *gathered, int queries,
+                        int stride, int latent, void *stream);
+// The same gathers from an FP16 cache. From rows written by glm_f16 / glm_cache_rows_f16, glm_mla_gather_h2h
+// returns glm_mla_gather_f16's bits for the FP32 rows; glm_mla_gather_h2f widens the rounded rows.
+void glm_mla_gather_h2h(const uint16_t *cache, const int *ids, const int *counts, uint16_t *gathered, int queries,
+                        int stride, int latent, void *stream);
+void glm_mla_gather_h2f(const uint16_t *cache, const int *ids, const int *counts, float *gathered, int queries,
                         int stride, int latent, void *stream);
 void glm_mla_softmax(float *scores, const int *counts, int heads, int stride, int queries, float scale,
                      void *stream);

@@ -798,6 +798,11 @@ __global__ void cache_rows(const float *rows, float *cache, int width, int token
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < width * tokens) cache[(size_t)*position * width + i] = rows[i];
 }
+// The FP16 latent cache (STRATA_GLM_KV_FORMAT=f16): each value rounded as half_cast rounds it.
+__global__ void cache_rows_half(const float *rows, uint16_t *cache, int width, int tokens, const int *position) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < width * tokens) cache[(size_t)*position * width + i] = __half_as_ushort(__float2half(rows[i]));
+}
 __global__ void pooling(const float *keys, const float *gates, const float *ape, const float *pk,
                         const float *pg, float *out, int pos, int tokens, int pool, int dim, const int *device_pos, int offset) {
     if (device_pos) pos = *device_pos + offset;
@@ -982,6 +987,26 @@ __global__ void gather_vector_half(const float *cache, const int *ids, const int
 }
 // gather_vector_half for latent % 512 == 0: 64 threads per key, four keys per block, eight values per thread
 // (two float4 loads, one 16-byte store). The FP16 values are those of gather_vector_half.
+// gather_vector_half8 from an FP16 cache, latent % 8 == 0: rows written with half_cast's rounding give the
+// FP16 values gather_vector_half8 forms from the FP32 rows.
+__global__ void gather_half_rows8(const uint16_t *cache, const int *ids, const int *counts, uint16_t *out,
+                                  int stride, int latent) {
+    const int key = blockIdx.x * 4 + (threadIdx.x >> 6), query = blockIdx.y, t = threadIdx.x & 63;
+    if (key >= stride) return;
+    uint4 *destination = reinterpret_cast<uint4 *>(out + ((int64_t)query * stride + key) * latent);
+    const bool live = key < counts[query];
+    const uint4 *source = live ? reinterpret_cast<const uint4 *>(cache + (int64_t)ids[query * stride + key] * latent) : nullptr;
+    for (int d = t; d < latent / 8; d += 64) destination[d] = live ? source[d] : make_uint4(0, 0, 0, 0);
+}
+// gather from an FP16 cache into FP32 rows (the FP32 attention products).
+__global__ void gather_half_widen(const uint16_t *cache, const int *ids, const int *counts, float *out, int queries,
+                                  int stride, int latent) {
+    int64_t i = (int64_t)blockIdx.x * 256 + threadIdx.x;
+    if (i >= (int64_t)queries * stride * latent)
+        return;
+    int q = i / (stride * latent), key = i / latent % stride, d = i % latent;
+    out[i] = key < counts[q] ? __half2float(__ushort_as_half(cache[(int64_t)ids[q * stride + key] * latent + d])) : 0.f;
+}
 __global__ void gather_vector_half8(const float *cache, const int *ids, const int *counts, uint16_t *out,
                                     int stride, int latent) {
     const int key = blockIdx.x * 4 + (threadIdx.x >> 6), query = blockIdx.y, t = threadIdx.x & 63;
@@ -1575,6 +1600,10 @@ void glm_cache_rows(const float *rows, float *cache, int width, int tokens, cons
     cache_rows<<<(width * tokens + 255) / 256, 256, 0, (cudaStream_t)s>>>(rows, cache, width, tokens, position);
     check();
 }
+void glm_cache_rows_f16(const float *rows, uint16_t *cache, int width, int tokens, const int *position, void *s) {
+    cache_rows_half<<<(width * tokens + 255) / 256, 256, 0, (cudaStream_t)s>>>(rows, cache, width, tokens, position);
+    check();
+}
 void glm_index_prepare(const float *k, const float *g, const float *a, float *pk, float *pg, float *out,
                        int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
     // The maximum number of completed pools does not depend on the current position.
@@ -1627,6 +1656,19 @@ void glm_mla_gather_f16(const float *c, const int *ids, const int *counts, uint1
     if (latent % 512 == 0)
         gather_vector_half8<<<dim3((stride + 3) / 4, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
     else gather_vector_half<<<dim3(stride, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
+    check();
+}
+void glm_mla_gather_h2h(const uint16_t *c, const int *ids, const int *counts, uint16_t *out, int q, int stride,
+                        int latent, void *s) {
+    if (q < 1 || q > 65535 || stride < 1 || latent < 8 || latent % 8)
+        throw std::invalid_argument("GLM: invalid FP16-cache MLA gather");
+    gather_half_rows8<<<dim3((stride + 3) / 4, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
+    check();
+}
+void glm_mla_gather_h2f(const uint16_t *c, const int *ids, const int *counts, float *out, int q, int stride,
+                        int latent, void *s) {
+    int64_t n = (int64_t)q * stride * latent;
+    if (n) gather_half_widen<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, q, stride, latent);
     check();
 }
 void glm_mla_softmax_f16(float *scores, const int *counts, uint16_t *out, int heads, int stride, int q, float scale,

@@ -317,6 +317,29 @@ void check_half_attention_reference() {
     auto e=expected.get(),v=actual.get();for(size_t i=0;i<v.size();++i)if(std::abs(ggml_fp16_to_fp32(e[i])-ggml_fp16_to_fp32(v[i]))>1e-3f)throw std::runtime_error("FP16-input softmax error");
     std::cout<<"FP16 gather/softmax references passed\n";
 }
+// STRATA_GLM_KV_FORMAT=f16: rows stored as FP16 gather to the FP32 cache's FP16 gather bits.
+void check_fp16_cache() {
+    constexpr int R=9,B=3,C=11,L=512;
+    std::vector<float> cache(R*L);
+    for(size_t i=0;i<cache.size();++i)cache[i]=std::ldexp(float(int(i*2654435761u%20011)-10005),-int(i%23))/3;
+    std::vector<int> ids(B*C),counts{0,5,11};
+    for(int b=0;b<B;++b)for(int c=0;c<C;++c)ids[b*C+c]=(c*7+b)%R;
+    Buffer<float> dc(cache),rows(cache);Buffer<int> di(ids),dn(counts),position(std::vector<int>{2});
+    Buffer<uint16_t> half(R*L),placed(R*L),expected(B*C*L),actual(B*C*L);Buffer<float> widened(B*C*L);
+    k::glm_f16(dc.p,half.p,R*L,nullptr);
+    k::glm_cache_rows_f16(rows.p,placed.p,L,R-2,position.p,nullptr);
+    auto h=half.get(),q=placed.get();
+    for(size_t i=0;i<size_t(2*L);++i)if(q[i])throw std::runtime_error("FP16 cache rows wrote before the position");
+    for(size_t i=2*L;i<h.size();++i)if(q[i]!=h[i-2*L])throw std::runtime_error("FP16 cache rows changed the rounding");
+    k::glm_mla_gather_f16(dc.p,di.p,dn.p,expected.p,B,C,L,nullptr);
+    k::glm_mla_gather_h2h(half.p,di.p,dn.p,actual.p,B,C,L,nullptr);
+    if(expected.get()!=actual.get())throw std::runtime_error("FP16-cache gather changed the FP16 attention keys");
+    k::glm_mla_gather_h2f(half.p,di.p,dn.p,widened.p,B,C,L,nullptr);
+    auto e=expected.get();auto w=widened.get();
+    for(size_t i=0;i<w.size();++i)if(std::bit_cast<uint32_t>(w[i])!=std::bit_cast<uint32_t>(ggml_fp16_to_fp32(e[i])))
+        throw std::runtime_error("FP16-cache FP32 gather mismatch");
+    std::cout<<"FP16 latent cache write/gather bits passed\n";
+}
 void check_transcode_reference() {
     std::mt19937 rng(7301);
     constexpr int rows=3, cols=512, experts=2;
@@ -388,6 +411,7 @@ int main(int argc, char** argv) {
         check_selected_rows_sum();
         check_mixed_partial_rows();
         check_half_attention_reference();
+        check_fp16_cache();
         check_transcode_reference();
         check_device_positions();
         check_softmax_precision();
