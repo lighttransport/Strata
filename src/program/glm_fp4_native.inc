@@ -100,11 +100,25 @@ class Fp4NativeExecutor {
         std::vector<std::array<uint8_t*,3>> frames;
         std::vector<cudaEvent_t> full,consumed;
         std::vector<char> refillable;
+        // A lent entry the cache evicts while its frame is idle frees its
+        // memory at once, as on the original path; the frame is then skipped.
+        std::vector<char> dead;
+        std::map<std::pair<int,int>,int> lent_frame;
+        size_t alive=0;
+        std::mutex mutex;
         std::array<std::array<uint16_t*,3>,operand_slots> operands{};
         std::array<cudaEvent_t,operand_slots> operand_ready{},operand_free{};
         cudaEvent_t input_ready=nullptr;
         int* flags=nullptr;
         std::unique_ptr<Pinned> flags_host;
+        // One pinned slot per frame gathers a projection's small CSF parts so
+        // they cross in one copy: eighteen small copies per expert fill the
+        // driver queue and then block kernel launches.
+        std::unique_ptr<Pinned> staging;
+        // Route tables cross by glm_fp4_copy_host_words: a copy-engine upload
+        // would queue behind the ring. Two buffers alternate by layer.
+        std::array<std::unique_ptr<Pinned>,2> route_host;std::array<size_t,2> route_host_words{};
+        std::array<cudaEvent_t,2> route_read{};
         std::deque<std::pair<int,int>> planned;
         std::deque<Item> queued;
         size_t head=0,operand=0;
@@ -112,12 +126,13 @@ class Fp4NativeExecutor {
             check(cudaStreamCreateWithFlags(&prep,cudaStreamNonBlocking));
         }
         void create_events(size_t count) {
-            full.assign(count,nullptr);consumed.assign(count,nullptr);refillable.assign(count,1);
+            full.assign(count,nullptr);consumed.assign(count,nullptr);refillable.assign(count,1);dead.assign(count,0);
             for(size_t i=0;i<count;++i) {
                 check(cudaEventCreateWithFlags(&full[i],cudaEventDisableTiming));
                 check(cudaEventCreateWithFlags(&consumed[i],cudaEventDisableTiming));
             }
             check(cudaEventCreateWithFlags(&input_ready,cudaEventDisableTiming));
+            for(auto& e:route_read)check(cudaEventCreateWithFlags(&e,cudaEventDisableTiming));
             for(size_t i=0;i<operand_slots;++i) {
                 check(cudaEventCreateWithFlags(&operand_ready[i],cudaEventDisableTiming));
                 check(cudaEventCreateWithFlags(&operand_free[i],cudaEventDisableTiming));
@@ -129,6 +144,7 @@ class Fp4NativeExecutor {
             for(auto e:consumed)if(e)cudaEventDestroy(e);
             for(auto e:operand_ready)if(e)cudaEventDestroy(e);
             for(auto e:operand_free)if(e)cudaEventDestroy(e);
+            for(auto e:route_read)if(e)cudaEventDestroy(e);
             if(input_ready)cudaEventDestroy(input_ready);
             if(prep)cudaStreamDestroy(prep);
             for(auto p:outside)cudaFree(p);
@@ -179,7 +195,9 @@ class Fp4NativeExecutor {
         size_t stream_frames_reported=0;std::set<std::pair<int,int>> lent;
         // An evicted lent entry leaves the cache, but its memory is a ring
         // frame until the pass ends.
-        std::vector<std::unique_ptr<Device>> lent_retired;uint64_t lent_evicted=0;
+        std::vector<std::unique_ptr<Device>> lent_retired;uint64_t lent_evicted=0,lent_freed=0;
+        std::vector<std::pair<const std::pair<int,int>,Expert>*> restoring;
+        uint64_t stream_small_direct=0,stream_small_staged=0;
         uint64_t bank_layers=0,bank_unused_experts=0;
         double bank_wait_ms=0;
         struct Trace {
@@ -297,7 +315,22 @@ class Fp4NativeExecutor {
                 if(!protected_experts.count(it->first)&&(victim==experts.end()||it->second.use<victim->second.use))victim=it;
             if(victim==experts.end())throw std::runtime_error("GLM FP4: insufficient GPU memory for bounded working set");
             if(!async_eviction)check(cudaStreamSynchronize(stream));cache_bytes-=victim->second.bytes;
-            if(lent.erase(victim->first)){for(auto& m:victim->second.projection)lent_retired.push_back(std::move(m.data));++lent_evicted;}
+            if(lent.erase(victim->first)) {
+                bool freed=false;
+                if(stream_ring) {
+                    auto& s=*stream_ring;std::lock_guard lock(s.mutex);
+                    if(auto f=s.lent_frame.find(victim->first);f!=s.lent_frame.end()) {
+                        const int frame=f->second;s.lent_frame.erase(f);
+                        // Its last reader is already enqueued; keep at least eight frames.
+                        if(s.refillable[frame]&&s.alive>8) {
+                            check(cudaEventSynchronize(s.consumed[frame]));
+                            s.dead[frame]=1;s.refillable[frame]=0;--s.alive;freed=true;
+                        }
+                    }
+                }
+                if(freed)++lent_freed;
+                else {for(auto& m:victim->second.projection)lent_retired.push_back(std::move(m.data));++lent_evicted;}
+            }
             experts.erase(victim);++evictions;
         }
         void init_upload() {
@@ -367,7 +400,7 @@ class Fp4NativeExecutor {
     // queue blocks the enqueuing thread, which must not be the coordinator.
     std::future<void> held_fill;
     void join_held_fill(){if(held_fill.valid())held_fill.get();}
-    std::array<size_t,3> stream_projection_bytes{};int stream_planned_layer=-1;uint64_t stream_skipped=0;
+    std::array<size_t,3> stream_projection_bytes{},stream_small_bytes{};int stream_planned_layer=-1;uint64_t stream_skipped=0;
     bool peer_enabled=false;
     const bool device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DEVICE_ROUTING");
     bool decode_device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DECODE_ROUTING");
@@ -532,7 +565,10 @@ class Fp4NativeExecutor {
     }
     // `into` re-packs a matrix in its existing allocation; `stage` replaces
     // the packed_source scratch. Both leave the arena's free blocks alone.
-    Matrix upload(Context& c,const strata::artifact::ModelOptMatrix& desc,std::unique_ptr<Device> into={},Device* stage=nullptr) {
+    Matrix upload(Context& c,const strata::artifact::ModelOptMatrix& desc,std::unique_ptr<Device> into={},Device* stage=nullptr,
+                  cudaStream_t stream=nullptr) {
+        // `stream` replaces the context stream, which dense() may swap meanwhile.
+        cudaStream_t on=stream?stream:c.stream;
         auto copy=[&](void* dst,const void* src,size_t bytes,cudaMemcpyKind kind,cudaStream_t stream) {
             if(kind==cudaMemcpyHostToDevice)c.wire_bytes[c.phase]+=bytes;
             return cudaMemcpyAsync(dst,src,bytes,kind,stream);
@@ -562,18 +598,18 @@ class Fp4NativeExecutor {
             auto& staging=staging_buffer(flag+sizeof(int));
             auto* p=static_cast<uint8_t*>(staging.p);
             const auto* raw=artifact.exl3().tensors.data(*desc.weights);
-            check(copy(p,raw,bytes,cudaMemcpyHostToDevice,c.stream));
-            check(copy(p+base,h.bases,desc.rows,cudaMemcpyHostToDevice,c.stream));
-            check(copy(p+code,h.codes,h.codes_count,cudaMemcpyHostToDevice,c.stream));
-            check(copy(p+offset,scale_source(desc,"offsets",h.offsets.data()),h.offsets.size()*2,cudaMemcpyHostToDevice,c.stream));
-            check(copy(p+page,scale_source(desc,"page_bases",h.pages.data()),h.pages.size()*4,cudaMemcpyHostToDevice,c.stream));
-            if(!h.exceptions.empty())check(copy(p+exception,scale_source(desc,"exceptions",h.exceptions.data()),h.exceptions.size()*2,cudaMemcpyHostToDevice,c.stream));
-            k::glm_fp4_prepack(p,nullptr,static_cast<uint8_t*>(m.data->p),nullptr,m.rows,m.columns,c.stream);
+            check(copy(p,raw,bytes,cudaMemcpyHostToDevice,on));
+            check(copy(p+base,h.bases,desc.rows,cudaMemcpyHostToDevice,on));
+            check(copy(p+code,h.codes,h.codes_count,cudaMemcpyHostToDevice,on));
+            check(copy(p+offset,scale_source(desc,"offsets",h.offsets.data()),h.offsets.size()*2,cudaMemcpyHostToDevice,on));
+            check(copy(p+page,scale_source(desc,"page_bases",h.pages.data()),h.pages.size()*4,cudaMemcpyHostToDevice,on));
+            if(!h.exceptions.empty())check(copy(p+exception,scale_source(desc,"exceptions",h.exceptions.data()),h.exceptions.size()*2,cudaMemcpyHostToDevice,on));
+            k::glm_fp4_prepack(p,nullptr,static_cast<uint8_t*>(m.data->p),nullptr,m.rows,m.columns,on);
             k::glm_fp4_csf32_scales(p+base,p+code,reinterpret_cast<const uint16_t*>(p+offset),
                 reinterpret_cast<const uint32_t*>(p+page),reinterpret_cast<const uint16_t*>(p+exception),
-                static_cast<uint8_t*>(m.data->p)+m.scale_offset,reinterpret_cast<int*>(p+flag),m.rows,m.columns,c.stream);
-            int invalid=0;check(copy(&invalid,p+flag,sizeof(int),cudaMemcpyDeviceToHost,c.stream));
-            check(cudaStreamSynchronize(c.stream));
+                static_cast<uint8_t*>(m.data->p)+m.scale_offset,reinterpret_cast<int*>(p+flag),m.rows,m.columns,on);
+            int invalid=0;check(copy(&invalid,p+flag,sizeof(int),cudaMemcpyDeviceToHost,on));
+            check(cudaStreamSynchronize(on));
             if(invalid)throw std::runtime_error("GLM ModelOpt: invalid FP4 group scale: "+desc.name);
             c.uploaded+=m.data->bytes;return m;
         }
@@ -591,32 +627,32 @@ class Fp4NativeExecutor {
             if(sm70 && (!std::isfinite(h.global*16384.f) || h.global*16384.f>65504.f))
                 throw std::runtime_error("GLM FP4: global scale exceeds SM70 decoder range");
             auto& staging=staging_buffer(bytes+h.scales.size());
-            check(copy(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
-            check(copy(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
+            check(copy(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,on));
+            check(copy(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,on));
             k::glm_fp4_prepack(static_cast<const uint8_t*>(staging.p),static_cast<const uint8_t*>(staging.p)+bytes,
-                static_cast<uint8_t*>(m.data->p),static_cast<uint8_t*>(m.data->p)+m.scale_offset,m.rows,m.columns,c.stream);
+                static_cast<uint8_t*>(m.data->p),static_cast<uint8_t*>(m.data->p)+m.scale_offset,m.rows,m.columns,on);
         }else if(packed_mxfp8||packed_block_gate) {
             auto& staging=c.buffer("packed_source",bytes+h.scales.size());
-            check(copy(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
-            check(copy(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
+            check(copy(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,on));
+            check(copy(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,on));
             k::glm_fp8_prepack(m.format,static_cast<const uint8_t*>(staging.p),static_cast<char*>(staging.p)+bytes,
-                static_cast<uint8_t*>(m.data->p),static_cast<char*>(m.data->p)+m.scale_offset,m.rows,m.columns,c.stream);
+                static_cast<uint8_t*>(m.data->p),static_cast<char*>(m.data->p)+m.scale_offset,m.rows,m.columns,on);
             m.format=packed_mxfp8?k::GlmPackedFormat::Mxfp8Qpn:k::GlmPackedFormat::BlockFp8Qpn;
         }else {
-            check(copy(m.data->p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
-            if(!h.scales.empty())check(copy(static_cast<char*>(m.data->p)+m.scale_offset,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
+            check(copy(m.data->p,h.data(),bytes,cudaMemcpyHostToDevice,on));
+            if(!h.scales.empty())check(copy(static_cast<char*>(m.data->p)+m.scale_offset,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,on));
             if(h.format==Format::Bf16) {
                 // Cache the exact FP16 operand the W4A16 product would form.
                 // BF16 and FP16 occupy the same bytes; no second matrix lives
                 // on either the host or the device.
                 k::glm_fp4_dequant_f16(m.format,m.data->p,m.scales(),m.global,
-                    static_cast<uint16_t*>(m.data->p),m.rows,m.columns,c.stream);
+                    static_cast<uint16_t*>(m.data->p),m.rows,m.columns,on);
                 m.format=k::GlmPackedFormat::F16;
             }
         }
         // Scale vectors are bounded host temporaries; complete their DMA before
         // releasing them. The mapped source bytes remain owned by the artifact.
-        check(cudaStreamSynchronize(c.stream));c.uploaded+=m.data->bytes;
+        check(cudaStreamSynchronize(on));c.uploaded+=m.data->bytes;
         return m;
     }
     Matrix upload_head_tail(Context& c,const strata::artifact::ModelOptMatrix& desc,int first,int rows) {
@@ -923,7 +959,10 @@ class Fp4NativeExecutor {
                         if(source.bytes[part]&&!source.data[part])throw std::runtime_error("GLM FP4: streamed prefill needs registered sources");
                 }
                 const auto used=stream_layout(sources,offsets);
-                for(int p=0;p<3;++p)stream_projection_bytes[p]=std::max(stream_projection_bytes[p],(used[p]+255)/256*256);
+                for(int p=0;p<3;++p) {
+                    stream_projection_bytes[p]=std::max(stream_projection_bytes[p],(used[p]+255)/256*256);
+                    if(sources[p]->csf)stream_small_bytes[p]=std::max(stream_small_bytes[p],(used[p]-offsets[p][1]+255)/256*256);
+                }
             }
         }
         constexpr size_t operand_bytes=PrefillStream::operand_elements*2;
@@ -943,16 +982,26 @@ class Fp4NativeExecutor {
             // the frames and are re-packed in place afterwards. Lent entries
             // keep their budget bytes and LRU clock.
             size_t lent_bytes=0;
-            for(auto& [key,e]:c.experts) {
-                if(s->frames.size()>=limit)break;
-                if(key.first!=45)continue;
+            // Lend the most recently used entries: eviction takes the least
+            // recently used, and an evicted lent entry cannot free its memory
+            // until the pass ends.
+            std::vector<std::pair<const std::pair<int,int>,Expert>*> draft;
+            for(auto& entry:c.experts) {
+                if(entry.first.first!=45)continue;
                 bool fits=true;
-                for(int p=0;p<3;++p)fits=fits&&e.projection[p].data&&e.projection[p].data->bytes>=stream_projection_bytes[p];
-                if(!fits)continue;
+                for(int p=0;p<3;++p)fits=fits&&entry.second.projection[p].data&&entry.second.projection[p].data->bytes>=stream_projection_bytes[p];
+                if(fits)draft.push_back(&entry);
+            }
+            std::stable_sort(draft.begin(),draft.end(),[](auto* a,auto* b){return a->second.use>b->second.use;});
+            for(auto* entry:draft) {
+                if(s->frames.size()>=limit)break;
+                auto& e=entry->second;
                 s->frames.push_back({static_cast<uint8_t*>(e.projection[0].data->p),static_cast<uint8_t*>(e.projection[1].data->p),
                                      static_cast<uint8_t*>(e.projection[2].data->p)});
-                c.lent.insert(key);lent_bytes+=e.bytes;
+                c.lent.insert(entry->first);lent_bytes+=e.bytes;
+                s->lent_frame[entry->first]=int(s->frames.size()-1);
             }
+            s->alive=s->frames.size();
             bool ready=s->frames.size()>=8;
             // Operand slots and flags use the driver margin outside the arena;
             // keep most of it for the driver and libraries.
@@ -972,6 +1021,7 @@ class Fp4NativeExecutor {
                 <<" frame_bytes="<<frame_bytes<<'\n';
             c.stream_frames_reported=s->frames.size();
             s->flags_host=std::make_unique<Pinned>(PrefillStream::flag_count*4,true);
+            if(ready)s->staging=std::make_unique<Pinned>(std::max<size_t>(s->frames.size()*stream_stage_bytes(),1),true);
             c.stream_ring=std::move(s);
             if(!ready)usable=false;
         }
@@ -983,37 +1033,60 @@ class Fp4NativeExecutor {
     void restore_lent(Context& c) {
         // Re-pack lent entries the budget still holds in their own memory; an
         // evicted entry stays evicted, exactly as on the original path. An
-        // operand slot (outside the arena) stages the source.
+        // operand slot (outside the arena) stages the source, and the copy
+        // stream carries the work: dense() may swap the context stream.
         const char* names[]={"gate_proj","up_proj","down_proj"};
         Device stage(c.stream_ring->operands[0][0],PrefillStream::operand_elements*2);
-        for(const auto& key:c.lent) {
-            auto it=c.experts.find(key);
-            if(it==c.experts.end())throw std::logic_error("GLM FP4: lent expert left the cache unrecorded");
+        for(auto* e:c.restoring) {
             for(int p=0;p<3;++p) {
-                auto data=std::move(it->second.projection[p].data);
-                it->second.projection[p]=upload(c,model.matrix(strata::artifact::GlmExl3::prefix(key.first,key.second,names[p])+".weight"),
-                                                std::move(data),&stage);
+                auto data=std::move(e->second.projection[p].data);
+                e->second.projection[p]=upload(c,model.matrix(strata::artifact::GlmExl3::prefix(e->first.first,e->first.second,names[p])+".weight"),
+                                               std::move(data),&stage,c.copy_stream);
             }
             ++c.stream_restored;
         }
-        c.lent.clear();c.lent_retired.clear();
     }
-    void release_prefill_stream() {
-        join_held_fill();
+    // The last routed layer releases the ring with `overlap`: the workers
+    // re-pack the lent entries while the coordinator runs the output head and
+    // the draft priming, which reads no draft experts in native FP4. Lent
+    // entries stay protected until join_restore(); the next routed layer,
+    // prefill or decode transition joins first.
+    std::vector<std::future<void>> restore_work;
+    bool restore_pending=false;
+    void join_restore() {
+        if(!restore_pending)return;
+        restore_pending=false;
+        std::exception_ptr failure;
+        for(auto& f:restore_work)try{f.get();}catch(...){if(!failure)failure=std::current_exception();}
+        restore_work.clear();
+        for(auto& c:contexts)if(c->stream_ring) {
+            for(const auto& key:c->lent)c->protected_experts.erase(key);
+            c->lent.clear();c->restoring.clear();
+            DeviceScope scope(c->device);c->lent_retired.clear();c->stream_ring.reset();
+        }
+        if(failure)std::rethrow_exception(failure);
+    }
+    void release_prefill_stream(bool overlap=false) {
+        join_held_fill();join_restore();
         for(auto& c:contexts)if(c->stream_ring) {
             DeviceScope scope(c->device);
             if(c->copy_stream)cudaStreamSynchronize(c->copy_stream);
             cudaStreamSynchronize(c->stream_ring->prep);cudaStreamSynchronize(c->stream);
             c->protected_experts.clear();
+            // Resolve the entries here: the workers then touch no map.
+            for(const auto& key:c->lent) {
+                auto it=c->experts.find(key);
+                if(it==c->experts.end())throw std::logic_error("GLM FP4: lent expert left the cache unrecorded");
+                c->restoring.push_back(&*it);c->protected_experts.insert(key);
+            }
         }
         // Restore concurrently; each worker owns its device stream.
-        std::vector<std::future<void>> work;
+        restore_pending=true;
         try {
-            for(auto& c:contexts)if(c->stream_ring&&(!c->lent.empty()||!c->lent_retired.empty()))
-                work.push_back(c->submit([this,&c]{DeviceScope scope(c->device);restore_lent(*c);}));
-            for(auto& f:work)f.get();
-        }catch(...){for(auto& f:work)if(f.valid())f.wait();throw;}
-        for(auto& c:contexts)if(c->stream_ring){DeviceScope scope(c->device);c->stream_ring.reset();}
+            for(auto& c:contexts)if(!c->restoring.empty())
+                restore_work.push_back(c->submit([this,&c]{DeviceScope scope(c->device);restore_lent(*c);}));
+        }catch(...){join_restore();throw;}
+        if(!overlap)join_restore();
         stream_planned_layer=-1;
     }
     // Ownership is the prefill parity split. Plan on the coordinator while
@@ -1026,9 +1099,13 @@ class Fp4NativeExecutor {
         }
         stream_planned_layer=layer;
     }
+    size_t stream_stage_bytes()const {return stream_small_bytes[0]+stream_small_bytes[1]+stream_small_bytes[2];}
     void stream_fill(Context& c,int last_layer=INT_MAX) {
         auto& s=*c.stream_ring;
-        while(!s.planned.empty()&&s.planned.front().first<=last_layer&&s.refillable[s.head]) {
+        std::lock_guard lock(s.mutex);
+        for(;;) {
+            while(s.dead[s.head])s.head=(s.head+1)%s.frames.size();
+            if(s.planned.empty()||s.planned.front().first>last_layer||!s.refillable[s.head])break;
             PrefillStream::Item item;
             std::tie(item.layer,item.id)=s.planned.front();s.planned.pop_front();
             item.frame=int(s.head);
@@ -1037,12 +1114,30 @@ class Fp4NativeExecutor {
             for(int p=0;p<3;++p)if(used[p]>stream_projection_bytes[p])throw std::logic_error("GLM FP4: streamed expert exceeds its frame");
             const auto& frame=s.frames[s.head];
             check(cudaStreamWaitEvent(c.copy_stream,s.consumed[s.head],0));
+            // The slot's previous copy was enqueued a ring ago; normally done.
+            auto* slot=static_cast<uint8_t*>(s.staging->p)+size_t(s.head)*stream_stage_bytes();
+            check(cudaEventSynchronize(s.full[s.head]));
             const auto trace=c.trace_start("matrix_h2d",c.copy_stream);
-            for(int p=0;p<3;++p)for(int part=0;part<(item.sources[p]->csf?6:2);++part) {
-                const size_t bytes=item.sources[p]->bytes[part];
-                if(!bytes)continue;
-                check(cudaMemcpyAsync(frame[p]+item.offsets[p][part],item.sources[p]->data[part],bytes,cudaMemcpyHostToDevice,c.copy_stream));
-                c.wire_bytes[c.phase]+=bytes;
+            for(int p=0;p<3;++p) {
+                const auto& source=*item.sources[p];const auto& at=item.offsets[p];
+                auto copy=[&](size_t offset,const void* from,size_t bytes) {
+                    if(!bytes)return;
+                    check(cudaMemcpyAsync(frame[p]+offset,from,bytes,cudaMemcpyHostToDevice,c.copy_stream));
+                    c.wire_bytes[c.phase]+=bytes;
+                };
+                copy(at[0],source.data[0],source.bytes[0]);
+                if(!source.csf){copy(at[1],source.data[1],source.bytes[1]);continue;}
+                // Parts 1-5 occupy [at[1], end) in the frame. Copy them from
+                // the source directly when it has the same spacing.
+                const size_t end=at[5]+source.bytes[5];
+                bool direct=true;
+                for(int part=2;part<6;++part)if(source.bytes[part])
+                    direct=direct&&static_cast<const uint8_t*>(source.data[part])==static_cast<const uint8_t*>(source.data[1])+(at[part]-at[1]);
+                if(direct){copy(at[1],source.data[1],end-at[1]);++c.stream_small_direct;continue;}
+                auto* staged=slot+(p?stream_small_bytes[0]:0)+(p==2?stream_small_bytes[1]:0);
+                if(end-at[1]>stream_small_bytes[p])throw std::logic_error("GLM FP4: streamed scale parts exceed their slot");
+                for(int part=1;part<6;++part)if(source.bytes[part])std::memcpy(staged+(at[part]-at[1]),source.data[part],source.bytes[part]);
+                copy(at[1],staged,end-at[1]);++c.stream_small_staged;
             }
             c.trace_end(trace,c.copy_stream);
             check(cudaEventRecord(s.full[s.head],c.copy_stream));
@@ -1053,6 +1148,7 @@ class Fp4NativeExecutor {
     // An unused frame needs no reader; later uploads follow on the same stream.
     void stream_drop(Context& c) {
         auto& s=*c.stream_ring;const int frame=s.queued.front().frame;s.queued.pop_front();
+        std::lock_guard lock(s.mutex);
         check(cudaEventRecord(s.consumed[frame],c.copy_stream));s.refillable[frame]=1;++c.stream_dropped;
     }
     void select(Context& c,int layer) {
@@ -1435,7 +1531,7 @@ public:
         }
         sums.resize(contexts.size());
     }
-    ~Fp4NativeExecutor(){if(held_fill.valid())held_fill.wait();report(false);}
+    ~Fp4NativeExecutor(){if(held_fill.valid())held_fill.wait();for(auto& f:restore_work)if(f.valid())f.wait();report(false);}
     bool set_decode_device_routing(bool enabled) {
         const bool previous=decode_device_routing_enabled;decode_device_routing_enabled=enabled;return previous;
     }
@@ -1618,6 +1714,7 @@ public:
             it->second.rows,it->second.columns,nt,int(it->second.format)):SIZE_MAX;
         k::glm_f16(x,static_cast<uint16_t*>(hx.p),size_t(nt)*it->second.columns,c.stream);
         if(head_partition&&name=="output.weight"&&nt<=8) {
+            join_restore();
             cudaStreamCaptureStatus capture;check(cudaStreamIsCapturing(caller,&capture));
             if(capture!=cudaStreamCaptureStatusNone)
                 throw std::runtime_error("GLM FP4: HEAD_TP does not support CUDA graph capture");
@@ -1676,7 +1773,7 @@ public:
     }
     void routed(int layer,const float* x,const int* ids,const float* weights,float* out,int nt,
                 float limit,cudaStream_t caller,cudaEvent_t inputs_ready=nullptr) {
-        join_held_fill();
+        join_held_fill();join_restore();
         const auto started=tick();
         struct alignas(64) Times {double upload=0,gather=0,product=0,reduce=0,fused=0;};
         std::array<Times,2> times{};Times cpu_times;
@@ -2003,7 +2100,8 @@ public:
                         check(cudaStreamWaitEvent(c.stream,contexts.front()->stream_ring->input_ready,0));
                         check(cudaMemcpyPeerAsync(rows,c.device,half_input,contexts.front()->device,size_t(nt)*4096*2,c.stream));
                     }
-                    check(cudaMemcpyAsync(const_cast<float*>(device_weights),host_weights->p,size_t(nt)*8*4,cudaMemcpyHostToDevice,c.stream));
+                    // The ring's copies hold this GPU's copy engine.
+                    k::glm_fp4_copy_host_words(host_weights->p,const_cast<float*>(device_weights),size_t(nt)*8,c.stream);
                     device_input=nullptr;device_input_half=rows;
                 }else if(rank) {
                     device_input=c.buffer("prefill_route_input",size_t(nt)*4096*4).f();
@@ -2259,7 +2357,16 @@ public:
                 c.buffer("expert_hidden_half",max_rows*2048*2);
                 c.buffer("expert_result",max_rows*4096*4);
                 c.buffer("dequant_half",size_t(2048)*4096*2);
-                if(!route_table.empty())check(cudaMemcpyAsync(table,route_table.data(),route_table.size()*4,cudaMemcpyHostToDevice,c.stream));
+                if(!route_table.empty()) {
+                    const int b=layer&1;auto& host=s.route_host[b];
+                    check(cudaEventSynchronize(s.route_read[b]));
+                    if(route_table.size()>s.route_host_words[b]) {
+                        host=std::make_unique<Pinned>(route_table.size()*4,true);s.route_host_words[b]=route_table.size();
+                    }
+                    std::memcpy(host->p,route_table.data(),route_table.size()*4);
+                    k::glm_fp4_copy_host_words(host->p,table,route_table.size(),c.stream);
+                    check(cudaEventRecord(s.route_read[b],c.stream));
+                }
                 check(cudaMemsetAsync(s.flags,0,PrefillStream::flag_count*4,s.prep));
                 // Storage read by queued kernels stays alive until the final fence.
                 std::vector<PendingExpert> demands;
@@ -2326,7 +2433,7 @@ public:
                         }
                         check(cudaGetLastError());
                         c.trace_end(trace,s.prep);
-                        check(cudaEventRecord(s.consumed[item.frame],s.prep));s.refillable[item.frame]=1;
+                        {std::lock_guard lock(s.mutex);check(cudaEventRecord(s.consumed[item.frame],s.prep));s.refillable[item.frame]=1;}
                         check(cudaEventRecord(s.operand_ready[slot],s.prep));
                         check(cudaStreamWaitEvent(c.stream,s.operand_ready[slot],0));
                         if(wide)execute(meta,routes,nullptr,rows,&s.operands[slot]);
@@ -2665,7 +2772,7 @@ public:
             else release_banks();
         }
         // Free the ring before batched draft priming and decode.
-        if(stream_layer&&layer==44)release_prefill_stream();
+        if(stream_layer&&layer==44)release_prefill_stream(true);
     }
     void report(bool flush_profile=true)const {
         if(grouped_scatter)for(const auto& c:contexts)std::cerr<<"FP4_GROUPED_SCATTER_STATS device="<<c->device
@@ -2685,7 +2792,7 @@ public:
             std::cerr<<"FP4_PREFILL_STREAM_STATS device="<<c->device<<" layers="<<c->stream_layers
                 <<" prefetched="<<c->stream_prefetched<<" consumed="<<c->stream_consumed
                 <<" dropped="<<c->stream_dropped<<" demand="<<c->stream_demand
-                <<" admitted="<<c->stream_admitted<<" restored="<<c->stream_restored<<" lent_evicted="<<c->lent_evicted<<" skipped="<<stream_skipped
+                <<" admitted="<<c->stream_admitted<<" restored="<<c->stream_restored<<" lent_evicted="<<c->lent_evicted<<" lent_freed="<<c->lent_freed<<" small_direct="<<c->stream_small_direct<<" small_staged="<<c->stream_small_staged<<" skipped="<<stream_skipped
                 <<" evictions="<<c->evictions
                 <<" frame_bytes="<<stream_projection_bytes[0]+stream_projection_bytes[1]+stream_projection_bytes[2]<<'\n';
         // Diagnostic only: room() evictions are forced by physical memory,

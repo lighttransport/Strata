@@ -2721,9 +2721,8 @@ private:
     std::unique_ptr<Device> mtp_prev_hidden;
     // STRATA_GLM_PREFILL_LEAN_HOST=1: a prefill dequantizes each token's embedding row once, on several threads,
     // into pinned memory. The GPU replicates the rows into the four residual streams, and the batched draft
-    // priming uploads the same rows instead of dequantizing them again. The output head collapses all rows in one
-    // launch, and the target hidden rows reach the host while the draft priming runs. The values are the default
-    // path's.
+    // priming uploads the same rows instead of dequantizing them again, and the target hidden rows reach the host
+    // while the draft priming runs. The values are the default path's.
     const bool lean_host_prefill = strata_env_truthy_one("STRATA_GLM_PREFILL_LEAN_HOST");
     std::unique_ptr<Pinned> embedding_rows;
     // The prefill's target hidden rows, staged for target_hidden (see batch()).
@@ -2739,8 +2738,9 @@ private:
         const int nt = tokens.size();
         const size_t H = m.hidden, bytes = (size_t)nt * H * 4, row_bytes = embedding.bytes / m.vocab;
         if (bytes > embedding_rows_bytes) {
+            // No GpuLocality: its strict node binding can exhaust one NUMA node while the model's
+            // interleaved pages fill it, and the kernel then kills the process.
             embedding_rows.reset();
-            GpuLocality locality;
             embedding_rows = std::make_unique<Pinned>(bytes);
             embedding_rows_bytes = bytes;
             std::cerr << "PREFILL_LEAN_HOST embedding_rows_MiB=" << bytes / double(MiB) << '\n';
@@ -7377,7 +7377,10 @@ private:
 #ifdef STRATA_USE_HIP
             if(artifact.is_modelopt())throw std::invalid_argument("GLM ModelOpt FP4 currently requires the CUDA backend");
 #endif
-            if(ctx>65536)throw std::invalid_argument("EXL3: context above 64K requires host KV offload, which is deferred");
+            // STRATA_GLM_FP4_LONG_CONTEXT=1: a native ModelOpt FP4 checkpoint keeps its latent cache in VRAM past
+            // 64K, up to the trained context; the expert cache takes what remains.
+            if(ctx>65536&&!(artifact.is_modelopt()&&strata_env_truthy_one("STRATA_GLM_FP4_LONG_CONTEXT")))
+                throw std::invalid_argument("EXL3: context above 64K requires host KV offload, which is deferred");
 #ifdef __linux__
             const uint64_t ram=artifact.is_modelopt()?strata::core::host_memory_allowance_bytes():uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
             const auto census=artifact.census();
@@ -7963,9 +7966,7 @@ private:
         else if (!tp_active()) tp_stale = true; // primary-only states advanced without the secondary halves
         reset_phase();
         if (!stage_output) {
-            // The token-batched kernel computes each row exactly as the per-token one.
-            if (lean_host_prefill && nt > 1 && nt <= 16384) k::glm_hyper_head_tokens(r.f(), collapsed.f(), m.hidden, nt, stream);
-            else for (int t = 0; t < nt; ++t)
+            for (int t = 0; t < nt; ++t)
                 k::glm_hyper_head(r.f(t * 4 * m.hidden), collapsed.f(t * m.hidden), m.hidden, stream);
             norm("output_norm.weight", collapsed.f(), x.f(), m.hidden);
         }
@@ -8183,7 +8184,6 @@ private:
             }
             if (bytes > hidden_rows_bytes) {
                 hidden_rows.reset();
-                GpuLocality locality;
                 hidden_rows = std::make_unique<Pinned>(bytes);
                 hidden_rows_bytes = bytes;
             }

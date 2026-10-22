@@ -104,6 +104,10 @@ void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* output,
 // The same rows from activations already rounded to FP16 with glm_f16.
 void glm_fp4_route_gather_half(const uint16_t* x,const int* routes,uint16_t* output,
                                 int count,int columns,int route_stride,void* stream);
+// Copies 4-byte words from pinned host memory with the SMs rather than a copy
+// engine, so a small upload does not wait behind queued bulk copies. The host
+// pointer must be device-accessible (pinned, unified addressing).
+void glm_fp4_copy_host_words(const void* source,void* destination,size_t words,void* stream);
 void glm_fp4_route_scatter(const float* x,const int* routes,const float* weights,float* sum,
                             int count,int columns,int route_stride,void* stream);
 }
