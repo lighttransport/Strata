@@ -811,6 +811,15 @@ __global__ void route_gather(const float* x,const int* routes,half* out,int coun
     for(int row=blockIdx.y;row<count;row+=gridDim.y)
         out[size_t(row)*K+column]=__float2half_rn(x[size_t(routes[row]/stride)*K+column]);
 }
+__global__ void copy_host_words(const uint32_t* source,uint32_t* destination,size_t words) {
+    for(size_t i=blockIdx.x*size_t(blockDim.x)+threadIdx.x;i<words;i+=size_t(gridDim.x)*blockDim.x)destination[i]=source[i];
+}
+__global__ void route_gather_half(const half* x,const int* routes,half* out,int count,int K,int stride) {
+    const int column=blockIdx.x*blockDim.x+threadIdx.x;
+    if(column>=K)return;
+    for(int row=blockIdx.y;row<count;row+=gridDim.y)
+        out[size_t(row)*K+column]=x[size_t(routes[row]/stride)*K+column];
+}
 // Resolve the one row for each expert/token in parallel, then retain the
 // exact expert order in a single per-column accumulation. No atomics or tree.
 __global__ void grouped_route_scatter(const GlmFp4ExpertGroup* __restrict__ groups,int count,
@@ -1015,6 +1024,15 @@ void glm_f16_prepack_qpn(const uint16_t* w,uint16_t* out,int N,int K,void* strea
 void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* out,int count,int K,int stride,void* stream) {
     if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route gather extent");
     if(count)route_gather<<<dim3((K+255)/256,std::min(count,65535)),256,0,static_cast<cudaStream_t>(stream)>>>(x,routes,reinterpret_cast<half*>(out),count,K,stride);
+}
+void glm_fp4_copy_host_words(const void* source,void* destination,size_t words,void* stream) {
+    if(words)copy_host_words<<<int(std::min<size_t>((words+255)/256,1024)),256,0,static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const uint32_t*>(source),static_cast<uint32_t*>(destination),words);
+}
+void glm_fp4_route_gather_half(const uint16_t* x,const int* routes,uint16_t* out,int count,int K,int stride,void* stream) {
+    if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route gather extent");
+    if(count)route_gather_half<<<dim3((K+255)/256,std::min(count,65535)),256,0,static_cast<cudaStream_t>(stream)>>>(
+        reinterpret_cast<const half*>(x),routes,reinterpret_cast<half*>(out),count,K,stride);
 }
 void glm_fp4_expert_group_scatter(const GlmFp4ExpertGroup* groups,int count,
                                  const int* routes,const float* weights,const float* values,

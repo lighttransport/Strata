@@ -6958,8 +6958,9 @@ def main() -> int:
         if recovery is True or recovery == "recover":
             ap.error('GLM decodes greedily only: reasoning_loop_recovery "recover" would resample; use "stop"')
         context = int(cfg.get("context", 8192 if glm_native else 4096))
-        if glm_native and (context > 65536 or (not glm_modelopt and cfg.get("speculative", "none") != "none") or cfg.get("lookup_depth", 0) or cfg.get("decode_experts", "cpu") != "cpu"):
-            ap.error("native EXL3 requires context <=64K, CPU decode experts and speculative=none")
+        long_fp4 = glm_modelopt and str((cfg.get("env") or {}).get("STRATA_GLM_FP4_LONG_CONTEXT", "")) == "1"
+        if glm_native and ((context > 65536 and not long_fp4) or (not glm_modelopt and cfg.get("speculative", "none") != "none") or cfg.get("lookup_depth", 0) or cfg.get("decode_experts", "cpu") != "cpu"):
+            ap.error("native EXL3 requires context <=64K (native FP4: STRATA_GLM_FP4_LONG_CONTEXT=1), CPU decode experts and speculative=none")
         if glm_native and ((not glm_modelopt and cfg.get("decode_graphs")) or cfg.get("decode_cache_mib", 0)):
             ap.error("native EXL3 does not support decode_graphs or decode_cache_mib")
         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
