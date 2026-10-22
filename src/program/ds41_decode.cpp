@@ -1777,7 +1777,7 @@ public:
             }
             const std::string p = "blk." + std::to_string(l) + ".";
             if (gpu_timing_ && producer_.joinable()) mark(0);
-            if (dtiming_ && T <= 8) dmark(0);
+            if (dtiming_ && T <= 64) dmark(0);
             if (dsp_.on && !sess_) capture_features(l);
             if (const int e = c.engram_index(l); e >= 0) {
                 if (e > 0 && engram_later_.joinable()) {   // the background rows
@@ -1846,7 +1846,7 @@ public:
             k::glm_rms_norm_rows(x_.f(), w(p + "attn_norm.weight"), xn_.f(), c.hidden, T, c.rms_eps, stream_);
             if (hook && observe) observe("attn_norm", l, xn_.f(), size_t(c.hidden));
             { const auto a0 = std::chrono::steady_clock::now(); attention(l); attn_host_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count(); }
-            if (dtiming_ && T <= 8) dmark(5);
+            if (dtiming_ && T <= 64) dmark(5);
             k::ds41_hc_post(y_.f(), h_.f(), coeff_attn_.f(4), coeff_attn_.f(8), h2_.f(), c.hidden, stream_, T);
             std::swap(h_, h2_);
             if (hook && observe) observe("hc_attn_post", l, h_.f(), size_t(4) * c.hidden);
@@ -1858,9 +1858,9 @@ public:
             if (hook && observe) observe("hc_ffn_pre", l, x_.f(), size_t(c.hidden));
             k::glm_rms_norm_rows(x_.f(), w(p + "ffn_norm.weight"), xn_.f(), c.hidden, T, c.rms_eps, stream_);
             if (hook && observe) observe("ffn_norm", l, xn_.f(), size_t(c.hidden));
-            if (dtiming_ && T <= 8) dmark(6);
+            if (dtiming_ && T <= 64) dmark(6);
             { const auto f0 = std::chrono::steady_clock::now(); ffn(l); ffn_host_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count(); }
-            if (dtiming_ && T <= 8) dmark(8);
+            if (dtiming_ && T <= 64) dmark(8);
             k::ds41_hc_post(y_.f(), h_.f(), coeff_ffn_.f(4), coeff_ffn_.f(8), h2_.f(), c.hidden, stream_, T);
             std::swap(h_, h2_);
             if (hook && observe) observe("l_out", l, h_.f(), size_t(4) * c.hidden);
@@ -2353,7 +2353,7 @@ private:
         const int fwd = ratio ? 2 : 0, back = ratio ? 3 : 1;
         const int nope = c.head_dim - c.rope_dim, pairs = c.rope_dim / 2, step = kTables * 64;
         const bool hook = T == 1 && observe && !sess_;
-        if (dtiming_ && T <= 8) dmark(1);
+        if (dtiming_ && T <= 64) dmark(1);
         quantize_xn();
         mat_xn(p + "attn_q_a.weight", qa_.f());
         k::glm_rms_norm_rows(qa_.f(), w(p + "attn_q_a_norm.weight"), qr_.f(), c.q_rank, T, c.rms_eps, stream_);
@@ -2361,7 +2361,7 @@ private:
         mat(p + "attn_q_b.weight", qr_.f(), q_.f(), T);
         k::ds41_rope(q_.f(), T * c.heads, c.head_dim, nope, pairs, table(0, fwd), stream_, c.heads, step);
         if (hook) observe("q", l, q_.f(), size_t(c.heads) * c.head_dim);
-        if (dtiming_ && T <= 8) dmark(2);
+        if (dtiming_ && T <= 64) dmark(2);
         // the window keys: normalized, rotated, into the ring (slot = position % ring)
         mat_xn(p + "attn_kv.weight", kv_.f());
         k::glm_rms_norm_rows(kv_.f(), w(p + "attn_kv_a_norm.weight"), kvn_.f(), c.head_dim, T, c.rms_eps, stream_);
@@ -2384,7 +2384,7 @@ private:
         }
         const float* sinks = w(p + "attn_sinks.weight");
         const float scale = 1.0f / std::sqrt(float(c.head_dim));
-        if (dtiming_ && T <= 8) dmark(3);
+        if (dtiming_ && T <= 64) dmark(3);
         if (sess_) {   // sessions: one launch pair, each token over its own ring and cache
             int* info = attn_info_;
             int bound = 1;
@@ -2484,7 +2484,7 @@ private:
                               rows, comp_i, row_width(), sel, nsel, sinks, scale, attn_scores_.f(),
                               att_.f(size_t(i) * c.heads * c.head_dim), stream_, nsel_dev);
         }
-        if (dtiming_ && T <= 8) dmark(4);
+        if (dtiming_ && T <= 64) dmark(4);
         k::ds41_rope(att_.f(), T * c.heads, c.head_dim, nope, pairs, table(0, back), stream_, c.heads, step);
         if (hook) observe("attn_derope", l, att_.f(), size_t(c.heads) * c.head_dim);
         // grouped output projection: group g's out_rank rows read heads [g heads/groups, (g+1) heads/groups)
@@ -3513,7 +3513,7 @@ private:
     // ranges) instead of a GEMV chain per route; adds into g_sum_
     Dev dq_xq_, dq_gu_, dq_hf_, dq_hq_, dq_dout_, dq_idx_, dq_w_, dq_bound_, dq_iota_;
     int* dq_host_ = nullptr;
-    static constexpr int kDqRows = 64;
+    static constexpr int kDqRows = 512;   // routes of a pass through resident_mmq (T x top_k; batched sessions: 32 x 6)
     bool resident_mmq(int l, int T, int K, const int* ids, const float* wts) {
         const auto& c = cfg_;
         namespace mq = strata::prefill::mmq;
@@ -3741,7 +3741,7 @@ private:
         // router on the host: sqrt(softplus(logits)), top-k on score + bias, weights from the unbiased score
         const auto f0 = std::chrono::steady_clock::now();
         mat(p + "ffn_gate_inp.weight", xn_.f(), logits_.f(), T);
-        if (dtiming_ && T <= 8) dmark(7);
+        if (dtiming_ && T <= 64) dmark(7);
         std::vector<float> logits(size_t(T) * c.experts);
         ck(cudaMemcpyAsync(logits.data(), logits_.p, logits.size() * 4, cudaMemcpyDeviceToHost, stream_), "router");
         float* host_y = pinned_[1 + (l & 1)];
@@ -3943,6 +3943,7 @@ private:
         const bool peer = peer_ && (decode_grouped ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
                                     : peer_mmq && peer_->mmq && T > 1 ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
                                                              : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
+        if (dtiming_ && T <= 64) dmark(9);   // "experts": the GPU's experts enqueued (and run); "lane_wait": the CPU's and the peer's after
         const auto x1 = std::chrono::steady_clock::now();
         if (lane_async) lane_->finish();
         else lane_->run(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
@@ -4752,7 +4753,7 @@ public:
     size_t dmark_used_ = 0;
     // phases: 0 layer start (Engram, mixes, norm), 1 q, 2 kv / compressor / indexer, 3 attention, 4 output projection,
     // 5 hc post + FFN mixes + norm, 6 router GEMV, 7 experts (router sync to the FFN's end), 8 hc post to the next layer
-    double dtime_[9] = {}, dtokens_ = 0;
+    double dtime_[10] = {}, dtokens_ = 0;
     std::vector<int> dmark_id_;
     double xt_[3] = {};   // decode FFN host time: enqueue, lane, peer
     double peer_gpu_ms() const { return peer_ ? peer_->gpu_ms : 0.0; }
@@ -4867,6 +4868,9 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
     d.tier_hits_ = d.tier_all_ = 0;
     d.prefill_done();
     std::fill(std::begin(d.xt_), std::end(d.xt_), 0.0);
+    std::fill(std::begin(d.dtime_), std::end(d.dtime_), 0.0);
+    d.dtokens_ = 0;
+    const double peer_gpu0 = d.peer_gpu_ms();
     const auto t2 = std::chrono::steady_clock::now();
     std::vector<std::vector<int>> out(static_cast<size_t>(S));
     for (int k = 0; k < steps; ++k) {
@@ -4877,6 +4881,12 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
     }
     const auto t3 = std::chrono::steady_clock::now();
     const double prefill_s = std::chrono::duration<double>(p1 - p0).count(), decode_s = std::chrono::duration<double>(t3 - t2).count();
+    if (d.dtokens_ > 0) {   // (the prompts' passes are wider than the timed ones)
+        static const char* names[10] = {"pre", "q", "kv_index", "attn", "out", "ffn_pre", "router", "experts", "tail", "lane_wait"};
+        std::cerr << "DS41 decode_gpu_ms_per_pass";
+        for (int q = 0; q < 10; ++q) std::cerr << " " << names[q] << "=" << d.dtime_[q] / d.dtokens_;
+        std::cerr << " passes=" << d.dtokens_ << " peer_gpu=" << (d.peer_gpu_ms() - peer_gpu0) / d.dtokens_ << "\n";
+    }
     std::cerr << "DS41 profile_s step=" << d.prof_[0] << " gpu_to_router=" << d.prof_[1] << " cpu_experts=" << d.prof_[2]
               << " gpu_tier_hit=" << (d.tier_all_ > 0 ? d.tier_hits_ / d.tier_all_ : 0) << " engram=" << d.prof_[4] << " index_host=" << d.prof_[5]
               << " head=" << d.prof_[6] << " (ffn: enqueue " << d.xt_[0] << " lane " << d.xt_[1] << " peer " << d.xt_[2] << ")\n";
@@ -5083,9 +5093,9 @@ int run(int argc, char** argv) {
     const double prefill_s = std::chrono::duration<double>(t2 - t1).count();
     const double decode_s = std::chrono::duration<double>(t3 - t2b).count();
     if (d.dtokens_ > 0) {
-        static const char* names[9] = {"pre", "q", "kv_index", "attn", "out", "ffn_pre", "router", "experts", "tail"};
+        static const char* names[10] = {"pre", "q", "kv_index", "attn", "out", "ffn_pre", "router", "experts", "tail", "lane_wait"};
         std::cerr << "DS41 decode_gpu_ms_per_pass";
-        for (int q = 0; q < 9; ++q) std::cerr << " " << names[q] << "=" << d.dtime_[q] / d.dtokens_;
+        for (int q = 0; q < 10; ++q) std::cerr << " " << names[q] << "=" << d.dtime_[q] / d.dtokens_;
         std::cerr << " passes=" << d.dtokens_ << " host_ms_per_pass attention=" << (d.attn_host_s_ - attn_host0) * 1e3 / d.dtokens_
                   << " ffn=" << (d.ffn_host_s_ - ffn_host0) * 1e3 / d.dtokens_ << " layers=" << (d.loop_s_ - loop0) * 1e3 / d.dtokens_
                   << " (ffn: enqueue " << d.xt_[0] * 1e3 / d.dtokens_ << " lane " << d.xt_[1] * 1e3 / d.dtokens_ << " peer " << d.xt_[2] * 1e3 / d.dtokens_
