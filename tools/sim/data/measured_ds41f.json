@@ -1,5 +1,5 @@
 {
- "notes": "DeepSeek V4 / V4.1 Flash measurements the model is checked against. kind a64fx_*: gemm a64fx/ds41f runner on 12 nodes (fit: true rows set A64FX_CURRENT). kind decode/prefill: the gemm hetero/ds4f runner for V4-Flash on TR16 + RX 9070 XT (fit: false, cross-check only; that runner's own ceiling analysis says 12 tok/s). Tolerances are relative.",
+ "notes": "DeepSeek V4 / V4.1 Flash measurements the model is checked against. kind a64fx_*: gemm a64fx/ds41f runner on 12 nodes (fit: true rows set A64FX_CURRENT). kind decode/prefill: the gemm hetero/ds4f runner for V4-Flash on TR16 + RX 9070 XT (fit: false, cross-check only; that runner's own ceiling analysis says 12 tok/s). Tolerances are relative. kind v100_decode: the Strata runner on 2x Tesla V100 (ds41f.V100Hw; fit: true rows set its pass/token/expert constants, the Engram read rate is fit to the full-node IQ2_XXSE4 rows).",
  "records": [
   {
    "name": "V4.1-Flash 12 A64FX nodes, best decode (INT8, BF16 reductions, split mHC), 1K history",
@@ -179,6 +179,134 @@
    },
    "measured": {
     "tok_s": 10.34
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 76 GiB in RAM, DSpark, wikitext",
+   "kind": "v100_decode",
+   "tolerance": 0.1,
+   "fit": true,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 76,
+    "drafted": 2.61,
+    "acceptance": 0.683
+   },
+   "measured": {
+    "tok_s": 25.3
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 76 GiB in RAM, plain, wikitext",
+   "kind": "v100_decode",
+   "tolerance": 0.1,
+   "fit": true,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 76,
+    "spec": false,
+    "drafter_on_gpu": false
+   },
+   "measured": {
+    "tok_s": 22.3
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE3, Engram whole in RAM, DSpark, wikitext",
+   "kind": "v100_decode",
+   "tolerance": 0.1,
+   "fit": true,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on",
+   "plan": {
+    "pack": "IQ2_XXSE3",
+    "engram_gib": 79,
+    "drafted": 2.12,
+    "acceptance": 0.736
+   },
+   "measured": {
+    "tok_s": 30.7
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE3, Engram whole in RAM, DSpark, code",
+   "kind": "v100_decode",
+   "tolerance": 0.1,
+   "fit": true,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on",
+   "plan": {
+    "pack": "IQ2_XXSE3",
+    "engram_gib": 79,
+    "drafted": 4.3,
+    "acceptance": 0.63
+   },
+   "measured": {
+    "tok_s": 34.6
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 76 GiB, DSpark, code (a 52 ms/pass Lustre stall)",
+   "kind": "v100_decode",
+   "tolerance": 0.25,
+   "fit": false,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on; the same configuration's wikitext stall varied 9-20 ms between runs",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 76,
+    "drafted": 4.24,
+    "acceptance": 0.653
+   },
+   "measured": {
+    "tok_s": 21.2
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 60 GiB (168G node), DSpark, wikitext",
+   "kind": "v100_decode",
+   "tolerance": 0.25,
+   "fit": false,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 60,
+    "drafted": 2.35,
+    "acceptance": 0.741
+   },
+   "measured": {
+    "tok_s": 22.1
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 36 GiB (140G node), DSpark, wikitext",
+   "kind": "v100_decode",
+   "tolerance": 0.25,
+   "fit": false,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on; another day's Lustre: the first table's misses are read before layer 1",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 36,
+    "drafted": 2.5,
+    "acceptance": 0.745
+   },
+   "measured": {
+    "tok_s": 19.0
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 36 GiB (140G node), DSpark, code",
+   "kind": "v100_decode",
+   "tolerance": 0.25,
+   "fit": false,
+   "source": "docs/DS41F_PLAN.md 8e (2026-10-22): 600-token prompt, 64 tokens, every decode option on",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 36,
+    "drafted": 4.35,
+    "acceptance": 0.635
+   },
+   "measured": {
+    "tok_s": 18.3
    }
   }
  ],

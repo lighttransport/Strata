@@ -102,11 +102,11 @@ class KernelBoundTest(unittest.TestCase):
 class ValidationTest(unittest.TestCase):
     def test_rows(self):
         rows = ds41f.validate()
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 18)
         for r in rows:
             self.assertTrue(r["within"], r["name"])
         fitted = [r for r in rows if r["fit"]]
-        self.assertEqual(len(fitted), 5)
+        self.assertEqual(len(fitted), 9)
         for r in fitted:
             self.assertLessEqual(abs(r["error"]), 0.05, r["name"])
 
@@ -150,7 +150,7 @@ class UntouchedTest(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             code = glm_ds41f_sim.main(["validate"])
         self.assertEqual(code, 0)
-        self.assertIn("10 of 10 rows within tolerance", out.getvalue())
+        self.assertIn("18 of 18 rows within tolerance", out.getvalue())
 
 class RunnerTest(unittest.TestCase):
     def test_target_beats_now(self):
@@ -168,6 +168,40 @@ class RunnerTest(unittest.TestCase):
         warm = ds41f.runner_prefill(ds41f.RunnerPlan(profile="target", mode="stream", chunk=2048), 2048)
         cold = ds41f.runner_prefill(ds41f.RunnerPlan(profile="target", mode="stream", chunk=2048, uncached_gb=15), 2048)
         self.assertLess(cold["tok_s"], warm["tok_s"])   # short prompts are upload-bound: SSD reads show
+
+
+class V100Test(unittest.TestCase):
+    def test_calibration_points(self):
+        rows = [r for r in ds41f.validate() if r["kind"] == "v100_decode"]
+        self.assertEqual(len(rows), 8)
+        for r in rows:
+            self.assertTrue(r["within"], r["name"])
+            if r["fit"]:
+                self.assertLess(abs(r["error"]), 0.10, r["name"])
+
+    def test_levers(self):
+        base = ds41f.v100_decode(ds41f.V100Plan())
+        e3 = ds41f.v100_decode(ds41f.V100Plan(pack="IQ2_XXSE3", engram_gib=79))
+        self.assertGreater(e3["tok_s"], base["tok_s"])                     # Engram reads are the IQ2_XXSE4 gap
+        self.assertAlmostEqual(e3["engram_ms"], 0.0)
+        lane = ds41f.v100_decode(ds41f.V100Plan(set=dict(cpu_expert_ms=0.03)))
+        self.assertGreater(lane["tok_s"], base["tok_s"])
+        more = ds41f.v100_decode(ds41f.V100Plan(extra_gpu_gib=6.3))
+        self.assertGreater(more["hit"], base["hit"])
+        plain = ds41f.v100_decode(ds41f.V100Plan(spec=False, drafter_on_gpu=False))
+        self.assertGreater(plain["hit"], base["hit"])                     # the drafter's VRAM costs resident experts
+
+    def test_sessions_and_context(self):
+        one = ds41f.v100_decode(ds41f.V100Plan(spec=False))
+        four = ds41f.v100_decode(ds41f.V100Plan(spec=False, sessions=4))
+        self.assertGreater(four["tok_s"], one["tok_s"])                   # batched sessions share the weights' reads
+        self.assertLess(four["per_session_tok_s"], one["per_session_tok_s"])
+        short = ds41f.v100_decode(ds41f.V100Plan())
+        long32 = ds41f.v100_decode(ds41f.V100Plan(context=1048576, kv="fp32"))
+        long8 = ds41f.v100_decode(ds41f.V100Plan(context=1048576, kv="q8", index_tc=True))
+        self.assertLess(long32["tok_s"], short["tok_s"])
+        self.assertGreater(long8["tok_s"], long32["tok_s"])
+        self.assertAlmostEqual(long32["kv_gib"], 6400 * 1048576 / GIB)
 
 
 class A64FXSdotTest(unittest.TestCase):

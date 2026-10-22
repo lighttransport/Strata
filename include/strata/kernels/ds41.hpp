@@ -55,12 +55,12 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
                             float* out, void* stream);
 /// score[t] = sum_h relu(keys[t].q[h]) (w[h] w_scale) for rows t < rows (keys[t] at t * key_stride, width dim).
 void ds41_index_score(const float* q, int heads, int dim, const float* keys, int key_stride, int rows, const float* w,
-                      float w_scale, float* score, void* stream);
+                      float w_scale, float* score, void* stream, bool half = false);
 /// The ratio-2 compressor's merge: out[c] = sum_r v_r[c] softmax_r(s_r[c]) over the two positions.
 /// ds41_index_score for a pass of `tokens` tokens: token t's q [heads][dim] and w [heads] at t, its
 /// (pos0 + t + 1) / ratio scores at score + t * score_stride.
 void ds41_index_score_batched(const float* q, int heads, int dim, const float* keys, int key_stride, int pos0, int ratio, int tokens,
-                              const float* w, float w_scale, float* score, int score_stride, void* stream);
+                              const float* w, float w_scale, float* score, int score_stride, void* stream, bool half = false);
 /// Each token's top k of its visible scores (ties to the lowest index; -inf rows dropped), ascending, into sel [tokens][k]
 /// and count [tokens]. mode 1: also the top cand_k blocks of `block` rows by their maxima (the newest pinned) as
 /// flags cand [tokens][cand_stride]; mode 2: only rows in cand's flagged blocks.
@@ -111,6 +111,24 @@ void ds41_mxfp4_moe(const uint8_t* w, size_t expert_bytes, size_t row_bytes, con
 void ds41_markov_row(const uint16_t* w1, int dim, const int* tok, int i, float* row, void* stream);
 void ds41_argmax_into(const float* v, int n, int* tok, int i, void* stream);
 void ds41_confidence(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i, void* stream);
+/// keys: with half, an FP16 cache (IEEE half bits; the pointer cast to float*) - for ds41_index_score*.
+/// An FP16 cache's selected rows as floats: out[(t topk + j) rw ..] = cache[sel[t topk + j] rw ..] for each token's
+/// first min(topk, (pos0 + t + 1) / ratio) picks.
+void ds41_gather_sel_h(const uint16_t* cache, int rw, const int* sel, int topk, int tokens, int pos0, int ratio, float* out, void* stream);
+/// Q8_0 caches (rows of row_bytes: per 32 values an FP16 scale and 32 int8): the index scores (keys from value
+/// key_off; rows: (pos0 + t + 1) / ratio per token, or fixed_rows > 0 for all), the selected rows' gather as in
+/// ds41_gather_sel_h, and float rows [rows][rw] stored as such rows.
+void ds41_index_score_q8(const float* q, int heads, int dim, const uint8_t* cache, size_t row_bytes, int key_off, int pos0, int ratio, int tokens,
+                         int fixed_rows, const float* w, float w_scale, float* score, int score_stride, void* stream);
+void ds41_gather_sel_q8(const uint8_t* cache, size_t row_bytes, int rw, const int* sel, int topk, int tokens, int pos0, int ratio, float* out,
+                        void* stream);
+void ds41_quant_rows_q8(const float* x, int rows, int rw, uint8_t* out, size_t row_bytes, void* stream);
+/// GEMM index scoring: a Q8_0 cache's keys [row0, row0 + rows) as FP16 [rows][dim]; and the reduction of the
+/// products c [tokens][heads][rows] (c[(t heads + h) rows + r] = k_r . q_th) into
+/// score[t][row0 + r] = w_scale sum_h w[t][h] relu(c) for each token's (pos0 + t + 1) / ratio visible rows.
+void ds41_keys_q8_f16(const uint8_t* cache, size_t row_bytes, int key_off, int dim, int row0, int rows, uint16_t* out, void* stream);
+void ds41_index_reduce(const float* c, int rows, int tokens, int heads, const float* w, float w_scale, int pos0, int ratio, int row0,
+                       float* score, int score_stride, void* stream);
 /// dst[b][a][j] = src[a][b][j] (a < na, b < nb, j < width floats): [tokens][groups][w] <-> [groups][tokens][w].
 void ds41_swap_blocks(const float* src, float* dst, int na, int nb, int width, void* stream);
 /// dst[t ld_dst + j] = mean over the 4 hyper-connection streams of h[t][s][j].

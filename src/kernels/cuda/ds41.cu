@@ -686,16 +686,59 @@ __global__ void __launch_bounds__(128) attn_wmma_kernel(const float* q, int head
 }
 #endif
 
+// an FP16 cache value (IEEE half bits) as float
+__device__ inline float h2f(uint16_t h) {
+    const uint32_t s = uint32_t(h & 0x8000u) << 16, e = (h >> 10) & 0x1f, m = h & 0x3ffu;
+    if (e == 0) {   // zero or subnormal
+        const float v = float(m) * 5.9604644775390625e-8f;   // 2^-24
+        return s ? -v : v;
+    }
+    if (e == 31) return __uint_as_float(s | 0x7f800000u | (m << 13));
+    return __uint_as_float(s | ((e + 112) << 23) | (m << 13));
+}
+// float -> IEEE half bits, round to nearest even (portable: no cuda_fp16.h)
+__device__ inline uint16_t f2h(float f) {
+    const uint32_t u = __float_as_uint(f), sign = (u >> 16) & 0x8000u;
+    const int e = int((u >> 23) & 0xff) - 127 + 15;
+    if (((u >> 23) & 0xff) == 0xff) return uint16_t(sign | 0x7c00u | ((u & 0x7fffff) ? 0x200u : 0u));
+    if (e >= 31) return uint16_t(sign | 0x7c00u);
+    if (e > 0) {
+        const uint32_t m = u & 0x7fffff, rest = m & 0x1fff;
+        uint32_t hv = (uint32_t(e) << 10) | (m >> 13);
+        if (rest > 0x1000 || (rest == 0x1000 && (hv & 1))) ++hv;
+        return uint16_t(sign | hv);
+    }
+    if (e <= -11) return uint16_t(sign);
+    const uint32_t m = (u & 0x7fffff) | 0x800000;
+    const int shift = 14 - e;
+    uint32_t hv = m >> shift;
+    const uint32_t rest = m & ((1u << shift) - 1), half = 1u << (shift - 1);
+    if (rest > half || (rest == half && (hv & 1))) ++hv;
+    return uint16_t(sign | hv);
+}
+__device__ inline float kv_ld(const float* p) { return *p; }
+__device__ inline float kv_ld(const uint16_t* p) { return h2f(*p); }
+// a cache row's value i by storage kind: 0 float, 1 FP16, 2 Q8_0 blocks (FP16 scale + 32 int8, 34 bytes)
+template <int KIND> __device__ inline float kv_at(const uint8_t* row, int i) {
+    if constexpr (KIND == 0) return reinterpret_cast<const float*>(row)[i];
+    else if constexpr (KIND == 1) return h2f(reinterpret_cast<const uint16_t*>(row)[i]);
+    else {
+        const uint8_t* b = row + size_t(i / 32) * 34;
+        return h2f(uint16_t(b[0] | (b[1] << 8))) * float(int8_t(b[2 + i % 32]));
+    }
+}
+
 // one warp per key row
-__global__ void index_score_kernel(const float* q, int heads, int dim, const float* keys, int key_stride, int rows,
+template <class KT>
+__global__ void index_score_kernel(const float* q, int heads, int dim, const KT* keys, int key_stride, int rows,
                                    const float* w, float w_scale, float* score) {
     const int r = blockIdx.x * (blockDim.x / 32) + threadIdx.x / 32, lane = threadIdx.x % 32;
     if (r >= rows) return;
-    const float* k = keys + size_t(r) * key_stride;
+    const KT* k = keys + size_t(r) * key_stride;
     float total = 0;
     for (int h = 0; h < heads; ++h) {
         float s = 0;
-        for (int i = lane; i < dim; i += 32) s += k[i] * q[size_t(h) * dim + i];
+        for (int i = lane; i < dim; i += 32) s += kv_ld(k + i) * q[size_t(h) * dim + i];
         s = warp_sum(s);
         s = __shfl_sync(0xffffffff, s, 0);
         total += fmaxf(s, 0.0f) * (w[h] * w_scale);
@@ -704,23 +747,105 @@ __global__ void index_score_kernel(const float* q, int heads, int dim, const flo
 }
 
 // index scores of a pass: token t (blockIdx.y) scores its (pos0 + t + 1) / ratio visible rows
-__global__ void index_score_batched_kernel(const float* q, int heads, int dim, const float* keys, int key_stride, int pos0, int ratio,
+template <class KT>
+__global__ void index_score_batched_kernel(const float* q, int heads, int dim, const KT* keys, int key_stride, int pos0, int ratio,
                                            const float* w, float w_scale, float* score, int score_stride) {
     const int t = blockIdx.y, rows = (pos0 + t + 1) / ratio;
     const int r = blockIdx.x * (blockDim.x / 32) + threadIdx.x / 32, lane = threadIdx.x % 32;
     if (r >= rows) return;
     q += size_t(t) * heads * dim;
     w += size_t(t) * heads;
-    const float* k = keys + size_t(r) * key_stride;
+    const KT* k = keys + size_t(r) * key_stride;
     float total = 0;
     for (int h = 0; h < heads; ++h) {
         float s = 0;
-        for (int i = lane; i < dim; i += 32) s += k[i] * q[size_t(h) * dim + i];
+        for (int i = lane; i < dim; i += 32) s += kv_ld(k + i) * q[size_t(h) * dim + i];
         s = warp_sum(s);
         s = __shfl_sync(0xffffffff, s, 0);
         total += fmaxf(s, 0.0f) * (w[h] * w_scale);
     }
     if (!lane) score[size_t(t) * score_stride + r] = total;
+}
+
+// the index scores over a Q8_0 cache (row_bytes per row, keys from value key_off): the batched kernel's work
+__global__ void index_score_q8_kernel(const float* q, int heads, int dim, const uint8_t* cache, size_t row_bytes, int key_off, int pos0,
+                                      int ratio, const float* w, float w_scale, float* score, int score_stride, int fixed_rows) {
+    const int t = blockIdx.y, rows = fixed_rows > 0 ? fixed_rows : (pos0 + t + 1) / ratio;
+    const int r = blockIdx.x * (blockDim.x / 32) + threadIdx.x / 32, lane = threadIdx.x % 32;
+    if (r >= rows) return;
+    q += size_t(t) * heads * dim;
+    w += size_t(t) * heads;
+    const uint8_t* row = cache + size_t(r) * row_bytes;
+    float kv[4];
+#pragma unroll
+    for (int j = 0; j < 4; ++j) kv[j] = lane + 32 * j < dim ? kv_at<2>(row, key_off + lane + 32 * j) : 0.0f;
+    float total = 0;
+    for (int h = 0; h < heads; ++h) {
+        float s = 0;
+#pragma unroll
+        for (int j = 0; j < 4; ++j) if (lane + 32 * j < dim) s += kv[j] * q[size_t(h) * dim + lane + 32 * j];
+        s = warp_sum(s);
+        s = __shfl_sync(0xffffffff, s, 0);
+        total += fmaxf(s, 0.0f) * (w[h] * w_scale);
+    }
+    if (!lane) score[size_t(t) * score_stride + r] = total;
+}
+// a Q8_0 cache's selected rows as floats (see gather_sel_h_kernel)
+__global__ void gather_sel_q8_kernel(const uint8_t* cache, size_t row_bytes, int rw, const int* sel, int topk, int pos0, int ratio, float* out) {
+    const int j = blockIdx.x, t = blockIdx.y, visible = (pos0 + t + 1) / ratio;
+    if (j >= min(topk, visible)) return;
+    const int s = min(max(sel[size_t(t) * topk + j], 0), visible - 1);
+    const uint8_t* src = cache + size_t(s) * row_bytes;
+    float* dst = out + (size_t(t) * topk + j) * rw;
+    for (int i = threadIdx.x; i < rw; i += blockDim.x) dst[i] = kv_at<2>(src, i);
+}
+// float rows -> Q8_0 rows (block (row, 32-value block); max |x| / 127, round to nearest)
+__global__ void quant_rows_q8_kernel(const float* x, int rw, uint8_t* out, size_t row_bytes) {
+    const int r = blockIdx.x, b = threadIdx.x / 32, lane = threadIdx.x % 32;
+    if (b * 32 >= rw) return;
+    const float v = x[size_t(r) * rw + b * 32 + lane];
+    float a = fabsf(v);
+    for (int o = 16; o; o >>= 1) a = fmaxf(a, __shfl_xor_sync(0xffffffff, a, o));
+    const float d = a / 127.0f, id = d > 0 ? 1.0f / d : 0.0f;
+    uint8_t* blk = out + size_t(r) * row_bytes + size_t(b) * 34;
+    blk[2 + lane] = uint8_t(int8_t(__float2int_rn(v * id)));
+    if (lane == 0) {   // FP16 bits of d
+        const uint16_t h = f2h(d);
+        blk[0] = uint8_t(h & 0xff);
+        blk[1] = uint8_t(h >> 8);
+    }
+}
+
+
+// GEMM index scoring (STRATA_DS41_INDEX_GEMM): a Q8_0 cache's keys [row0, row0 + n) as FP16 [n][dim]
+__global__ void keys_q8_f16_kernel(const uint8_t* cache, size_t row_bytes, int key_off, int dim, int row0, uint16_t* out) {
+    const int r = blockIdx.x;
+    const uint8_t* row = cache + size_t(row0 + r) * row_bytes;
+    for (int i = threadIdx.x; i < dim; i += blockDim.x) {
+        const float v = kv_at<2>(row, key_off + i);
+        out[size_t(r) * dim + i] = f2h(v);
+    }
+}
+// scores[t][row0 + r] = w_scale sum_h w[t][h] relu(c[(t heads + h) n + r]) for the token's visible rows
+__global__ void index_reduce_kernel(const float* c, int n, int heads, const float* w, float w_scale, int pos0, int ratio, int row0,
+                                    float* score, int score_stride) {
+    const int t = blockIdx.y, r = blockIdx.x * blockDim.x + threadIdx.x;
+    if (r >= n || row0 + r >= (pos0 + t + 1) / ratio) return;
+    const float* wt = w + size_t(t) * heads;
+    float total = 0;
+    for (int h = 0; h < heads; ++h) total += fmaxf(c[(size_t(t) * heads + h) * n + r], 0.0f) * (wt[h] * w_scale);
+    score[size_t(t) * score_stride + row0 + r] = total;
+}
+
+// an FP16 cache's selected rows as floats: out[(t topk + j) rw ..] = cache[sel[t topk + j] rw ..] for the token's first
+// min(topk, visible) picks (an index past the visible rows - a stale slot - is clamped; attention never reads it)
+__global__ void gather_sel_h_kernel(const uint16_t* cache, int rw, const int* sel, int topk, int pos0, int ratio, float* out) {
+    const int j = blockIdx.x, t = blockIdx.y, visible = (pos0 + t + 1) / ratio;
+    if (j >= min(topk, visible)) return;
+    const int s = min(max(sel[size_t(t) * topk + j], 0), visible - 1);
+    const uint16_t* src = cache + size_t(s) * rw;
+    float* dst = out + (size_t(t) * topk + j) * rw;
+    for (int i = threadIdx.x; i < rw; i += blockDim.x) dst[i] = h2f(src[i]);
 }
 
 // top-k (radix select), one block of kTopkThreads per token
@@ -1329,19 +1454,26 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
 size_t ds41_attention_scratch(int heads) { return size_t(heads) * kMaxRows * sizeof(float); }
 
 void ds41_index_score(const float* q, int heads, int dim, const float* keys, int key_stride, int rows, const float* w,
-                      float w_scale, float* score, void* stream) {
+                      float w_scale, float* score, void* stream, bool half) {
     if (rows < 1) return;
-    index_score_kernel<<<blocks(rows, 8), 256, 0, (cudaStream_t)stream>>>(q, heads, dim, keys, key_stride, rows, w, w_scale,
-                                                                          score);
+    if (half)
+        index_score_kernel<uint16_t><<<blocks(rows, 8), 256, 0, (cudaStream_t)stream>>>(q, heads, dim, reinterpret_cast<const uint16_t*>(keys),
+                                                                                        key_stride, rows, w, w_scale, score);
+    else
+        index_score_kernel<float><<<blocks(rows, 8), 256, 0, (cudaStream_t)stream>>>(q, heads, dim, keys, key_stride, rows, w, w_scale, score);
     check("index_score");
 }
 
 void ds41_index_score_batched(const float* q, int heads, int dim, const float* keys, int key_stride, int pos0, int ratio, int tokens,
-                              const float* w, float w_scale, float* score, int score_stride, void* stream) {
+                              const float* w, float w_scale, float* score, int score_stride, void* stream, bool half) {
     const int rows = (pos0 + tokens) / ratio;
     if (rows < 1 || tokens < 1) return;
-    index_score_batched_kernel<<<dim3(unsigned(blocks(rows, 8)), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(
-        q, heads, dim, keys, key_stride, pos0, ratio, w, w_scale, score, score_stride);
+    if (half)
+        index_score_batched_kernel<uint16_t><<<dim3(unsigned(blocks(rows, 8)), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(
+            q, heads, dim, reinterpret_cast<const uint16_t*>(keys), key_stride, pos0, ratio, w, w_scale, score, score_stride);
+    else
+        index_score_batched_kernel<float><<<dim3(unsigned(blocks(rows, 8)), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(
+            q, heads, dim, keys, key_stride, pos0, ratio, w, w_scale, score, score_stride);
     check("index_score_batched");
 }
 
@@ -1504,6 +1636,49 @@ void ds41_argmax_into(const float* v, int n, int* tok, int i, void* stream) {
 void ds41_confidence(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i, void* stream) {
     conf_kernel<<<1, 512, 0, (cudaStream_t)stream>>>(cw, x, hidden, row, dim, conf, i);
     check("confidence");
+}
+
+void ds41_gather_sel_h(const uint16_t* cache, int rw, const int* sel, int topk, int tokens, int pos0, int ratio, float* out, void* stream) {
+    if (tokens < 1) return;
+    gather_sel_h_kernel<<<dim3(unsigned(topk), unsigned(tokens)), 128, 0, (cudaStream_t)stream>>>(cache, rw, sel, topk, pos0, ratio, out);
+    check("gather_sel_h");
+}
+
+void ds41_index_score_q8(const float* q, int heads, int dim, const uint8_t* cache, size_t row_bytes, int key_off, int pos0, int ratio, int tokens,
+                         int fixed_rows, const float* w, float w_scale, float* score, int score_stride, void* stream) {
+    const int rows = fixed_rows > 0 ? fixed_rows : (pos0 + tokens) / ratio;
+    if (rows < 1 || tokens < 1 || dim > 128) {
+        if (dim > 128) throw std::invalid_argument("ds41_index_score_q8: dim");
+        return;
+    }
+    index_score_q8_kernel<<<dim3(unsigned(blocks(rows, 8)), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(
+        q, heads, dim, cache, row_bytes, key_off, pos0, ratio, w, w_scale, score, score_stride, fixed_rows);
+    check("index_score_q8");
+}
+void ds41_gather_sel_q8(const uint8_t* cache, size_t row_bytes, int rw, const int* sel, int topk, int tokens, int pos0, int ratio, float* out,
+                        void* stream) {
+    if (tokens < 1) return;
+    gather_sel_q8_kernel<<<dim3(unsigned(topk), unsigned(tokens)), 128, 0, (cudaStream_t)stream>>>(cache, row_bytes, rw, sel, topk, pos0, ratio, out);
+    check("gather_sel_q8");
+}
+void ds41_quant_rows_q8(const float* x, int rows, int rw, uint8_t* out, size_t row_bytes, void* stream) {
+    if (rows < 1) return;
+    if (rw % 32 || rw > 1024) throw std::invalid_argument("ds41_quant_rows_q8: width");
+    quant_rows_q8_kernel<<<unsigned(rows), unsigned(rw), 0, (cudaStream_t)stream>>>(x, rw, out, row_bytes);
+    check("quant_rows_q8");
+}
+
+void ds41_keys_q8_f16(const uint8_t* cache, size_t row_bytes, int key_off, int dim, int row0, int rows, uint16_t* out, void* stream) {
+    if (rows < 1) return;
+    keys_q8_f16_kernel<<<unsigned(rows), 128, 0, (cudaStream_t)stream>>>(cache, row_bytes, key_off, dim, row0, out);
+    check("keys_q8_f16");
+}
+void ds41_index_reduce(const float* c, int rows, int tokens, int heads, const float* w, float w_scale, int pos0, int ratio, int row0,
+                       float* score, int score_stride, void* stream) {
+    if (rows < 1 || tokens < 1) return;
+    index_reduce_kernel<<<dim3(unsigned(blocks(rows, 256)), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(c, rows, heads, w, w_scale, pos0, ratio,
+                                                                                                          row0, score, score_stride);
+    check("index_reduce");
 }
 
 }  // namespace strata::kernels

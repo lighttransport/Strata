@@ -779,6 +779,143 @@ def runner_prefill(rp, prompt, layers=40, top_k=6, experts=384, last_source=20):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# The Strata DS4.1F runner on the x64 GPU node (2x Tesla V100 PCIe 32 GB, 2x Xeon Gold 6240, 181 GiB, Lustre),
+# IQ2_XXSE4 / IQ2_XXSE3, every decode option on (docs/DS41F_PLAN.md 8e), measured 2026-10-22. A decode step:
+#   plain:  one pass of T = 1 token;
+#   DSpark: draft (3-layer drafter on GPU0) + one verify pass of T = 1 + drafted tokens + the drafter's injection;
+# a pass = A + B T + C (CPU experts) + Engram stall + head/host overhead, where the CPU experts are
+# 40 layers x T x 6 routes x (1 - GPU tier hit) and the Engram stall is the file reads of rows not in RAM:
+# the first table's before layer 1 (not hidden), the second table's under the draft and layers 0-13.
+# A, B, C come from the full-node points with no Engram reads (IQ2_XXSE3, plain IQ2_XXSE4): C is the CPU lane's
+# effective cost per expert once its work overlaps the GPU's (the lane alone measures ~0.12 ms per IQ2_XXS expert
+# per layer, LANE_BENCH); B the per-token dense kernels (the phase timings: ~3.6 ms per extra token).
+@dataclasses.dataclass
+class V100Hw:
+    name: str = "xeon_v100"
+    pass_ms: float = 32.9             # per pass: fixed dense kernels, 40 router syncs, merges (fit)
+    token_ms: float = 6.1             # per token in a pass: dense kernels, attention, MoE bookkeeping (fit)
+    cpu_expert_ms: float = 0.06       # per CPU-lane expert evaluation, net of overlap (fit; the lane alone 0.12)
+    draft_ms: float = 15.0            # DSpark draft, Q8_0 trunk, device Markov chain (measured 14.9-15.9)
+    inject_ms: float = 0.4            # the drafter's keys of the accepted positions
+    host_ms: float = 1.5              # per pass: logits download, argmax (+ 0.7 ms per token, in token_ms)
+    engram_iops: float = 800.0        # effective random 4 KiB Lustre reads/s for Engram misses (raw buffered: ~1,550;
+                                      # fit to the full-node IQ2_XXSE4 points, varies by day: 600-1,000)
+    engram_rows: int = 24             # rows per table per token
+    table_gib: tuple = (51.5, 51.5)   # IQ2_XXSE4 tables (Q4_K)
+    expert_gib: float = 142.4         # all routed experts
+    gpu_expert_gib: float = 47.4      # resident on the two GPUs with the drafter on GPU0 (55.3 without it)
+    hit_exponent: float = 0.40        # tier hit = resident fraction ^ exponent (profile-ranked residency):
+                                      # 55.3 GiB -> 0.684, 47.4 GiB -> 0.644 (measured)
+    index_gbps: float = 800.0         # long context: indexer key reads (V100 HBM2)
+    index_tflops: float = 12.0        # long context: indexer scoring, FP32 (FP16 tensor cores: ~4x)
+    topk_gelem_s: float = 10.0        # long context: top-k selection, elements per second
+
+
+V100_PACKS = {   # Engram tables (GiB) per pack; the experts are the same IQ2_XXS / Q2_K in all three
+    "IQ2_XXSE4": (51.5, 51.5),
+    "IQ2_XXSE43": (51.5, 39.3),
+    "IQ2_XXSE3": (39.3, 39.3),
+}
+KV_BYTES = dict(fp32=6400, fp16=3200, q8=1700)   # per token: 640-float rows, layers 2/8/14 one per 2 positions, 20 one each
+
+
+@dataclasses.dataclass
+class V100Plan:
+    pack: str = "IQ2_XXSE4"
+    engram_gib: float = 76.0          # Engram in RAM (STRATA_DS41_ENGRAM_RAM_GIB): table 1 whole first
+    spec: bool = True                 # DSpark
+    drafted: float = 2.6              # drafted tokens per step (N=5, PMIN 0.4: wikitext 2.5-2.6, code 4.2-4.3)
+    acceptance: float = 0.68          # accepted / drafted (wikitext 0.67-0.74, code 0.63-0.65)
+    drafter_on_gpu: bool = True       # the drafter's 8 GB on GPU0 (fewer resident experts)
+    extra_gpu_gib: float = 0.0        # more resident experts (GROW, a smaller drafter, ...)
+    sessions: int = 1                 # batched sessions per pass (each its own tokens); 1 = today's runner
+    context: int = 600                # positions before the generated tokens (long context: indexer cost, KV)
+    kv: str = "fp32"                  # compressed KV rows: fp32 (now), fp16, q8
+    index_tc: bool = False            # FP16 tensor-core index scoring
+    set: dict = dataclasses.field(default_factory=dict)   # V100Hw overrides
+
+    def hw(self):
+        h = dataclasses.replace(V100Hw(), table_gib=V100_PACKS[self.pack])
+        for k, v in self.set.items():
+            setattr(h, k, v)
+        return h
+
+
+def v100_decode(vp):
+    """tok/s of the V100 runner (aggregate over the sessions): see V100Hw."""
+    h = vp.hw()
+    t0, t1 = h.table_gib
+    share0 = min(1.0, vp.engram_gib / t0)
+    share1 = min(1.0, max(0.0, vp.engram_gib - t0) / t1)
+    kv_gib = KV_BYTES[vp.kv] * vp.context * vp.sessions / GIB
+    resident = h.gpu_expert_gib + (0.0 if vp.spec or vp.drafter_on_gpu else 7.9) + vp.extra_gpu_gib - kv_gib   # no drafter: +7.9 GiB
+    hit = min(0.98, max(0.0, resident / h.expert_gib) ** h.hit_exponent)
+    per = 1 + vp.drafted if vp.spec else 1.0          # tokens of one session in a pass
+    T = per * vp.sessions
+    cpu = 40 * T * 6 * (1 - hit)
+    dense = h.pass_ms + h.token_ms * T + h.cpu_expert_ms * cpu + h.host_ms
+    # long context: every token's 8 index layers score 3 pos/2 + 5 pos rows of 128-dim keys, then a top-k over them
+    rows = 6.5 * vp.context
+    key_b = dict(fp32=512, fp16=256, q8=136)[vp.kv]          # one 128-dim key
+    flops = rows * 32 * 128 * 2
+    index_ms = T * (max(rows * key_b / (h.index_gbps * 1e9), flops / (h.index_tflops * 1e12 * (4 if vp.index_tc else 1)))
+                    + rows / (h.topk_gelem_s * 1e9)) * 1e3
+    dense += index_ms
+    draft = (h.draft_ms * vp.sessions + h.inject_ms) if vp.spec else 0.0
+    hide = draft + 14 / 40 * dense
+    m0 = h.engram_rows * T * (1 - share0)
+    m1 = h.engram_rows * T * (1 - share1)
+    engram = m0 / h.engram_iops * 1e3 + max(0.0, m1 / h.engram_iops * 1e3 - hide)
+    step = draft + dense + engram
+    tokens = (1 + vp.acceptance * vp.drafted if vp.spec else 1.0) * vp.sessions
+    return dict(tok_s=tokens / step * 1e3, step_ms=step, draft_ms=draft, dense_ms=dense, engram_ms=engram, index_ms=index_ms,
+                cpu_experts=cpu, hit=hit, tokens_per_step=tokens, kv_gib=kv_gib, per_session_tok_s=tokens / step * 1e3 / vp.sessions)
+
+
+V100_BASE = dict(pack="IQ2_XXSE4", engram_gib=76.0, spec=True, drafted=2.6, acceptance=0.68)
+
+
+def v100_levers(base=None):
+    """(lever, plan) pairs on top of the full-node IQ2_XXSE4 DSpark configuration (wikitext acceptance)."""
+    b = dict(V100_BASE, **(base or {}))
+    r = lambda **kw: V100Plan(**dict(b, **kw))   # noqa: E731
+    sets = lambda **kw: V100Plan(**dict(b, set=kw))   # noqa: E731
+    return [
+        ("baseline", r()),
+        ("Engram whole in RAM: IQ2_XXSE3 pack (KL 0.314)", r(pack="IQ2_XXSE3", engram_gib=79)),
+        ("IQ2_XXSE43 pack (layer-14 table Q3_K, KL 0.307)", r(pack="IQ2_XXSE43")),
+        ("Engram: Lustre at its raw 1,550 reads/s", sets(engram_iops=1550.0)),
+        ("CPU lane 2x faster (IQ2_XXS kernel)", sets(cpu_expert_ms=0.03)),
+        ("GPU tier +6.3 GiB (GROW after a 4K prompt)", r(extra_gpu_gib=6.3)),
+        ("drafter experts off GPU0 (+7.2 GiB of target experts)", r(extra_gpu_gib=7.2)),
+        ("dense kernels -25 %", sets(pass_ms=32.9 * 0.75, token_ms=6.1 * 0.75)),
+        ("draft time -50 %", sets(draft_ms=7.5)),
+        ("acceptance +10 % (0.75)", r(acceptance=0.75)),
+        ("code-like text (4.2 drafted, 0.65 accepted)", r(drafted=4.2, acceptance=0.65)),
+        ("Engram in RAM + lane 2x + dense -25 %", V100Plan(**dict(b, pack="IQ2_XXSE3", engram_gib=79,
+                                                             set=dict(cpu_expert_ms=0.03, pass_ms=32.9 * 0.75, token_ms=6.1 * 0.75)))),
+    ]
+
+
+def v100_sessions(counts=(1, 2, 4, 8), **kw):
+    """Aggregate and per-session tok/s for S batched sessions (plain and DSpark)."""
+    out = []
+    for s in counts:
+        for spec in (False, True):
+            out.append((s, spec, v100_decode(V100Plan(**dict(V100_BASE, spec=spec, sessions=s, **kw)))))
+    return out
+
+
+def v100_context(contexts=(600, 131072, 262144, 524288, 1048576), kvs=("fp32", "fp16", "q8"), **kw):
+    """DSpark decode at long context per KV row format (the indexer scores every visible row)."""
+    out = []
+    for ctx in contexts:
+        for kv in kvs:
+            out.append((ctx, kv, v100_decode(V100Plan(**dict(V100_BASE, context=ctx, kv=kv, **kw)))))
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------
 def load_records(path=None):
     import json
     return json.loads(pathlib.Path(path or DATA / "measured_ds41f.json").read_text())
@@ -796,6 +933,8 @@ def validate(records=None):
             predicted = r["tok_s"]
         elif rec["kind"] == "runner_decode":
             predicted = runner_decode(RunnerPlan(**rec["plan"]))["tok_s"]
+        elif rec["kind"] == "v100_decode":
+            predicted = v100_decode(V100Plan(**rec["plan"]))["tok_s"]
         elif rec["kind"] == "runner_prefill":
             predicted = runner_prefill(RunnerPlan(**rec["plan"]), rec.get("prompt", 1024))["tok_s"]
         elif rec["kind"] == "decode":

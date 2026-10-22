@@ -218,6 +218,24 @@ def cmd_report(args):
     print("\nHypotheses: " + "; ".join(sorted(hyps)))
 
 
+def cmd_v100(args):
+    """The Strata runner on 2x Tesla V100 (ds41f.V100Hw): decode levers, batched sessions, long context."""
+    for label, base in (("IQ2_XXSE4, Engram 76 GiB in RAM", None), ("IQ2_XXSE3, Engram whole in RAM", dict(pack="IQ2_XXSE3", engram_gib=79))):
+        print(f"decode levers, DSpark, wikitext acceptance - {label}")
+        print(f"{'lever':<56}{'tok/s':>7}{'step':>8}{'draft':>7}{'pass':>7}{'Engram':>8}{'hit':>7}")
+        for name, plan in ds41f.v100_levers(base):
+            d = ds41f.v100_decode(plan)
+            print(f"{name:<56}{d['tok_s']:>7.1f}{d['step_ms']:>8.1f}{d['draft_ms']:>7.1f}{d['dense_ms']:>7.1f}{d['engram_ms']:>8.1f}{d['hit']:>7.3f}")
+        print()
+    print("batched sessions, IQ2_XXSE4 (aggregate / per session tok/s)")
+    for s, spec, d in ds41f.v100_sessions():
+        print(f"  S={s:<3}{'DSpark' if spec else 'plain':<8}{d['tok_s']:>7.1f}{d['per_session_tok_s']:>7.1f}   step {d['step_ms']:.1f} ms")
+    print("\nlong context, IQ2_XXSE4 DSpark (index scoring per verify pass; KV off the expert tier)")
+    for tc in (False, True):
+        for ctx, kv, d in ds41f.v100_context(index_tc=tc):
+            print(f"  {ctx:>8} {kv:<5}{' FP16 TC' if tc else '':<9}{d['tok_s']:>7.1f} tok/s   index {d['index_ms']:5.1f} ms   KV {d['kv_gib']:5.2f} GiB   hit {d['hit']:.3f}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -228,6 +246,8 @@ def main(argv=None):
         p = sub.add_parser(name, help=help_)
         add_args(p)
         p.set_defaults(func=fn)
+    p = sub.add_parser("v100", help="the Strata runner on 2x Tesla V100: decode levers, sessions, long context")
+    p.set_defaults(func=cmd_v100)
     p = sub.add_parser("a64fx", help="A64FX node counts, both profiles")
     add_args(p)
     p.add_argument("--nodes", type=int, nargs="+", default=[6, 8, 12])

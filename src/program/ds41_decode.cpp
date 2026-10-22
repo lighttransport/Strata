@@ -817,7 +817,7 @@ public:
         stash_s_.resize(size_t(c.layers));
         for (int l = 0; l < c.layers; ++l)
             if (c.kv_src[size_t(l)] == l) {
-                caches_[size_t(l)] = Dev(size_t(context_ / c.ratio[size_t(l)] + 1) * row_width() * 4);
+                caches_[size_t(l)] = Dev(size_t(context_ / c.ratio[size_t(l)] + 1) * kv_row_bytes());
                 if (c.ratio[size_t(l)] > 1) { stash_v_[size_t(l)] = Dev(size_t(c.head_dim) * 4); stash_s_[size_t(l)] = Dev(size_t(c.head_dim) * 4); }
             }
         score_stride_ = context_ + 1;
@@ -1430,7 +1430,22 @@ public:
         sh_up_ = Dev(T * size_t(c.ff) * 4);
         sh_h_ = Dev(T * size_t(c.ff) * 4);
         moe_ = Dev(T * H * 4);
-        scores_ = Dev(T * size_t(score_stride_) * 4);
+        // the indexer's scores: score_tile_ tokens at a time (STRATA_DS41_SCORE_MIB, 1024: a pass of T tokens at a long
+        // context would need T x context floats, 17 GB for 4096 tokens at 1M)
+        {
+            const size_t budget = size_t(std::getenv("STRATA_DS41_SCORE_MIB") ? std::max(16, std::atoi(std::getenv("STRATA_DS41_SCORE_MIB"))) : 1024) << 20;
+            score_tile_ = int(std::max<size_t>(16, std::min<size_t>(T, budget / (size_t(score_stride_) * 4))));
+            scores_ = Dev(size_t(score_tile_) * size_t(score_stride_) * 4);
+        }
+        if (kv_half_) {
+            const size_t rw = size_t(row_width()), g = std::min<size_t>(T, kGatherTokens);
+            kv_rows_ = Dev(T * rw * 4);
+            kv_sel_ = Dev(g * size_t(c.index_top_k) * rw * 4);
+            std::vector<int> io(g * size_t(c.index_top_k));
+            for (size_t i = 0; i < io.size(); ++i) io[i] = int(i);
+            sel_iota_ = Dev(io.size() * 4);
+            ck(cudaMemcpy(sel_iota_.p, io.data(), io.size() * 4, cudaMemcpyHostToDevice), "sel iota");
+        }
         sel_.resize(size_t(c.layers));
         sel_count_.assign(size_t(c.layers), std::vector<int>(T, 0));
         for (int l = 0; l < c.layers; ++l)
@@ -1811,6 +1826,54 @@ public:
 private:
     static constexpr int kTables = 5;   // rotation tables per position
     int row_width() const { return cfg_.head_dim + cfg_.index_dim; }
+    // the indexer keys of a KV source's cache (an FP16 cache's pointer cast to float*)
+    const float* cache_keys(int src) const {
+        return kv_half_ ? reinterpret_cast<const float*>(reinterpret_cast<const uint16_t*>(caches_[size_t(src)].p) + cfg_.head_dim)
+                        : caches_[size_t(src)].f(cfg_.head_dim);
+    }
+    Dev ig_q_, ig_k_, ig_c_;
+    void index_gemm_scores(int src, int t0, int n, int ratio, float w_scale) {
+        const auto& c = cfg_;
+        const int H = c.index_heads, D = c.index_dim, R = (pos0_ + t0 + n) / ratio;
+        if (R < 1) return;
+        const size_t qn = size_t(n) * H * D;
+        if (ig_q_.bytes < qn * 2) ig_q_ = Dev(qn * 2);
+        k::glm_f16(iq_.f(size_t(t0) * H * D), ig_q_.h(), int64_t(qn), stream_);
+        const size_t budget = size_t(256) << 20;
+        const int RT = int(std::max<size_t>(256, std::min<size_t>(size_t(R), budget / (size_t(n) * H * 4))));
+        if (ig_c_.bytes < size_t(RT) * n * H * 4) ig_c_ = Dev(size_t(RT) * n * H * 4);
+        if (kv_kind_ == 2 && ig_k_.bytes < size_t(RT) * D * 2) ig_k_ = Dev(size_t(RT) * D * 2);
+        const float one = 1, zero = 0;
+        for (int row0 = 0; row0 < R; row0 += RT) {
+            const int m = std::min(RT, R - row0);
+            const void* A;
+            int lda;
+            if (kv_kind_ == 1) {
+                A = reinterpret_cast<const uint16_t*>(caches_[size_t(src)].p) + size_t(row0) * row_width() + c.head_dim;
+                lda = row_width();
+            } else {
+                k::ds41_keys_q8_f16(caches_[size_t(src)].b(), kv_row_bytes(), c.head_dim, D, row0, m, ig_k_.h(), stream_);
+                A = ig_k_.p;
+                lda = D;
+            }
+            if (cublasGemmEx(blas_, CUBLAS_OP_T, CUBLAS_OP_N, m, n * H, D, &one, A, CUDA_R_16F, lda, ig_q_.p, CUDA_R_16F, D, &zero, ig_c_.p,
+                             CUDA_R_32F, m, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT) != CUBLAS_STATUS_SUCCESS)
+                throw std::runtime_error("ds41: index GEMM");
+            k::ds41_index_reduce(ig_c_.f(), m, n, H, iw_.f(size_t(t0) * H), w_scale, pos0_ + t0, ratio, row0, scores_.f(), score_stride_, stream_);
+        }
+    }
+
+    // FP16 caches: tokens [t0, t0 + n) of the pass's selected rows of `src`, as floats in kv_sel_ (n <= kGatherTokens)
+    const float* gather_sel(int src, int ts, int t0, int n, int ratio) {
+        if (kv_kind_ == 2) {
+            k::ds41_gather_sel_q8(caches_[size_t(src)].b(), kv_row_bytes(), row_width(), sel_[size_t(ts)].i() + size_t(t0) * cfg_.index_top_k,
+                                  cfg_.index_top_k, n, pos0_ + t0, ratio, kv_sel_.f(), stream_);
+            return kv_sel_.f();
+        }
+        k::ds41_gather_sel_h(reinterpret_cast<const uint16_t*>(caches_[size_t(src)].p), row_width(), sel_[size_t(ts)].i() + size_t(t0) * cfg_.index_top_k,
+                             cfg_.index_top_k, n, pos0_ + t0, ratio, kv_sel_.f(), stream_);
+        return kv_sel_.f();
+    }
 
     // a tensor's bytes in a read-only MAP_SHARED mapping of its shard (one per shard)
     const uint8_t* shared(const core::ArtifactTensor& t, bool whole = true) {
@@ -2244,11 +2307,16 @@ private:
             // STRATA_DS41_ATTN_SUB (256): tokens per launch, so no single kernel holds the GPU for long
             static const int sub = [] { const char* v = std::getenv("STRATA_DS41_ATTN_SUB"); return v ? std::max(16, std::atoi(v)) : 256; }();
             const size_t qw = size_t(c.heads) * c.head_dim;
-            for (int t0 = 0; t0 < T; t0 += sub)
-                k::ds41_attention_batched(q_.f(size_t(t0) * qw), std::min(sub, T - t0), c.heads, c.head_dim, windows_[size_t(l)].f(), ring_,
-                                          attn_info_dev_.i() + 4 * t0, comp_rows, row_width(),
-                                          (ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i()) + (ratio ? size_t(t0) * c.index_top_k : 0),
+            const bool gathered = kv_half_ && ratio;   // FP16: each launch's selected rows gathered to floats first
+            const int stride = gathered ? std::min(sub, kGatherTokens) : sub;
+            for (int t0 = 0; t0 < T; t0 += stride) {
+                const int n = std::min(stride, T - t0);
+                k::ds41_attention_batched(q_.f(size_t(t0) * qw), n, c.heads, c.head_dim, windows_[size_t(l)].f(), ring_, attn_info_dev_.i() + 4 * t0,
+                                          gathered ? gather_sel(src, ts, t0, n, ratio) : comp_rows, row_width(),
+                                          gathered ? sel_iota_.i()
+                                                   : (ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i()) + (ratio ? size_t(t0) * c.index_top_k : 0),
                                           c.index_top_k, sinks, scale, att_.f(size_t(t0) * qw), stream_);
+            }
         } else if (static bool multi = std::getenv("STRATA_DS41_ATTN_MULTI") && std::string(std::getenv("STRATA_DS41_ATTN_MULTI")) == "1";
                    multi && T >= 2 && T <= 8) {   // a few tokens (a verify pass): one launch pair over all of them
             int* info = attn_info_;
@@ -2265,8 +2333,10 @@ private:
                 bound = std::max(bound, rows + nsel);
             }
             ck(cudaMemcpyAsync(attn_info_dev_.p, info, size_t(T) * 16, cudaMemcpyHostToDevice, stream_), "attention info");
-            k::ds41_attention_multi(q_.f(), T, c.heads, c.head_dim, windows_[size_t(l)].f(), ring_, attn_info_dev_.i(), bound, comp_rows,
-                                    row_width(), ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i(), c.index_top_k,
+            const bool gathered = kv_half_ && ratio;
+            k::ds41_attention_multi(q_.f(), T, c.heads, c.head_dim, windows_[size_t(l)].f(), ring_, attn_info_dev_.i(), bound,
+                                    gathered ? gather_sel(src, ts, 0, T, ratio) : comp_rows, row_width(),
+                                    gathered ? sel_iota_.i() : ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i(), c.index_top_k,
                                     dev ? sel_cnt_[size_t(ts)].i() : nullptr, sinks, scale, attn_scores_.f(), att_.f(), stream_);
         } else
         for (int i = 0; i < T; ++i) {
@@ -2280,8 +2350,13 @@ private:
                 if (dev) nsel_dev = sel_cnt_[size_t(ts)].i() + i;
                 sel = sel_[size_t(ts)].i() + size_t(i) * c.index_top_k;
             }
+            const float* comp_i = comp_rows;
+            if (kv_half_ && ratio && sel) {   // FP16: this token's selected rows as floats
+                comp_i = gather_sel(src, ts, i, 1, ratio);
+                sel = sel_iota_.i();
+            }
             k::ds41_attention(q_.f(size_t(i) * c.heads * c.head_dim), c.heads, c.head_dim, windows_[size_t(l)].f(), first, ring_,
-                              rows, comp_rows, row_width(), sel, nsel, sinks, scale, attn_scores_.f(),
+                              rows, comp_i, row_width(), sel, nsel, sinks, scale, attn_scores_.f(),
                               att_.f(size_t(i) * c.heads * c.head_dim), stream_, nsel_dev);
         }
         if (dtiming_ && T <= 8) dmark(4);
@@ -2375,7 +2450,7 @@ private:
                 }
             }
             if (rows < 1) return;
-            float* dst = caches_[size_t(l)].f(size_t(g0) * rw);
+            float* dst = kv_half_ ? kv_rows_.f() : caches_[size_t(l)].f(size_t(g0) * rw);   // FP16: built here, then stored
             k::glm_rms_norm_rows(v, w(p + "attn_compressor_norm.weight"), normed, c.head_dim, rows, c.rms_eps, stream_);
             ck(cudaMemcpy2DAsync(dst, rw * 4, normed, hd * 4, hd * 4, size_t(rows), cudaMemcpyDeviceToDevice, stream_), "rows");
             mat(p + "indexer.attn_k.weight", normed, keys, rows);   // from the RoPE-free latent
@@ -2386,6 +2461,8 @@ private:
             const int step = ratio * kTables * 64;
             k::ds41_rope(dst + hd, rows, int(rw), c.index_dim - c.rope_dim, c.rope_dim / 2, cs, stream_, 1, step);
             k::ds41_rope(dst, rows, int(rw), c.head_dim - c.rope_dim, c.rope_dim / 2, cs, stream_, 1, step);
+            if (kv_kind_ == 1) k::glm_f16(dst, reinterpret_cast<uint16_t*>(caches_[size_t(l)].p) + size_t(g0) * rw, int64_t(rows) * int64_t(rw), stream_);
+            if (kv_kind_ == 2) k::ds41_quant_rows_q8(dst, rows, int(rw), caches_[size_t(l)].b(size_t(g0) * kv_row_bytes()), kv_row_bytes(), stream_);
             return;
         }
         for (int i = 0; i < T; ++i) {
@@ -2405,7 +2482,7 @@ private:
                 v = comp_.f();
             }
             const int g = pos / ratio, first = pos - (ratio - 1);   // a row stands for the first position of its group
-            float* row = caches_[size_t(l)].f(size_t(g) * row_width());
+            float* row = kv_half_ ? kv_rows_.f(size_t(i) * row_width()) : caches_[size_t(l)].f(size_t(g) * row_width());
             k::glm_rms_norm_rows(v, w(p + "attn_compressor_norm.weight"), row, c.head_dim, 1, c.rms_eps, stream_);
             if (T == 1 && observe) observe("comp_latent", l, row, hd);   // as dumped: normalized, before RoPE
             mat(p + "indexer.attn_k.weight", row, ik_.f());   // from the RoPE-free latent
@@ -2413,6 +2490,8 @@ private:
             const float* cs = table(i, first == pos ? 2 : 4);
             k::ds41_rope(row + c.head_dim, 1, c.index_dim, c.index_dim - c.rope_dim, c.rope_dim / 2, cs, stream_);
             k::ds41_rope(row, 1, c.head_dim, c.head_dim - c.rope_dim, c.rope_dim / 2, cs, stream_);
+            if (kv_kind_ == 1) k::glm_f16(row, reinterpret_cast<uint16_t*>(caches_[size_t(l)].p) + size_t(g) * row_width(), row_width(), stream_);
+            if (kv_kind_ == 2) k::ds41_quant_rows_q8(row, 1, row_width(), caches_[size_t(l)].b(size_t(g) * kv_row_bytes()), kv_row_bytes(), stream_);
         }
     }
 
@@ -2435,13 +2514,28 @@ private:
         std::vector<int> gpu_picks, gpu_counts;
         // STRATA_DS41_GPU_TOPK_MIN (16): the fewest tokens selected on the GPU (1: decode too)
         static const int gpu_topk_min = std::getenv("STRATA_DS41_GPU_TOPK_MIN") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_GPU_TOPK_MIN"))) : 16;
-        if (gpu_topk && T >= gpu_topk_min) {
+        if ((gpu_topk && T >= gpu_topk_min) || T > score_tile_) {   // (a pass wider than the score tile: always here)
             const auto i0 = std::chrono::steady_clock::now();
-            k::ds41_index_score_batched(iq_.f(), c.index_heads, c.index_dim, caches_[size_t(src)].f(c.head_dim), row_width(), pos0_, ratio,
-                                        T, iw_.f(), w_scale, scores_.f(), score_stride_, stream_);
             const int mode = c.candidate_source == l ? 1 : c.candidate_source >= 0 && c.candidate_source < l ? 2 : 0;
-            k::ds41_index_topk(scores_.f(), score_stride_, T, pos0_, ratio, c.index_top_k, sel_[size_t(l)].i(), sel_cnt_[size_t(l)].i(),
-                               mode, static_cast<uint8_t*>(cand_dev_.p), cand_stride_, c.candidate_block, c.candidate_blocks, stream_);
+            // STRATA_DS41_INDEX_GEMM=1 (FP16 or Q8 caches): the scores as an FP16 tensor-core GEMM of the keys and the
+            // token-heads' queries per tile of rows (products into a 256 MiB buffer), then relu and the head weights
+            static const bool index_gemm = std::getenv("STRATA_DS41_INDEX_GEMM") && std::string(std::getenv("STRATA_DS41_INDEX_GEMM")) == "1";
+            for (int t0 = 0; t0 < T; t0 += score_tile_) {   // score_tile_ tokens at a time through the score buffer
+                const int n = std::min(score_tile_, T - t0);
+                if (index_gemm && kv_kind_ != 0) {
+                    index_gemm_scores(src, t0, n, ratio, w_scale);
+                } else if (kv_kind_ == 2)
+                    k::ds41_index_score_q8(iq_.f(size_t(t0) * c.index_heads * c.index_dim), c.index_heads, c.index_dim, caches_[size_t(src)].b(),
+                                           kv_row_bytes(), c.head_dim, pos0_ + t0, ratio, n, 0, iw_.f(size_t(t0) * c.index_heads), w_scale,
+                                           scores_.f(), score_stride_, stream_);
+                else
+                    k::ds41_index_score_batched(iq_.f(size_t(t0) * c.index_heads * c.index_dim), c.index_heads, c.index_dim, cache_keys(src),
+                                                row_width(), pos0_ + t0, ratio, n, iw_.f(size_t(t0) * c.index_heads), w_scale, scores_.f(),
+                                                score_stride_, stream_, kv_kind_ == 1);
+                k::ds41_index_topk(scores_.f(), score_stride_, n, pos0_ + t0, ratio, c.index_top_k, sel_[size_t(l)].i() + size_t(t0) * c.index_top_k,
+                                   sel_cnt_[size_t(l)].i() + t0, mode, static_cast<uint8_t*>(cand_dev_.p) + size_t(t0) * cand_stride_, cand_stride_,
+                                   c.candidate_block, c.candidate_blocks, stream_);
+            }
             prof_[5] += std::chrono::duration<double>(std::chrono::steady_clock::now() - i0).count();
             if (!topk_check) { gpu_sel_ = true; return; }
             gpu_picks.resize(size_t(T) * c.index_top_k);
@@ -2454,9 +2548,14 @@ private:
         for (int i = 0; i < T; ++i) {
             const int visible = (pos0_ + i + 1) / ratio;
             widest = std::max(widest, visible);
-            k::ds41_index_score(iq_.f(size_t(i) * c.index_heads * c.index_dim), c.index_heads, c.index_dim,
-                                caches_[size_t(src)].f(c.head_dim), row_width(), visible, iw_.f(size_t(i) * c.index_heads),
-                                w_scale, scores_.f(size_t(i) * score_stride_), stream_);
+            if (kv_kind_ == 2)
+                k::ds41_index_score_q8(iq_.f(size_t(i) * c.index_heads * c.index_dim), c.index_heads, c.index_dim, caches_[size_t(src)].b(),
+                                       kv_row_bytes(), c.head_dim, 0, 1, 1, visible, iw_.f(size_t(i) * c.index_heads), w_scale,
+                                       scores_.f(size_t(i) * score_stride_), score_stride_, stream_);
+            else
+                k::ds41_index_score(iq_.f(size_t(i) * c.index_heads * c.index_dim), c.index_heads, c.index_dim, cache_keys(src),
+                                    row_width(), visible, iw_.f(size_t(i) * c.index_heads), w_scale, scores_.f(size_t(i) * score_stride_), stream_,
+                                    kv_kind_ == 1);
         }
         const auto i0 = std::chrono::steady_clock::now();
         struct Done { double& t; std::chrono::steady_clock::time_point s; ~Done() { t += std::chrono::duration<double>(std::chrono::steady_clock::now() - s).count(); } } done{prof_[5], i0};
@@ -3696,7 +3795,18 @@ private:
     int* attn_info_ = nullptr;   // pinned: per-token attention rows of a pass
     int rcap_min_ = 8192;
     std::vector<std::unique_ptr<void, void (*)(void*)>> pinned_bufs_;
-    int chunk_ = 256, ring_ = 0, pos0_ = 0, tokens_ = 1, score_stride_ = 0;
+    int chunk_ = 256, ring_ = 0, pos0_ = 0, tokens_ = 1, score_stride_ = 0, score_tile_ = 1;
+    // STRATA_DS41_KV=f16: the compressed caches in FP16 (half the bytes; the indexer reads them so, attention reads
+    // each pass's selected rows gathered back to floats in kv_sel_ through the identity selection sel_iota_)
+    // (=q8: Q8_0 rows, an FP16 scale per 32 values)
+    const int kv_kind_ = [] { const char* v = std::getenv("STRATA_DS41_KV"); return !v ? 0 : std::string(v) == "f16" ? 1 : std::string(v) == "q8" ? 2 : 0; }();
+    const bool kv_half_ = kv_kind_ != 0;   // not float storage
+    size_t kv_row_bytes() const {
+        const size_t rw = size_t(cfg_.head_dim + cfg_.index_dim);
+        return kv_kind_ == 2 ? rw / 32 * 34 : rw * (kv_kind_ == 1 ? 2 : 4);
+    }
+    Dev kv_rows_, kv_sel_, sel_iota_;
+    static constexpr int kGatherTokens = 256;
     cudaStream_t stream_ = nullptr;
     std::map<std::string, Weight> weights_;
     std::vector<std::vector<float>> bias_;

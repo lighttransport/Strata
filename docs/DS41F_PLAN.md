@@ -624,6 +624,61 @@ the CPU lane (4.8 ms).
 CUDA graphs would not pay. `STRATA_DS41_GRAPH_PROBE=1` (CUDA only) times one plain layer's dense sequence for one
 token (38 kernels): 425 us launched directly, 392 us as a graph. The time is in the small kernels themselves.
 
+### 8f. A decode model for the V100 runner (`ds41f.V100Hw`, `python3 tools/glm_ds41f_sim.py v100`)
+
+A step is plain (one pass of 1 token) or DSpark (draft, then one verify pass of T = 1 + drafted tokens). A pass
+costs `A + B T + C x (CPU experts) + host + Engram stall + index scoring`:
+- **CPU experts:** 40 x T x 6 x (1 - GPU tier hit). The tier hit is the resident fraction ^ 0.40 (47.4 GiB with the
+  drafter on GPU0 gives 0.644; 55.3 GiB without it gives 0.684).
+- **A, B, C** = 32.9 ms, 6.1 ms per token, 0.06 ms per CPU expert. The lane alone costs 0.12; half of it overlaps
+  the GPU. They are fit on the points without Engram reads.
+- **Engram:** the second table's misses at 800 reads/s, less what the draft and layers 0-13 hide. The first table's
+  misses (Engram budget under 51.5 GiB) are not hidden.
+- **Long context:** each token's 8 index layers read 6.5 x position keys (512 B FP32, 256 FP16, 136 Q8) at
+  800 GB/s or score them at 12 TFLOPS (4x with FP16 tensor cores), whichever is longer, plus a top-k at 10 G
+  elements/s. The KV rows come off the GPU expert tier.
+
+Calibration (`validate`, 18 of 18 rows):
+- **Fitted:** the four full-node points with little or no Engram reading, within 4.3 %.
+- **Cross-checks** (Lustre varies by day, tolerance 25 %): the code run with a 52 ms-per-pass stall +24 %; the
+  140 GiB node -18 % and -24 %, where that day's Lustre served more reads than 800/s; the 168 GiB node -5 %.
+
+| lever (DSpark, wikitext acceptance) | IQ2_XXSE4, 76 GiB Engram | IQ2_XXSE3, Engram in RAM |
+|---|---|---|
+| now (measured 22.3-25.3 / 30.7) | 26.3 | 30.7 |
+| Engram whole in RAM (IQ2_XXSE3 or IQ2_XXSE43 pack, or Lustre at 1,550 reads/s) | 30.7 | - |
+| dense kernels -25 % | 28.7 | 36.2 |
+| CPU lane 2x faster | 27.9 | 34.2 |
+| acceptance 0.68 -> 0.75 | 28.0 | 32.7 |
+| draft time -50 % | 26.3 (the draft hides Engram reads) | 33.5 |
+| +6.3-7.2 GiB of resident experts (GROW, drafter experts off GPU0) | 26.6 | 31.3-31.4 |
+| Engram in RAM + lane 2x + dense -25 % | 41.1 | 41.1 |
+
+Reading the table:
+- On IQ2_XXSE4 the Engram reads come first: IQ2_XXSE43 (KL 0.307) removes them as well as IQ2_XXSE3 does.
+- Once Engram is in RAM, the dense kernels, the CPU lane and the draft are the levers. All three together reach ~41.
+
+**Batched sessions** (one pass carries every session's tokens; not implemented):
+
+| sessions | 1 | 2 | 4 | 8 |
+|---|---|---|---|---|
+| plain, aggregate / per session (tok/s) | 21.9 / 21.9 | 29.2 / 14.6 | 34.9 / 8.7 | 38.7 / 4.8 |
+| DSpark, aggregate / per session (tok/s) | 26.3 / 26.3 | 29.4 / 14.7 | 31.3 / 7.8 | 32.3 / 4.0 |
+
+Batching plain decode raises throughput more than speculation does: verify passes of several sessions read too
+many Engram rows and CPU experts.
+
+**Long context** (IQ2_XXSE4 DSpark, tok/s):
+
+| context | FP32 KV | FP16 KV | Q8 KV | Q8 + FP16 tensor-core scoring |
+|---|---|---|---|---|
+| 128K | 25.9 | 25.9 | 25.9 | 25.9 |
+| 512K | 24.7 | 24.8 | 24.8 | 25.7 |
+| 1M | 23.3 | 23.4 | 23.4 | 25.2 |
+
+The indexer's verify-pass cost at 1M is 19 ms (FP32) / 6.6 ms (Q8 + tensor cores). On IQ2_XXSE4 part of it is
+offset because a longer pass hides more Engram reads; with Engram in RAM the full cost shows.
+
 Where a verify step goes (600 tokens, about 2.7 tokens per step, ~120 ms):
 - draft 16 ms
 - CPU lane 30-40 ms
