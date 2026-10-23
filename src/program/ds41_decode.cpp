@@ -2027,6 +2027,8 @@ private:
     // (type, shape, or K not a multiple of 256: MMQ reads 256-value K chunks).
     static constexpr int kDenseRows = 256;
     Dev dm_xq_, dm_bounds_, dm_iota_;
+    int* dm_hb_ = nullptr;
+    int dm_nt_ = -1;
     std::set<int> dm_off_;   // types said once to take the other path
     bool dense_mmq(int type, const uint8_t* w, const float* x, int ldx, float* y, int ldy, int in, int rows, int nt) {
         namespace mq = strata::prefill::mmq;
@@ -2044,7 +2046,13 @@ private:
             dm_iota_ = Dev((size_t(kDenseRows) + 128) * 4);
             mq::iota(dm_iota_.i(), kDenseRows + 128, stream_);
         }
-        mq::set_bounds(dm_bounds_.i(), nt, stream_);
+        if (dm_nt_ != nt) {   // bounds {0, nt} (set_bounds is HIP-only); a pass's calls share nt, passes end synchronized
+            if (!dm_hb_) dm_hb_ = reinterpret_cast<int*>(pinned_keep(16));
+            dm_hb_[0] = 0;
+            dm_hb_[1] = nt;
+            ck(cudaMemcpyAsync(dm_bounds_.p, dm_hb_, 8, cudaMemcpyHostToDevice, stream_), "dense bounds");
+            dm_nt_ = nt;
+        }
         mq::quantize(x, nullptr, dm_xq_.p, type, in, ldx, nt, stream_);
         mq::Product pr;
         pr.w = w; pr.type = type; pr.w_rows = rows; pr.w_cols = in; pr.expert_bytes = mq::matrix_bytes(type, rows, in);
