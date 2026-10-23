@@ -43,6 +43,7 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 | V100 server, two V100s | full UD-Q2_K_XL, 4K prompt | 28.9 greedy, 29.1 MTP depth 1 | 790 (16K) | logit parity, memcheck, 400,532 C++ oracle cases; no HumanEval |
 | V100 server, 16 GiB per card cap | same | 18.1 (one GPU), 21.9 (two) | | |
 | V100 FP4 allocation, two V100s | full native ModelOpt FP4/FP8, opt-in [grouped profile](../configs/experimental/glm53f-fp4-dual-v100-grouped.json), MTP depth 3, approximate CPU Q8 and bounded decode routing | **41.24 (8K, 512 outputs)** | **519.34 (8K)** | 8/8 long-context and 8/8 natural-length reused coding cases; Fresh20 unscored; no HumanEval |
+| V100 FP4 allocation, two V100s | as above plus [streamed prefill](GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in) ([streamed profile](../configs/experimental/glm53f-fp4-dual-v100-streamed.json)) | 41.34-41.73 (8K, 512 outputs) | **779.79-783.71 (8K)** | four same-job pairs against the grouped profile, identical 512-token outputs; 8/8 long-context and 8/8 natural-length reused coding cases on both sides of three pairs; no HumanEval |
 
 The native FP4 row measures both phases with the same working profile: three full
 warmups and three timed 8,192-input / 512-output requests with 32 CPU workers.
@@ -53,6 +54,13 @@ acceptance and routing approximations remain opt-in, and the 800 prefill tok/s
 target remains unmet. The [FP4 guide](GLM_FP4_V100.md#current-measured-profile)
 links the timing and quality evidence; the original 5.26 tok/s reference and
 installer defaults remain unchanged.
+
+The streamed row adds opt-in streamed prefill to the same profile. At a 12,288-token context it measured
+779.79-783.71 prefill tok/s against 519.69-522.86 for the grouped control in the same jobs, so the 800 tok/s target
+is still not met there; a pair at a 1M-token context measured 807.31 against 515.66. With the
+[long-context switches](GLM_FP4_V100.md#long-context-opt-in) and an FP8 latent cache the two V100s found a needle in
+a 1,048,000-token prompt (prefill 393.3 tok/s, one request). Decode after long prompts is slower (23-24 tok/s after
+250K-token prompts). Coding-agent clients connect as described in [GLM_AGENT_SERVE.md](GLM_AGENT_SERVE.md#clients).
 
 The RTX 3070 rows come from the four `docs/benchmarks/glm_rtx3070_*_20261011.json` records (medians of three
 trials, 128 generated tokens, 56 GiB cgroup, no swap, 512 MiB VRAM reserve); the presets they name
@@ -126,7 +134,8 @@ Estimated from the allocation sizes in the code and the memory records of the 12
   budget. Beyond ~128K, reduce `STRATA_GLM_PREFETCH_GROUPS` (slower prefill). The prefill profile's 256-token MLA
   tile (`STRATA_GLM_MLA_TILE=256`) makes the scratch grow four times faster; keep that profile at 64K or below.
 - The two-GPU runner exchanges at most 8,192 prompt tokens per call; longer prompts are processed in 8K passes.
-- Measured so far: up to 12K context on TR16 (16K as two 8K passes); the V100 server ran a 131,072-token context.
+- Measured so far: up to 12K context on TR16 (16K as two 8K passes); the V100 server ran a 131,072-token context;
+  the V100 FP4 allocation, with the opt-in long-context switches, a 1,048,000-token prompt.
 
 ## Weights
 

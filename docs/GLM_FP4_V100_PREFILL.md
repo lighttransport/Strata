@@ -13,6 +13,50 @@ reducing prefill from **15.77 s to 10.24 s**, a **1.54×** throughput gain. All
 checkpoint weights and prefill routes are retained during these experiments.
 Decode settings are fixed, and Fresh20 remain unscored.
 
+## Streamed prefill (opt-in)
+
+`STRATA_GLM_FP4_PREFILL_STREAM=1` uploads each layer's uncached routed experts through a ring of upload frames on
+each GPU, while the previous layer's attention, router and shared expert run, instead of one expert at a time inside
+the routed step. The frames are borrowed from the GPU's cached layer-45 draft experts and restored after layer 44.
+Prompts of 4,096 tokens or more use it; each 8,192-token batch of a longer prompt streams again. It requires two
+SM70 GPUs, MTP, the arena, registered RAM, GPU reduction, device routing and async uploads, as the grouped profile
+has. The measured setting adds these to the grouped profile's environment
+([streamed profile](../configs/experimental/glm53f-fp4-dual-v100-streamed.json)):
+
+| Switch | Value | What it does |
+| --- | --- | --- |
+| `STRATA_GLM_FP4_PREFILL_STREAM` | `1` | The streamed prefill above |
+| `STRATA_GLM_FP4_PREFILL_STREAM_FRAMES`, `..._FRAMES1` | `96`, `64` | Ring frames on GPU 0 and GPU 1 (8-136; 64 by default) |
+| `STRATA_GLM_FP4_PREFILL_STREAM_HOLD` | `1` | Hold GPU 0's next-layer uploads until GPU 1's partial sum has crossed the shared link |
+| `STRATA_GLM_FP4_PREFILL_STREAM_EARLY` | `1` | Send GPU 1 its FP16 activations before the router and shared expert |
+| `STRATA_GLM_PREFILL_LEAN_HOST` | `1` | Read each token's embedding row once, on several threads, and copy the hidden rows for MTP on a helper thread |
+
+Measured on two Tesla V100 PCIe 32 GB, a dual Xeon Gold 6240 and a 181 GiB allocation, clocks unlocked, RAM speed not
+measured; each pair is the same binary and job, three full warmups and three timed 8,192-input / 512-output requests
+per side, zero timed major faults:
+
+| Pair (context) | Control prefill / decode tok/s | Streamed prefill / decode tok/s | 512-token outputs |
+| --- | ---: | ---: | --- |
+| source v532 (12,288) | 522.18 / 41.17 | **782.84 / 41.73** (+49.9%) | identical |
+| source v538 (12,288) | 522.86 / 41.47 | 779.79 / 41.50 | identical |
+| source v542 (12,288) | 519.69 / 41.39 | 781.47 / 41.34 | identical |
+| source v553 (12,288) | 519.79 / 41.23 | 783.71 / 41.39 | identical |
+| source v558, FP16 latent cache (12,288) | 524.06 / 41.61 | 791.02 / 41.99 | identical (both FP16) |
+| source v570, 1M context, FP8 cache (see [long context](GLM_FP4_V100.md#long-context-opt-in)) | 515.66 / 38.04 | **807.31 / 38.10** | identical |
+
+The reused coding panels passed 8/8 long-context and 8/8 natural-length cases on both sides of the v532, v538 and
+v542 pairs. The long-context panel's answers differ from the control's from its third case on: a streamed prompt
+leaves different experts cached on GPU 1 for the next prompt, and CPU and GPU expert arithmetic differ. The gate
+used is the documented one (identical 512-token pair outputs and both panels passing); bit-identical multi-prompt
+outputs were not reached. At a 12,288-token context the 800 tok/s target is not met (779.79-791.02); the 1M-context
+pair, whose decode cache is smaller, measured 807.31.
+
+Long prompts stream every 8,192-token batch. Single requests at a 65,536-token context with
+`STRATA_GLM_ACTIVE_POOLS=1`, prefill tok/s for 16K / 32K / 64K prompts: control 505 / 495 / 489 (source v552),
+streamed 635 / 583 / 559 (source v556; not a timed pair). The
+gain shrinks with length because GPU 1 then uploads many experts on demand inside the routed step (a 1,048,000-token
+prompt: 195,921 demand uploads on GPU 1 against 23,814 on GPU 0); that is the next limit.
+
 A fresh diagnostic uses the settled profile on source 377: two full warmups,
 a discarded request and one 8,192-input / eight-output request. Its first eight
 output IDs match the settled reference, with zero timed major faults and swap.

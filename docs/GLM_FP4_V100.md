@@ -42,6 +42,55 @@ The original **5.26 decode tok/s** reference below and installer defaults remain
 unchanged. These are recorded GPU measurements; the later merge was checked
 with builds and host tests, without a new GPU timing run.
 
+## Long context (opt-in)
+
+The native FP4 path stops at a 65,536-token context unless `STRATA_GLM_FP4_LONG_CONTEXT=1` is set. These switches,
+all off by default, run it to 1,048,576 tokens on the two V100s:
+
+| Switch | Values | What it does |
+| --- | --- | --- |
+| `STRATA_GLM_FP4_LONG_CONTEXT` | `1` | Lift the 64K cap. MTP keeps only the newest 8,192 target hidden rows (16 KB per token otherwise, 17 GB at 1M), reserved once per request |
+| `STRATA_GLM_ACTIVE_POOLS` | `1` | The indexer scores the pooled keys written so far, not the whole capacity; needed at long capacity |
+| `STRATA_GLM_KV_FORMAT` | `f32` (default), `f16`, `int8`, `fp8` | The MLA latent cache on GPU 0 (12 layers): 2,048, 1,024 or 544 bytes per token per layer. 8-bit rows hold 512 codes and 8 FP32 scales (one per 64 values); `fp8` is E4M3 |
+| `STRATA_GLM_INDEX_KEYS` | `f32` (default), `f16` | Pooled indexer keys stored in FP16 (64 instead of 128 bytes per pool) and scored by the FP16 GEMM |
+| `STRATA_GLM_INDEX_BLOCK_POOLS` | `0` (default), e.g. `8192` | Indexer dots in blocks of this many pools, in prefill, decode and verify, so their scratch stops growing with context; needed at 1M |
+
+Non-FP32 latent formats refuse host KV, split MLA, batch row sequences and CPU MLA; the 8-bit formats also refuse
+the dense prefix. Reading rounded rows changes the output: FP16 differs from FP32 from token 52 of the 512-token
+test.
+
+Timed pairs, 8,192-input / 512-output requests, three warmups and three timed requests per side, same binary and
+job (two Tesla V100 PCIe 32 GB, 181 GiB allocation, clocks unlocked, RAM speed not measured; "streamed" is the
+[streamed prefill](GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in)):
+
+| Context, settings | Control prefill / decode tok/s | Streamed prefill / decode tok/s |
+| --- | ---: | ---: |
+| 12,288, FP32 / INT8 / FP8 cache (source v561) | 521.59 / 40.95, 529.87 / 39.94, 528.07 / 40.90 | |
+| 262,144, active pools, FP32 cache (source v547) | 508.56 / 33.92 | 782.40 / 35.66 |
+| 262,144, active pools, FP16 cache (source v558) | 515.88 / 38.50 | 797.86 / 38.31 |
+| 262,144, active pools, INT8 / FP8 cache (source v561) | 526.59 / 39.59, 525.54 / 39.62 | |
+| 524,288, active pools, INT8 cache (source v562) | 520.47 / 37.99 (not qualified: one repetition differed) | 799.02 / 37.82 |
+| 1,048,576, active pools, FP8 cache, FP16 keys, block 8192 (source v570) | 515.66 / 38.04 | **807.31 / 38.10** (outputs identical) |
+
+At 262,144 without active pools the streamed side measured 583.66 / 32.49. Decode stays below 41 at long capacity
+because the latent cache leaves GPU 0 less room for experts (its decode cache fell from 14,476 to 8,249 MiB at 256K
+with FP32 rows), so more expert work runs on the CPU; the 8-bit formats give most of it back. The reused coding panels
+with each format (control side): FP8 8/8 long-context and 8/8 natural-length; FP16 and INT8 7/8 long-context
+(`argmin_first` and `zip_sum` failed), natural-length not run.
+
+Needle tests (one code word at half depth, the streamed settings above with an 8,192-token warmup request first,
+48-token greedy answers): found at 262,000 tokens (prefill 515.5 tok/s), 524,000 (470.3) and 1,048,000 (393.3,
+2,665 s; peak resident memory 167.4 GiB, of it 1.4 GiB anonymous). These are single requests, not timed pairs.
+
+Decode after a long prompt is slower than the 8K figures, and not because of attention: with 512-token answers on one
+server, it measured 31-33 tok/s after 8K prompts, 27-29 after 64K and 23-24 after 250K (sources v571-v572). Each
+request picks the experts kept on the GPUs from its last prefill batch's routes; after a long prompt they cover fewer
+of the decode routes (34-38% against 38-51% after 8K prompts, from a routing trace), so more decode experts run on the
+CPU (about 5.7 of 8 per token and layer at 250K against 4.7 at 8K). The first rounds of every answer and the first
+requests of a new server are slower still, which is why 48-token needle answers show 8-12 tok/s. Choosing the kept
+experts again during decode gained 5-8% at 250K but lost 7-12% of decode at 8K; it stays off (see the
+[experiments](GLM_FP4_V100_EXPERIMENTS.md#keep-re-selection-during-decode)).
+
 ## Build and inspect
 
 Use CUDA 12.x; CUDA 13 no longer compiles SM70. The GLM engine also needs its

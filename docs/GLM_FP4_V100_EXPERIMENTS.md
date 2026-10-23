@@ -298,6 +298,13 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_CACHE_ADAPT_ROWS` | `0` (default), `32`, `64`, `128` | Reconsider each layer's parity-owned decode cache after this many verification rows. |
 | `STRATA_GLM_FP4_CACHE_TOTAL_FREE` | `1` | Size the decode cache from all arena holes that can hold packed projections, retaining the existing per-device scratch reserves. |
 | `STRATA_GLM_FP4_CPU_LOGICAL` | `1` | Repin native FP4 CPU workers to distinct allocated logical CPUs on Linux, reserving the first allocated CPU for the coordinator. |
+| `STRATA_GLM_FP4_PREFILL_STREAM` and its `_FRAMES`, `_FRAMES1`, `_HOLD`, `_EARLY` | see [streamed prefill](GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in) | Stream each layer's uncached prefill experts through a ring of borrowed upload frames during the previous layer's attention. |
+| `STRATA_GLM_PREFILL_LEAN_HOST` | `1` | Read each prefill token's embedding row once, on several threads; copy MTP's hidden rows on a helper thread. |
+| `STRATA_GLM_FP4_EVICTION_STATS` | `1` | Report cache and physical evictions per GPU (`FP4_EVICTIONS`) and the stream counters. Diagnostic. |
+| `STRATA_GLM_FP4_CACHE_SHRINK0_MIB` | `0` (default) through `16384` | Shrink GPU 0's expert cache by this many MiB, to separate the cache size from the other costs of a long context. Diagnostic. |
+| `STRATA_GLM_FP4_KEEP_RESELECT_ROWS` | `0` (default) through `65536` | Choose each layer's GPU experts again once per request after this many decode rows ([measured slower](#keep-re-selection-during-decode)). Excludes the adaptive and global cache. |
+| `STRATA_GLM_FP4_KEEP_RESELECT_SWAPS` | `0` (no cap, default) through `288` | With re-selection: at most this many swaps per GPU and layer, each by a margin of two decode routes. |
+| `STRATA_GLM_FP4_KEEP_RESELECT_PREFETCH` | `0` (default) through `8` | With re-selection: upload this many newly kept experts per decode layer in the background (at most the upload slots), instead of when first routed. |
 | `STRATA_GLM_FP4_HEAD_TP` | `1` | Split narrow MXFP8 vocabulary products across two peer-accessible GPUs. |
 | `STRATA_GLM_FP4_HEAD_TP_BORROW` | `1` | Charge the secondary head copy to that GPU's original scratch reserve. Requires head partitioning and the original decode reserves. |
 | `STRATA_GLM_FP4_FIXED_HALF` | Mask `0`–`7`, default `0` | Cache exact FP16 operands in lane order: bit 1 selects the vocabulary projection, bit 2 selects packed MXFP8 matrices with at most 8192 rows and at least 4096 columns, bit 4 selects 2048-by-4096 block-FP8 shared projections. |
@@ -505,6 +512,80 @@ Fresh coding fixtures are in `tools/glm_fp4_optimization_quality.py`: eight
 training cases and twenty held-out cases with executable oracles. Freeze the
 fixtures before experimentation and freeze the selected policy before running
 the held-out cases. These checks are not a general quality or perplexity result.
+
+## Keep re-selection during decode
+
+Each request chooses the experts it keeps on the GPUs during decode from its last prefill batch's routes. After a
+long prompt that choice covers fewer decode routes, so more decode experts run on the CPU (see
+[long context](GLM_FP4_V100.md#long-context-opt-in)). A routing trace of one server answering six 512-token requests
+(8K, 8K, 64K, 8K, 250K and 8K prompts; source v574, `--routing-trace=PATH`, which the serve mode now also takes)
+measured the share of decode routes that land on a kept expert:
+
+| Keep set | 8K | 8K | 64K | 8K | 250K | 8K |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| from the last prefill batch (what the engine does) | 0.51 | 0.40 | 0.34 | 0.51 | 0.38 | 0.44 |
+| from the first quarter of the answer's own routes | 0.58 | 0.49 | 0.53 | 0.42 | 0.48 | 0.54 |
+| from the answer's own routes (best possible) | 0.62-0.72 at every length | | | | | |
+
+Keep sets from the whole prompt, or from its last 2,048 or 512 tokens, were no better than the last batch. The
+trace runs with route affinity on, which biases routes toward the kept set and so favours the first row.
+
+`STRATA_GLM_FP4_KEEP_RESELECT_ROWS=N` chooses each layer's kept experts again, once per request, after N decode
+rows, from the sum of the prompt's and the answer's route shares ([experimental switches](#experimental-switches)). `..._SWAPS` caps the swaps per GPU and layer (each
+needs a margin of two decode routes), and `..._PREFETCH` uploads the newly kept experts in the background after each
+decode layer, instead of when they are first routed. Experts dropped from the kept set stay cached until their room
+is needed. `FP4_KEEP_RESELECT` reports layers, swaps, bytes reclaimed and prefetch counts.
+
+Timed pairs, measured like the [streamed prefill](GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in) pairs (streamed
+lean profile, 12,288 context, three full warmups and three timed 8,192-input / 512-output requests per side, same
+binary and job; every side gave identical repeats):
+
+| Source, side | Prefill tok/s | Decode tok/s | Swaps | Note |
+| --- | ---: | ---: | ---: | --- |
+| v578, off | 788.69 | 41.27 | | |
+| v578, after 128 rows, no cap | 694.31 | 34.75 | 7,941 | repeats differed: not qualified |
+| v578, after 64 rows, no cap | 704.51 | 38.11 | 7,412 | CPU expert groups -42%; dropped experts freed |
+| v579, off | 782.25 | 41.41 | | |
+| v579, after 64 rows, cap 8 | 722.21 | 36.48 | 2,862 | |
+| v579, after 64 rows, cap 8, prefetch 2 | 726.64 | 37.16 | 2,862 | 1,448 prefetched, 508 skipped |
+| v579, after 64 rows, cap 4, prefetch 2 | 734.90 | 37.08 | 1,926 | 921 prefetched, 379 skipped |
+
+Every re-selection side is below 0.94 of its off side in prefill and 0.93 in decode; the gate fixed before the
+v579 run asked for 0.97 of both and at least 40 decode tok/s, so the coding panel was not run. Swapped experts must
+be uploaded during decode, and the next prompt finds fewer of its experts cached.
+
+A nine-request sequence on one server (256K context, FP8 latent cache, active pools, streamed prefill, 512-token
+answers, single requests, decode tok/s):
+
+| Request, prompt | off (v572) | after 128 rows (v578) | after 64 rows, cap 8, prefetch 2 (v579) |
+| --- | ---: | ---: | ---: |
+| 1, 8K | 15.36 | 16.79 | 15.50 |
+| 2, 8K | 20.42 | 21.14 | 23.16 |
+| 3, 8K | 26.38 | 24.14 | 26.89 |
+| 4, 16K | 24.23 | 26.53 | 24.34 |
+| 5, 8K | 27.56 | 29.60 | 28.86 |
+| 6, 64K | 27.18 | 27.84 | 27.12 |
+| 7, 8K | 31.39 | 31.53 | 33.21 |
+| 8, 250K | 22.96 | 24.84 | 24.18 |
+| 9, 8K | 33.19 | 33.80 | 34.20 |
+
+Long prompts gain a little (250K +5.3% to +8.2%, 64K -0.2% to +2.4%), less than the 8K pairs lose. The v578 run
+uploaded 24 GB of experts during decode per request against 7 GB with re-selection off. The three switches stay
+off by default and are not part of any profile.
+
+Two other attempts at the long-context decode cost, both timed pairs as above with the control's settings:
+
+| Setting | Context | Decode tok/s | Control decode tok/s |
+| --- | --- | ---: | ---: |
+| `STRATA_GLM_FP4_DECODE_RESERVE_MIB=1024` (more experts kept) | 12,288 | 38.96 | 41.47 |
+| same, streamed lean profile | 12,288 | 38.77 | 41.47 |
+| `STRATA_GLM_INDEX_KEYS=f16` | 256K, FP8 cache, active pools | 36.40 | 39.64 |
+| `STRATA_GLM_FP4_DECODE_RESERVE_MIB=1024` | same | 37.63 | 39.64 |
+| both | same | 38.29 | 39.64 |
+
+A smaller reserve keeps more experts but the arena then evicts and reloads more of them (4,174 physical evictions at
+256K). FP16 index keys change the text and lower draft acceptance; time per verify round did not rise (sources v566
+and v567).
 
 ## Measurement protocol
 
