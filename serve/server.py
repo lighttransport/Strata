@@ -309,6 +309,72 @@ class EngineStarting(RuntimeError):
     not a 400 about the prompt."""
 
 
+class ContextOverflow(ValueError):
+    """A prompt (with its max tokens) that does not fit the context.  A ValueError (a 400) as before; each API words it
+    the way its clients recognize an overflow and compact: OpenAI's code "context_length_exceeded", Anthropic's
+    "prompt is too long: N tokens > M maximum" or "input length and `max_tokens` exceed context limit: N + K > M"."""
+
+    def __init__(self, message: str, prompt_tokens: int, ctx: int, max_new: int | None = None):
+        super().__init__(message)
+        self.prompt_tokens, self.ctx, self.max_new = prompt_tokens, ctx, max_new
+
+    def anthropic_message(self) -> str:
+        if self.max_new and self.prompt_tokens < self.ctx - CTX_SLACK:   # the prompt alone fits
+            head = (f"input length and `max_tokens` exceed context limit: {self.prompt_tokens} + {self.max_new} > "
+                    f"{self.ctx - CTX_SLACK}, decrease input length or `max_tokens` and try again")
+        else:
+            head = f"prompt is too long: {self.prompt_tokens} tokens > {self.ctx - CTX_SLACK - 1} maximum"
+        return f"{head} ({self})"
+
+
+class Overloaded(RuntimeError):
+    """The config's "max_queue": the model is busy and that many requests already wait their turn.  A 429 (OpenAI) or
+    529 (Anthropic) with Retry-After, which agents retry on (pi, Claude Code and the SDKs wait up to 60 s)."""
+
+    def __init__(self, message: str, retry_after: int):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class EitherSet:
+    """is_set() of two events, for code that only asks is_set() (the engines, Service._run): the client's cancel, and
+    a stop the server decides on itself (first_call_only).  Only the second is set here."""
+
+    def __init__(self, cancel, stop):
+        self.cancel, self.stop = cancel, stop
+
+    def is_set(self) -> bool:
+        return self.cancel.is_set() or self.stop.is_set()
+
+    def set(self):
+        self.stop.set()
+
+
+def one_call_only(req) -> bool:
+    """OpenAI's "parallel_tool_calls": false (Chat, Responses) and Anthropic's tool_choice "disable_parallel_tool_use":
+    true - at most one tool call in the reply."""
+    if not isinstance(req, dict):
+        return False
+    choice = req.get("tool_choice")
+    return req.get("parallel_tool_calls") is False or (isinstance(choice, dict)
+                                                       and choice.get("disable_parallel_tool_use") is True)
+
+
+def first_call_only(run, ids, thinking, tools, max_new, sampling, cancel, force):
+    """The reply up to its first complete tool call: then the engine is stopped and what it wrote after is dropped.
+    The reply ends as a stop, which each API reports as its tool-call finish (tool_calls, tool_use)."""
+    stop = threading.Event()
+    called = False
+    for kind, x in run(ids, thinking, tools, max_new, sampling, EitherSet(cancel, stop), force):
+        if not called:
+            yield kind, x
+            called = kind == "event" and x.kind == "tool_call"
+            if called:
+                stop.set()
+        elif kind == "done":
+            yield kind, x if cancel.is_set() else {**x, "finish": "stop", "stop_sequence": None}
+
+
 class ClientGone(Exception):
     """#1999: the client hung up while its request was being prepared (an image URL downloading, a picture encoding or
     waiting for its turn): nothing is left to answer."""
@@ -931,6 +997,8 @@ class StrataEngine:
         # the slot that has its start (the engine checks it again); when the slot was last used
         self.slot_held: list[list[int]] = [[] for _ in range(self.batch)]
         self.slot_used = [0.0] * self.batch
+        # an agent's session (the request's "strata_session", from its session header) -> the slot it last used
+        self.slot_session: dict[str, int] = {}
         self.slot_live: list[dict | None] = [None] * self.batch   # /metrics: the request in each slot
         # #1012: the admission state belongs to the server, not to one engine process.  restart() runs this again
         # while requests still wait on it (they hold these very objects), so it is made once and kept: new ones
@@ -1490,6 +1558,8 @@ class StrataEngine:
         self.progress, self.progress_ms, self.reused = None, 0, 0
         born = self.gen                                 # the engine process this request is sent to
         keys = self.sampling_keys(sampling or {})
+        session = (sampling or {}).get("strata_session")
+        session = session if isinstance(session, str) and session else None
         out: list[int] = []
         pending: list[int] = []
         prompt, left = list(ids), int(max_new)
@@ -1530,7 +1600,7 @@ class StrataEngine:
                         if (reserved is None and not out and not embeddings and yields < self.YIELDS_MAX and
                                 self._shorter_waiting(len(prompt))):
                             with self.slot_cv:          # the slot the part read will wait in
-                                reserved = self.pick_slot(prompt)
+                                reserved = self.pick_slot(prompt, session)
                                 if reserved is not None:
                                     self.slot_busy[reserved] = True
                                     self.slot_claims.add(reserved)
@@ -1578,10 +1648,15 @@ class StrataEngine:
                         # long, short at 0.25 s steps under parallel: 2 (ENGINE_REVIEW finding 1, reproduced in 0.1.41).
                         while True:
                             with self.slot_cv:
-                                slot = self.pick_slot(prompt)
+                                slot = self.pick_slot(prompt, session)
                                 if slot is not None:
                                     self.slot_busy[slot] = True
                                     self.slot_claims.add(slot)
+                                    if session:                 # the session's slot now, and no other session's
+                                        owners = self.__dict__.setdefault("slot_session", {})
+                                        for k in [k for k, v in owners.items() if v == slot]:
+                                            del owners[k]
+                                        owners[session] = slot
                                     if admit_wait:
                                         admit_wait = False
                                         self.admitting = max(0, self.admitting - 1)
@@ -1593,7 +1668,7 @@ class StrataEngine:
                                 self.ctl.release()
                                 holding = False
                             with self.slot_cv:
-                                if self.pick_slot(prompt) is None:
+                                if self.pick_slot(prompt, session) is None:
                                     if (ENGINE_STALL_S or 0) > 0 and time.monotonic() - admit_since >= ENGINE_STALL_S:
                                         # the stall check of #1317 only watches a request on the control lines; one
                                         # waiting here is covered by looking for a slot nobody owns, and by saying so
@@ -1604,7 +1679,7 @@ class StrataEngine:
                                                   f"for a free slot (busy: {busy}, in use: {sorted(self.slot_claims)}, "
                                                   f"ending: {sorted(self.slot_releasing)}) (issue #1603)", flush=True)
                                     self._reap_orphan_slots()
-                                if self.pick_slot(prompt) is None:
+                                if self.pick_slot(prompt, session) is None:
                                     self.slot_cv.wait(timeout=1.0)
                             if cancel.is_set():
                                 return
@@ -1806,10 +1881,12 @@ class StrataEngine:
     slot_groups = 1         # --batch-groups (set when the engine starts)
     SLOT_PREFIX_MIN = 512   # a held prefix shorter than this is not worth unbalancing the pipeline's groups
 
-    def pick_slot(self, prompt: list[int]) -> int | None:
+    def pick_slot(self, prompt: list[int], session: str | None = None) -> int | None:
         """A free slot for `prompt` (the caller holds slot_cv): the one whose held tokens are the longest start of the
-        prompt (the engine then reads only the rest), else an empty one, else the one used longest ago - so the
-        conversations other slots hold stay for their next turns.  None: every slot is busy."""
+        prompt (the engine then reads only the rest), else the slot the request's agent session used last (its
+        conversation changed - compacted, edited - so it replaces its own old turn, not another conversation's), else
+        an empty one, else the one used longest ago - so the conversations other slots hold stay for their next
+        turns.  None: every slot is busy."""
         free = [b for b in self.slot_order if not self.slot_busy[b]]
         if not free:
             return None
@@ -1830,6 +1907,9 @@ class StrataEngine:
         # without --batch-groups a held prefix of any length is taken, as before
         if held_prefix(best) >= (self.SLOT_PREFIX_MIN if self.slot_groups > 1 else 1):
             return best
+        own = getattr(self, "slot_session", {}).get(session) if session else None
+        if own in free:
+            return own
         # with --batch-groups: the group with the fewest busy slots first, so the requests spread over the
         # pipeline's stages (two requests in one group leave the other stage idle); then empty, then least recent
         busy_in = {}
@@ -3177,6 +3257,9 @@ class Service:
         self.reasoning_close_retry = False            # #1053 (opt-in): close the thinking once when a reply ends inside it
         self.codex_compaction_cache = False           # #924 (opt-in): a Codex compaction is rendered with its conversation's tools
         self.codex_thread_titles = False              # #923 (opt-in): answer Codex's thread-title turns without the engine
+        self.reasoning_field = None                   # opt-in: Chat Completions also sends the thinking under this name
+        self.responses_overflow_event = False         # opt-in: a streamed Responses overflow is a response.failed event
+        self.max_queue = None                         # opt-in: refuse (429/529) a request this many would wait ahead of
         self.sampling_defaults = dict(sampling_defaults or {})   # the run config's `sampling` block
         self.shared = {}                              # the web app's Chat settings for every client (POST /settings)
         self.shared_path = None                       # where they are kept between starts (next to the config)
@@ -4082,17 +4165,18 @@ class Service:
         room = ctx - CTX_SLACK - len(ids)
         if max_new is None or max_new <= 0 or (self.fit_max_tokens and room < 1):
             if room < 1:
-                raise ValueError("request exceeds the context window: "
-                                 f"prompt ({len(ids)} tokens) leaves no room to answer in the context "
-                                 f"({ctx}); requests are never truncated")
+                raise ContextOverflow("request exceeds the context window: "
+                                      f"prompt ({len(ids)} tokens) leaves no room to answer in the context "
+                                      f"({ctx}); requests are never truncated", len(ids), ctx)
             max_new = room
         elif max_new > room:
             if not self.fit_max_tokens:
-                raise ValueError("request exceeds the context window: "
-                                 f"prompt ({len(ids)} tokens) + max tokens ({max_new}) exceeds the context "
-                                 f"({ctx}); requests are never truncated. Send a smaller "
-                                 f"max_tokens (at most {max(0, room)} here), or add \"fit_max_tokens\": true to the "
-                                 "model's strata-<model>.json to shorten it to the room left (#545)")
+                raise ContextOverflow("request exceeds the context window: "
+                                      f"prompt ({len(ids)} tokens) + max tokens ({max_new}) exceeds the context "
+                                      f"({ctx}); requests are never truncated. Send a smaller "
+                                      f"max_tokens (at most {max(0, room)} here), or add \"fit_max_tokens\": true to "
+                                      "the model's strata-<model>.json to shorten it to the room left (#545)",
+                                      len(ids), ctx, max_new)
             max_new = max(1, room)          # --fit-max-tokens: a shorter completion beats a 400
         if images:
             # The request's images in one file for GENI (~10 MB a picture), written once nothing above refuses the
@@ -4230,13 +4314,29 @@ class Service:
                   f"{el:.0f} s", flush=True)
         return now
 
+    MAX_QUEUE_RETRY_S = 5
+
+    def check_queue(self) -> None:
+        """The config's "max_queue": with the model busy and that many requests already waiting, a new one is refused
+        (Overloaded) before anything is read.  Unset: every request waits its turn, as before."""
+        if self.max_queue is None:
+            return
+        with self.status_lock:
+            busy, queued = bool(self.status.get("busy")), int(self.status.get("queued") or 0)
+        if busy and queued >= self.max_queue:
+            raise Overloaded(f"the model is busy and {queued} request(s) already wait (max_queue {self.max_queue}); "
+                             f"retry in {self.MAX_QUEUE_RETRY_S} s", self.MAX_QUEUE_RETRY_S)
+
     def run(self, ids, thinking, tools, max_new, sampling, cancel, force=None) -> Iterator[tuple[str, object]]:
         """The request's events (see _run); with "prevent_sleep" in the config, the PC stays awake while it runs or waits."""
         ka = self.keep_awake
         if ka is not None:
             ka.acquire()
         try:
-            yield from self._run(ids, thinking, tools, max_new, sampling, cancel, force)
+            if tools and one_call_only(sampling):
+                yield from first_call_only(self._run, ids, thinking, tools, max_new, sampling, cancel, force)
+            else:
+                yield from self._run(ids, thinking, tools, max_new, sampling, cancel, force)
         finally:
             if ka is not None:
                 ka.release()
@@ -5038,15 +5138,32 @@ def structured_chunks(chunks, validator):
 
 
 # ------------------------------------------------------------------------------------------------ Anthropic
-def anthropic_events(svc: Service, req: dict, ids, thinking, tools, max_new, cancel, force=None):
+def thinking_signature(text: str) -> str:
+    """A thinking block's signature: Strata keeps no secret to sign with, so a digest of the text.  It is not checked
+    when the block comes back; a non-empty one makes clients (pi, Claude Code) send the block back as thinking, not as
+    plain text, which keeps the next prompt the same as the cached one."""
+    return "strata1:" + hashlib.sha256(text.encode()).hexdigest()[:32]
+
+
+def anthropic_events(svc: Service, req: dict, ids, thinking, tools, max_new, cancel, force=None, sdk=False):
+    """`sdk`: the client sent anthropic-version (an Anthropic SDK: Claude Code, pi): thinking blocks end with a
+    signature_delta and the usage carries the cache fields, as Anthropic's own API does."""
     mid = "msg_" + uuid.uuid4().hex[:24]
+    usage = {"input_tokens": len(ids), "output_tokens": 0}
+    if sdk:
+        usage.update(cache_creation_input_tokens=0, cache_read_input_tokens=0)
     yield "message_start", {"type": "message_start", "message": {
         "id": mid, "type": "message", "role": "assistant", "model": svc.model_for(req), "content": [],
-        "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": len(ids), "output_tokens": 0}}}
+        "stop_reason": None, "stop_sequence": None, "usage": usage}}
     index, open_kind, used_tool = -1, None, False
+    thought = []                                   # the open thinking block's text, for its signature
 
     def close():
-        return ("content_block_stop", {"type": "content_block_stop", "index": index})
+        if sdk and open_kind == "thinking":
+            yield "content_block_delta", {"type": "content_block_delta", "index": index, "delta": {
+                "type": "signature_delta", "signature": thinking_signature("".join(thought))}}
+        thought.clear()
+        yield "content_block_stop", {"type": "content_block_stop", "index": index}
 
     streamed, finished = set(), set()              # calls sent piece by piece; those whose final tool_call came (#211)
     for kind, x in svc.run(ids, thinking, tools, max_new, req, cancel, force=force):
@@ -5070,7 +5187,7 @@ def anthropic_events(svc: Service, req: dict, ids, thinking, tools, max_new, can
                 used_tool = True
             if open_kind != want or want == "tool_use":
                 if open_kind is not None:
-                    yield close()
+                    yield from close()
                 index += 1
                 open_kind = want
                 block = {"thinking": {"type": "thinking", "thinking": "", "signature": ""},
@@ -5079,6 +5196,7 @@ def anthropic_events(svc: Service, req: dict, ids, thinking, tools, max_new, can
                                       ev.call.name if ev.call else "", "input": {}}}[want]
                 yield "content_block_start", {"type": "content_block_start", "index": index, "content_block": block}
             if want == "thinking":
+                thought.append(ev.text)
                 yield "content_block_delta", {"type": "content_block_delta", "index": index,
                                               "delta": {"type": "thinking_delta", "thinking": ev.text}}
             elif want == "text":
@@ -5092,7 +5210,7 @@ def anthropic_events(svc: Service, req: dict, ids, thinking, tools, max_new, can
                     "type": "input_json_delta", "partial_json": json.dumps(ev.call.arguments, ensure_ascii=False)}}
         else:
             if open_kind is not None:
-                yield close()
+                yield from close()
             stop = "stop_sequence" if x.get("stop_sequence") is not None else \
                 "tool_use" if used_tool and streamed <= finished and x["finish"] == "stop" else \
                 {"stop": "end_turn", "length": "max_tokens", "cancel": "end_turn"}[x["finish"]]
@@ -5101,10 +5219,13 @@ def anthropic_events(svc: Service, req: dict, ids, thinking, tools, max_new, can
             # prompt token is always read, and Claude Code takes an input_tokens of 0 as "not given" and keeps
             # message_start's whole prompt beside cache_read_input_tokens: the prompt counted twice (#1013)
             reused = max(0, min(x.get("reused") or 0, len(ids) - 1))
+            final = {"input_tokens": len(ids) - reused, "cache_read_input_tokens": reused,
+                     "output_tokens": x["completion_tokens"]}
+            if sdk:
+                final["cache_creation_input_tokens"] = 0
             yield "message_delta", {"type": "message_delta", "delta": {"stop_reason": stop,
                                                                        "stop_sequence": x.get("stop_sequence")},
-                                    "usage": {"input_tokens": len(ids) - reused, "cache_read_input_tokens": reused,
-                                              "output_tokens": x["completion_tokens"]}}
+                                    "usage": final}
             yield "message_stop", {"type": "message_stop"}
 
 
@@ -5124,6 +5245,8 @@ def anthropic_collect(events) -> dict:
                 b["text"] += d["text"]
             elif d["type"] == "thinking_delta":
                 b["thinking"] += d["thinking"]
+            elif d["type"] == "signature_delta":
+                b["signature"] = d["signature"]
             else:                                  # input_json_delta pieces: parsed when complete
                 b["_json"] = b.get("_json", "") + d["partial_json"]
         elif name == "content_block_stop" and blocks and "_json" in blocks[-1]:
@@ -5141,6 +5264,42 @@ def anthropic_collect(events) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------ HTTP
+ANTHROPIC_PATHS = ("/v1/messages", "/v1/messages/count_tokens")
+# Anthropic's error types by status (https://docs.anthropic.com/en/api/errors); a 503 is a temporary refusal
+ANTHROPIC_ERROR_TYPES = {400: "invalid_request_error", 401: "authentication_error", 403: "permission_error",
+                         404: "not_found_error", 413: "request_too_large", 429: "rate_limit_error",
+                         503: "overloaded_error", 529: "overloaded_error"}
+
+
+# Coding agents' request headers.  A session id (Claude Code, Codex, pi) keeps a conversation on its own batch slot;
+# a side request (Claude Code's titles and compactions, Codex's compaction) saves no conversation checkpoint.
+SESSION_HEADERS = ("x-claude-code-session-id", "session-id", "session_id", "x-session-affinity", "thread-id")
+AUX_REQUEST_CLASSES = ("auxiliary", "compaction")
+
+
+def agent_hints(headers, req: dict) -> None:
+    """The headers' hints as the request's own fields - "strata_checkpoint": false for a side request, and
+    "strata_session" - unless the request sets them itself.  Requests without these headers are unchanged."""
+    if not isinstance(req, dict):
+        return
+    kind = (headers.get("x-claude-code-request-class") or "").strip().lower()
+    side = kind in AUX_REQUEST_CLASSES or (headers.get("x-openai-subagent") or "").strip().lower() == "compact"
+    if side:
+        req.setdefault("strata_checkpoint", False)
+        return
+    session = next((headers.get(h).strip() for h in SESSION_HEADERS if (headers.get(h) or "").strip()), None)
+    if session:
+        req.setdefault("strata_session", session[:256])
+
+
+def anthropic_error_body(status: int, error: dict) -> dict:
+    """An error on the Anthropic routes in Anthropic's envelope: {"type": "error", "error": {"type", "message"},
+    "request_id"}.  Claude Code and the Anthropic SDKs read the type to decide whether to retry."""
+    kind = ANTHROPIC_ERROR_TYPES.get(status, "invalid_request_error" if status < 500 else "api_error")
+    return {"type": "error", "error": {"type": kind, "message": str(error.get("message", ""))},
+            "request_id": "req_" + uuid.uuid4().hex[:24]}
+
+
 CHUNKED_BODY_MAX = 256 << 20                # #893: the most a Transfer-Encoding: chunked body may hold (read into memory)
 
 
@@ -5168,6 +5327,7 @@ def make_handler(svc: Service):
         protocol_version = "HTTP/1.0"                       # SSE ends by closing the connection
 
         record = None                                       # #332: this request's monitor record, if kept
+        force = None                                        # the Responses request's forced call (forced_call)
         watch_done = None                                   # #430 #431: stops this request's disconnect watcher
         body_read = False                                   # whether a handler took this request's body
         DRAIN_SECONDS = 5                                   # the longest an unread body is read and dropped
@@ -5391,6 +5551,9 @@ def make_handler(svc: Service):
             self.end_headers()
 
         def _json(self, code, obj, headers=None):
+            if (isinstance(obj, dict) and isinstance(obj.get("error"), dict) and "type" not in obj
+                    and self.path.split("?")[0].rstrip("/") in ANTHROPIC_PATHS):
+                obj = anthropic_error_body(code, obj["error"])
             if self.record is not None:
                 with svc.status_lock:
                     self.record["http_status"] = code
@@ -5544,8 +5707,12 @@ def make_handler(svc: Service):
             elif path in ("/v1/models", "/models"):
                 if self._authorized():
                     loaded = svc.loaded()
-                    model = {"id": svc.model, "object": "model", "status": {"value": "loaded"},
-                             "meta": {"n_ctx": svc.reported_ctx()},
+                    # OpenAI's created / owned_by, and the context under the names agents read it from: llama.cpp's
+                    # meta.n_ctx, OpenRouter's and LM Studio's context_length, vLLM's max_model_len
+                    n_ctx = svc.reported_ctx()
+                    model = {"id": svc.model, "object": "model", "created": int(svc.started_at), "owned_by": "strata",
+                             "context_length": n_ctx, "max_model_len": n_ctx,
+                             "status": {"value": "loaded"}, "meta": {"n_ctx": n_ctx},
                              "architecture": {"input_modalities": ["text", "image"] if svc.vision is not None else ["text"],
                                               "output_modalities": ["text"]}}
                     if not loaded and (svc.idle_unload_s or getattr(svc.engine, "unloaded", False)):
@@ -5558,6 +5725,14 @@ def make_handler(svc: Service):
                     if svc.images is not None:            # the image model: POST /v1/images/generations
                         data.append({"id": svc.images.model, "object": "model", "status": {"value": "loaded"},
                                      "architecture": {"input_modalities": ["text"], "output_modalities": ["image"]}})
+                    if self.headers.get("anthropic-version"):
+                        # an Anthropic SDK's models.list(): Anthropic's list shape, the chat models only
+                        made = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(svc.started_at))
+                        listed = [{"type": "model", "id": m["id"], "display_name": m["id"], "created_at": made}
+                                  for m in data if "image" not in m["architecture"]["output_modalities"]]
+                        return self._json(200, {"data": listed, "has_more": False,
+                                                "first_id": listed[0]["id"] if listed else None,
+                                                "last_id": listed[-1]["id"] if listed else None})
                     self._json(200, {"object": "list", "data": data})
             elif path == "/props":
                 if self._authorized():
@@ -5678,6 +5853,8 @@ def make_handler(svc: Service):
                         self._json(503, {"error": {"type": "server_error", "message": str(e)}})
                     return
                 if path in ("/v1/chat/completions", "/v1/messages", "/v1/responses"):
+                    agent_hints(self.headers, req)
+                    svc.check_queue()
                     self.record = svc.begin_request(path, req)
                 if path == "/v1/responses":
                     self._responses(req)
@@ -5708,10 +5885,25 @@ def make_handler(svc: Service):
                 print(f"[strata] 400 invalid request: {e}", flush=True)
                 if path == "/v1/responses":
                     self._json(400, responses_error_body(str(e)))
+                elif isinstance(e, ContextOverflow) and path in ANTHROPIC_PATHS:
+                    self._json(400, {"error": {"type": "invalid_request_error", "message": e.anthropic_message()}})
+                elif isinstance(e, ContextOverflow):
+                    self._json(400, {"error": {"type": "invalid_request_error", "message": str(e),
+                                               "code": "context_length_exceeded", "param": "messages"}})
                 else:
                     self._json(400, {"error": {"type": "invalid_request_error", "message": str(e)}})
             except ModelBusy as e:
                 self._json(409, {"error": {"type": "model_busy", "message": str(e)}})
+            except Overloaded as e:                          # "max_queue": worth retrying, and the client is told when
+                retry = {"Retry-After": e.retry_after, "x-should-retry": "true"}
+                if path in ANTHROPIC_PATHS:
+                    self._json(529, {"error": {"message": str(e)}}, headers=retry)
+                elif path == "/v1/responses":
+                    self._json(429, responses_error_body(str(e), "rate_limit_error", code="rate_limit_exceeded"),
+                               headers=retry)
+                else:
+                    self._json(429, {"error": {"type": "rate_limit_error", "code": "rate_limit_exceeded",
+                                               "message": str(e)}}, headers=retry)
             except StructuredOutputError as e:
                 self._json(502, {"error": {"type": "structured_output_failed", "code": "structured_output_failed",
                                           "message": str(e)}})
@@ -6017,16 +6209,35 @@ def make_handler(svc: Service):
             if validator is not None:
                 chunks = structured_chunks(chunks, validator)
             chunks = self._capture(chunks, "openai")
+            alias = svc.reasoning_field
             if not req.get("stream"):
-                return self._json(200, openai_collect(chunks))
+                out = openai_collect(chunks)
+                msg = out["choices"][0]["message"]
+                if alias and "reasoning_content" in msg:
+                    msg[alias] = msg["reasoning_content"]
+                return self._json(200, out)
+            # OpenAI's stream_options.include_usage: the counts again in a last chunk with no choices, which is where
+            # the OpenAI SDKs and pi look for them (the finish chunk keeps its usage, as before)
+            opts = req.get("stream_options")
+            usage_chunk = isinstance(opts, dict) and opts.get("include_usage") is True
             self._sse()
             try:
+                last = None
                 for c in chunks:
                     if c is None:
                         self.wfile.write(b": keep-alive\n\n")      # an SSE comment: clients ignore it
                     else:
+                        if alias and c.get("choices") and "reasoning_content" in c["choices"][0]["delta"]:
+                            delta = c["choices"][0]["delta"]
+                            delta[alias] = delta["reasoning_content"]
+                        if c.get("usage"):
+                            last = c
                         self.wfile.write(b"data: " + json.dumps(c, ensure_ascii=False).encode() + b"\n\n")
                     self.wfile.flush()
+                if usage_chunk and last is not None:
+                    tail = {k: last[k] for k in ("id", "object", "created", "model")}
+                    tail.update(choices=[], usage=last["usage"])
+                    self.wfile.write(b"data: " + json.dumps(tail, ensure_ascii=False).encode() + b"\n\n")
                 self.wfile.write(b"data: [DONE]\n\n")
             except OSError:
                 self._note(outcome="disconnected")
@@ -6076,6 +6287,8 @@ def make_handler(svc: Service):
                 self._note(outcome="disconnected")
                 return
             except ResponsesError as e:
+                if e.code == "context_length_exceeded" and req.get("stream") and svc.responses_overflow_event:
+                    return self._responses_overflow(req, e)
                 return self._json(e.status, e.body())
             except ModelBusy as e:
                 return self._json(409, responses_error_body(str(e), "server_error", code="model_busy"))
@@ -6088,7 +6301,8 @@ def make_handler(svc: Service):
             def events():
                 yield from asm.start()
                 done = None
-                for kind, x in svc.run(ids, thinking, tools, max_new, req, cancel):
+                for kind, x in svc.run(ids, thinking, tools, max_new, req, cancel,
+                                       **({"force": self.force} if self.force else {})):
                     if kind == "ping":
                         yield None
                     elif kind == "event":
@@ -6144,6 +6358,27 @@ def make_handler(svc: Service):
             except ValueError as e:                          # the engine's ERR after the stream started
                 self._responses_failed(asm, str(e), "server_error", send)
 
+        def _responses_overflow(self, req, e):
+            """The config's "responses_overflow_event" (opt-in): a streamed request too long for the context gets
+            response.created, then response.failed with code context_length_exceeded - the form Codex compacts on
+            (it reads a 400 before the stream as a plain error)."""
+            try:
+                names = responses_api.request_tools(req)[1]
+            except ValueError:
+                names = {}
+            asm = responses_api.Assembler(req, svc.model_for(req), 0, names, False)
+            self._sse()
+
+            def send(ev):
+                self.wfile.write(f"event: {ev['type']}\n".encode() + b"data: " +
+                                 json.dumps(ev, ensure_ascii=False).encode() + b"\n\n")
+            try:
+                for ev in asm.start():
+                    send(ev)
+            except OSError:
+                return self._note(outcome="disconnected")
+            self._responses_failed(asm, str(e), "context_length_exceeded", send)
+
         def _responses_failed(self, asm, message, code, send):
             e = asm.failed(message, code)
             self._note(error=e["response"]["error"])
@@ -6189,21 +6424,24 @@ def make_handler(svc: Service):
             # #924 (opt-in): a Codex compaction request is rendered with its conversation's tools, so its prompt
             # starts as the cached one did; the parser and the response keep the request's own tools
             shown = responses_api.prompt_tools(req, tools) if svc.codex_compaction_cache else tools
+            # "required" or {"type": "function", "name": N}: the reply opens the call, as on the chat route
+            self.force = force = forced_call(req.get("tool_choice"), tools, svc.dialect) if tools else None
+            forcing = {"force": force} if force else {}       # unforced: prepare is called as before
             try:
                 try:
                     ids, thinking, max_new = svc.prepare(messages, shown, kw, req.get("max_output_tokens") or 0, req=req,
-                                                          cancel=cancel)
+                                                          cancel=cancel, **forcing)
                 except ValueError:
                     if shown is tools:
                         raise
                     shown = tools                            # too long with the kept tools: the request as sent
                     ids, thinking, max_new = svc.prepare(messages, shown, kw, req.get("max_output_tokens") or 0, req=req,
-                                                          cancel=cancel)
+                                                          cancel=cancel, **forcing)
             except ResponsesError:
                 raise
             except ValueError as e:                          # too long for the context, an image without vision
-                raise ResponsesError(str(e), "input", "context_length_exceeded" if "context" in str(e) else None) \
-                    from None
+                raise ResponsesError(str(e), "input", "context_length_exceeded" if isinstance(e, ContextOverflow)
+                                     or "context" in str(e) else None) from None
             if svc.codex_compaction_cache:
                 responses_api.prompt_made(req, shown)
             _debug_req("responses", req, messages, tools, max_new, thinking, len(ids))
@@ -6240,7 +6478,10 @@ def make_handler(svc: Service):
             self._watch_client(cancel)                       # #430 #431 (#1999: before prepare, which can take long)
             ids, thinking, max_new = svc.prepare(messages, tools, kw, max_new, force=force, req=req, cancel=cancel)
             _debug_req("anthropic", req, messages, tools, max_new, thinking, len(ids))
-            events = anthropic_events(svc, req, ids, thinking, tools, max_new, cancel, force=force)
+            # an Anthropic SDK (Claude Code, pi) sends anthropic-version: it reads ping events, which keep its stream
+            # idle watchdog from ending a long prompt read; other clients keep the SSE comment
+            sdk = bool(self.headers.get("anthropic-version"))
+            events = anthropic_events(svc, req, ids, thinking, tools, max_new, cancel, force=force, sdk=sdk)
             events = self._capture(events, "anthropic")
             if not req.get("stream"):
                 return self._json(200, anthropic_collect(events))
@@ -6248,7 +6489,7 @@ def make_handler(svc: Service):
             try:
                 for item in events:
                     if item is None:
-                        self.wfile.write(b": keep-alive\n\n")
+                        self.wfile.write(b'event: ping\ndata: {"type": "ping"}\n\n' if sdk else b": keep-alive\n\n")
                     else:
                         name, e = item
                         self.wfile.write(f"event: {name}\n".encode() + b"data: " +
@@ -7193,6 +7434,15 @@ def main() -> int:
             print(f"[strata] thinking level: {svc.config_effort} (reasoning_effort in the config; a request, or the "
                   "Chat settings shared with other apps, can set its own)", flush=True)
     svc.codex_thread_titles = cfg.get("codex_thread_titles") is True    # #923: opt-in, off by default
+    rf = cfg.get("reasoning_field")                     # opt-in: the thinking also as "reasoning" (vLLM 0.9+)
+    if rf is not None and rf not in ("reasoning", "reasoning_text"):
+        raise SystemExit(f"[strata] config \"reasoning_field\" must be \"reasoning\" or \"reasoning_text\", not {rf!r}")
+    svc.reasoning_field = rf
+    svc.responses_overflow_event = cfg.get("responses_overflow_event") is True   # opt-in, off by default
+    mq = cfg.get("max_queue")                           # opt-in: unset = no limit, as before
+    if mq is not None and (isinstance(mq, bool) or not isinstance(mq, int) or mq < 0):
+        raise SystemExit(f"[strata] config \"max_queue\" must be a whole number (0 or more), not {mq!r}")
+    svc.max_queue = mq
     svc.codex_compaction_cache = cfg.get("codex_compaction_cache") is True   # #924: opt-in, off by default
     try:
         svc.set_aliases(cfg.get("aliases"))             # #297: other names the model answers to
