@@ -1495,6 +1495,7 @@ public:
     /// After a long prompt: the chunk buffers shrink to STRATA_DS41_DECODE_CHUNK (64) and the GPU expert tier takes
     /// the VRAM, seeded from the profile file or else from the prompt's own routing.
     void prefill_done() {
+        if (peer_) { std::fill(std::begin(peer_->split_ms), std::end(peer_->split_ms), 0.0); peer_->split_on = false; }   // decode's own split
         // (DECODE_GROUPED computes grown experts with the resident ones; DECODE_MMQ by GEMV chains after its product)
         static const bool grow_on = std::getenv("STRATA_DS41_GROW") && std::string(std::getenv("STRATA_DS41_GROW")) == "1" &&
                                     ((std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1") ||
@@ -4360,6 +4361,16 @@ private:
             peer_->post({l, T, K, peer_mode, ids.data(), wts.data(), pinned_[0], peer_sum_.p});
             posted.p = peer_.get();
         }
+        // STRATA_DS41_PEER_FIRST=1: the peer GPU's work enqueued before the lane starts and GPU 0's experts (it is the
+        // longest of the three: it had started last); the same calls, so the same results
+        static const bool peer_first = std::getenv("STRATA_DS41_PEER_FIRST") && std::string(std::getenv("STRATA_DS41_PEER_FIRST")) == "1";
+        bool peer = false, peer_done = false;
+        if (peer_first && peer_ && !peer_->threaded) {
+            peer = peer_mode == 2 ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
+                 : peer_mode == 1 ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
+                                  : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]);
+            peer_done = true;
+        }
         if (lane_async) lane_->begin(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
         bool any_gpu = false;
         bool batched = false;
@@ -4403,10 +4414,11 @@ private:
                 for (int i : to_gpu0[j].second) expert_chain(l, dstream_[j].b(), i / K, wts[size_t(i)]);
             }
         }
-        const bool peer = peer_ && !peer_->threaded &&
-                          (peer_mode == 2 ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
-                           : peer_mode == 1 ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
-                                            : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
+        if (!peer_done)
+            peer = peer_ && !peer_->threaded &&
+                   (peer_mode == 2 ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
+                    : peer_mode == 1 ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
+                                     : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
         if (dtiming_ && T <= 64) dmark(9);   // "experts": the GPU's experts enqueued (and run); "lane_wait": the CPU's and the peer's after
         const auto x1 = std::chrono::steady_clock::now();
         if (lane_async) lane_->finish();
@@ -5726,7 +5738,7 @@ int run(int argc, char** argv) {
                   << " ffn=" << (d.ffn_host_s_ - ffn_host0) * 1e3 / d.dtokens_ << " layers=" << (d.loop_s_ - loop0) * 1e3 / d.dtokens_
                   << " (ffn: enqueue " << d.xt_[0] * 1e3 / d.dtokens_ << " lane " << d.xt_[1] * 1e3 / d.dtokens_ << " peer " << d.xt_[2] * 1e3 / d.dtokens_
                   << " peer_gpu " << (d.peer_gpu_ms() - peer_gpu0) / d.dtokens_ << " peer_late " << (d.peer_late_ms() - peer_late0) / d.dtokens_ << ")";
-        const double* ps = d.peer_split_ms();   // (includes the prompt's peer calls; decode dominates at 64 tokens)
+        const double* ps = d.peer_split_ms();   // (reset at prefill_done: decode's calls)
         std::cerr << " peer_split_ms_per_pass upload=" << ps[0] / d.dtokens_ << " gu=" << ps[1] / d.dtokens_ << " mid=" << ps[2] / d.dtokens_
                   << " down=" << ps[3] / d.dtokens_ << " tail=" << ps[4] / d.dtokens_ << "\n";
     }
