@@ -11901,13 +11901,14 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
             "[gpu-decode-experts=0]");
     int parallel = 0, prefix_entries = 0;
     size_t state_ram_mib = 0;
-    std::string state_dir;
+    std::string state_dir, routing_trace_path;
     double state_disk_gib = 0;
     std::vector<int> state_boundaries;
     int state_root_min = 2048;
     // Named flags follow the legacy positional serve arguments; existing invocations remain valid.
     //   --batch N            N sequence slots (glm_batch_serve.inc)
     //   --prefix-cache=K     resume a request from a saved prefix: K checkpoints in pinned host memory (~146 MiB each)
+    //   --routing-trace=PATH write every router selection to PATH (diagnostic; STRATA_GLM_ROUTING_EVENTS=1 for JSON)
     const int argc_full = std::min(argc, 29);
     if (argc > 29) {
         for (int i = 29; i < argc; ++i) {
@@ -11919,6 +11920,8 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
                 state_ram_mib = std::stoull(flag.substr(16));
             } else if (flag.starts_with("--state-dir=")) {
                 state_dir = flag.substr(12);
+            } else if (flag.starts_with("--routing-trace=")) {
+                routing_trace_path = flag.substr(16);
             } else if (flag.starts_with("--state-disk-gib=")) {
                 state_disk_gib = std::stod(flag.substr(17));
             } else if (flag.starts_with("--state-boundary=")) {
@@ -12016,6 +12019,7 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
     decoder.set_decode_graphs(argc > 21 && std::string(argv[21]) == "1");
     decoder.set_decode_cache_window(argc > 22 ? std::stoi(argv[22]) : 256);
     decoder.set_decode_cache_adapt(argc > 23 && std::string(argv[23]) == "1");
+    decoder.set_routing_trace(routing_trace_path);
     // Cross-node expert TP for serving (configs pass these through "env"); same meaning as the CLI flags.
     if (const char *address = std::getenv("STRATA_GLM_REMOTE_TP"); address && *address) {
         const char *share = std::getenv("STRATA_GLM_REMOTE_TP_SHARE"), *reply = std::getenv("STRATA_GLM_REMOTE_TP_REPLY");
