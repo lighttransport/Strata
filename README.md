@@ -6,6 +6,11 @@ run from RAM on the CPU, with a GPU-resident tier for the hottest ones and GPU-d
 The model is served in the fork's own Q2/Q3 expert quantization ("Q23"), either complete or with the least
 useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-50: 144 experts, 63 GB).
 
+**Updates**
+
+- 2026-10-24: GLM-5.3-Flash native FP4 on 2x Tesla V100 32 GB: prefill 780 tok/s, decode 41 tok/s (8K prompt,
+  experimental [streamed prefill](docs/GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in)).
+
 <p align="center">
 <a href="docs/media/glm53-tr16-9070xt-live-decode.gif"><img src="docs/media/glm53-tr16-9070xt-live-decode.gif" width="640" alt="About 32 decode tok/s on Threadripper 1950X and RX 9070 XT"></a>
 </p>
