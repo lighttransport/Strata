@@ -13,6 +13,7 @@
 #include "strata/kernels/cpu/native_expert.hpp"
 
 #include <atomic>
+#include <map>
 #include <cstdint>
 #include <string>
 #include <thread>
@@ -48,7 +49,7 @@ public:
     int threads() const { return threads_; }
 
 private:
-    struct Group { int expert; std::vector<int> entries; };   // entries: t * top_k + k routed to this expert
+    struct Group { int expert; std::vector<int> entries; int team = 0; };   // entries: t * top_k + k routed to this expert
     void phase_work(int thread);
     void barrier();
     void worker(int thread);
@@ -77,6 +78,13 @@ private:
     const float* w_ = nullptr;
     float* y_ = nullptr;
     void prepare(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k);
+    void assign_teams(const LaneLayer& layer);
+    // STRATA_DS41_LANE_NUMA: thread -> package; per call: threads per package, a thread's index in its team;
+    // gate rows -> their package (cached)
+    bool numa_ = false;
+    int packages_ = 1;
+    std::vector<int> pkg_of_, team_size_, team_index_;
+    std::map<const void*, int> page_pkg_;
     void collect(const int32_t* ids, const float* w, float* y);
 };
 

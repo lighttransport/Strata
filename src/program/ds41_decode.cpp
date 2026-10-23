@@ -1610,7 +1610,7 @@ public:
         if (S < 1) throw std::invalid_argument("ds41: sessions");
         sessions_ = S;
         ring_b_ = c.window + 8;
-        const size_t hd = size_t(c.head_dim), rw = size_t(row_width());
+        const size_t hd = size_t(c.head_dim);
         size_t bytes = 0;
         for (auto* v : {&bwin_, &bcache_, &bstash_v_, &bstash_s_}) {
             v->clear();
