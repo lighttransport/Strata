@@ -645,6 +645,7 @@ struct PeerGpu {
             ck(cudaMemcpyAsync(x.p, z, size_t(nt) * hidden * 4, cudaMemcpyHostToDevice, stream), "peer z");
             ck(cudaMemcpyAsync(tab.p, st, need, cudaMemcpyHostToDevice, stream), "peer tables");
             ck(cudaMemsetAsync(out.p, 0, size_t(nt) * hidden * 4, stream), "peer sum");
+            split_mark(0);
             idx_dev = reinterpret_cast<const int32_t*>(tab.b(a_idx));
             w_dev = reinterpret_cast<const float*>(tab.b(a_w));
             bounds_dev = reinterpret_cast<const int32_t*>(tab.b(a_b));
@@ -674,11 +675,14 @@ struct PeerGpu {
             a.n = p.j1 - p.j0; a.xq = xq.p; a.bounds = bounds_dev + p.b0; a.ids = iota.i(); a.total_rows = p.rows; a.max_rows = p.mx;
             a.dst = gu.f(); a.ld_dst = 2 * ff;
             mmq->run(a, stream);
+            split_mark(1);
             mq::swiglu(gu.f(), hf.f(), p.rows, ff, false, stream, clamp[size_t(l)]);
             mq::quantize(hf.f(), nullptr, hq.p, d_type[size_t(l)], ff, ff, p.rows, stream);
             mq::Product d = a;
             d.w = st + 2 * gb; d.type = d_type[size_t(l)]; d.w_rows = hidden; d.w_cols = ff; d.xq = hq.p; d.dst = dout.f(); d.ld_dst = hidden;
+            split_mark(2);
             mmq->run(d, stream);
+            split_mark(3);
             k::ds41_scatter_axpy(dout.f(), rtok, w_dev + p.first, p.rows, hidden, out.f(), stream);
         }
         if (at >= 0) done(at);
@@ -705,11 +709,35 @@ struct PeerGpu {
         cudaEventRecord(t0, stream);
     }
     void mark_end() { if (timing && t1) cudaEventRecord(t1, stream); }   // after a call's last operation
+    // DECODE_TIMING: a prefill call's GPU time split [begin, uploads done, gate/up product, swiglu + quantize, down product,
+    // end] (the first product of the call), summed by collect into split_ms
+    cudaEvent_t se[4] = {};
+    bool split_on = false;
+    double split_ms[5] = {};
+    void split_mark(int i) {
+        if (!timing) return;
+        if (!se[i]) cudaEventCreate(&se[i]);
+        if (i == 0) split_on = true;
+        if (split_on) cudaEventRecord(se[i], stream);
+    }
     void collect() {   // the last call's result is in host_out
         if (!busy) return;
         Guard g(dev);
         ck(cudaStreamSynchronize(stream), "peer");
-        if (timing) { float ms = 0; cudaEventElapsedTime(&ms, t0, t1); gpu_ms += ms; }
+        if (timing) {
+            float ms = 0;
+            cudaEventElapsedTime(&ms, t0, t1);
+            gpu_ms += ms;
+            if (split_on) {
+                cudaEvent_t pts[6] = {t0, se[0], se[1], se[2], se[3], t1};
+                for (int i = 0; i < 5; ++i) {
+                    float m = 0;
+                    if (cudaEventElapsedTime(&m, pts[i], pts[i + 1]) == cudaSuccess) split_ms[i] += m;
+                    else (void)cudaGetLastError();
+                }
+                split_on = false;
+            }
+        }
         busy = false;
     }
     // STRATA_DS41_PEER_THREAD=1: a worker thread enqueues this GPU's work. The decoder posts a layer's routes right
@@ -1467,8 +1495,10 @@ public:
     /// After a long prompt: the chunk buffers shrink to STRATA_DS41_DECODE_CHUNK (64) and the GPU expert tier takes
     /// the VRAM, seeded from the profile file or else from the prompt's own routing.
     void prefill_done() {
+        // (DECODE_GROUPED computes grown experts with the resident ones; DECODE_MMQ by GEMV chains after its product)
         static const bool grow_on = std::getenv("STRATA_DS41_GROW") && std::string(std::getenv("STRATA_DS41_GROW")) == "1" &&
-                                    std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1";
+                                    ((std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1") ||
+                                     (std::getenv("STRATA_DS41_DECODE_MMQ") && std::string(std::getenv("STRATA_DS41_DECODE_MMQ")) == "1"));
         if (grow_on) grow();
         rebalance();
         if (!tier_lent_) return;
@@ -3843,7 +3873,7 @@ private:
         const auto& c = cfg_;
         if (grown_ || packed_.empty() || rt_count_.empty()) return;
         grown_ = true;
-        if (chunk_ > 64) resize(64);
+        if (chunk_ > 128) resize(128);   // (128: OUT_REGROUP needs out_groups x T columns for verify passes of up to 8)
         ck(cudaStreamSynchronize(stream_), "grow");
         size_t f = 0, t = 0;
         ck(cudaMemGetInfo(&f, &t), "memory info");
@@ -4348,6 +4378,16 @@ private:
             ck(cudaMemsetAsync(g_sum_.p, 0, size_t(T) * H * 4, stream_), "tier sum");
             any_gpu = true;
             batched = resident_mmq(l, T, K, ids.data(), wts.data());
+            if (batched && grown_)   // GROW's experts (where_ 3, outside the resident arena): a GEMV chain per route
+                for (int i = 0; i < T; ++i) {
+                    int gi[16], m = 0;
+                    float gw[16];
+                    for (int j = 0; j < gn[size_t(i)]; ++j) {
+                        const int e = gids[size_t(i) * 16 + size_t(j)];
+                        if (where_[size_t(l)][size_t(e)] == 3) { gi[m] = e; gw[m] = gws[size_t(i) * 16 + size_t(j)]; ++m; }
+                    }
+                    if (m) gpu_experts(l, i, gi, gw, m);
+                }
         }
         for (int i = 0; i < T && !batched; ++i) {
             const int n = gn[size_t(i)];
@@ -4610,7 +4650,8 @@ public:
         float* host = nullptr;      // pinned scratch
         bool on = false;
         long drafted = 0, accepted = 0, steps = 0;
-        double draft_s = 0, verify_s = 0, inject_s = 0, draft_layers_s = 0, draft_route_s = 0, draft_head_s = 0;
+        double draft_s = 0, verify_s = 0, inject_s = 0, draft_layers_s = 0, draft_route_s = 0, draft_head_s = 0, lookup_s = 0;
+        long lookup_steps = 0, lookup_drafted = 0, lookup_accepted = 0;
     } dsp_;
     std::vector<Dev> spec_v_, spec_s_;
     Dev dq8_;   // the drafter's quantized activations (STRATA_DS41_DSPARK_Q8)   // verify passes: each position's compressor value/score (ratio-2 KV sources)
@@ -5154,8 +5195,51 @@ public:
         const int nd = std::max(1, std::min(d.block, nv ? std::atoi(nv) : d.block));
         const int V = cfg_.vocab;
         std::vector<int> out{tok};
+        // STRATA_DS41_LOOKUP=1: draft from the token history first (prompt-lookup decoding): the longest suffix of
+        // the last STRATA_DS41_LOOKUP_MAX (4) .. STRATA_DS41_LOOKUP_MIN (2) tokens that occurred before, its most recent
+        // occurrence's next tokens (up to STRATA_DS41_LOOKUP_N, 7). DSpark when nothing matches. The target verifies
+        // either draft the same way, so the greedy output does not depend on it; a hit costs no drafter pass, and its
+        // n-grams' Engram rows were read before (page cache / RAM)
+        static const bool lookup = std::getenv("STRATA_DS41_LOOKUP") && std::string(std::getenv("STRATA_DS41_LOOKUP")) == "1";
+        static const int lk_max = std::getenv("STRATA_DS41_LOOKUP_MAX") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_LOOKUP_MAX"))) : 4;
+        static const int lk_min = std::getenv("STRATA_DS41_LOOKUP_MIN") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_LOOKUP_MIN"))) : 2;
+        static const int lk_n = std::getenv("STRATA_DS41_LOOKUP_N") ? std::max(1, std::min(7, std::atoi(std::getenv("STRATA_DS41_LOOKUP_N")))) : 7;
+        // STRATA_DS41_LOOKUP_ADAPT (1): each source's accepted tokens per step as a running mean (weight 0.3); a lookup
+        // draft is cut to that mean + 2 tokens, and taken only if its mean plus the drafter's time saved (as tokens,
+        // STRATA_DS41_LOOKUP_BONUS 0.5) reaches DSpark's mean
+        static const bool adapt = !(std::getenv("STRATA_DS41_LOOKUP_ADAPT") && std::string(std::getenv("STRATA_DS41_LOOKUP_ADAPT")) == "0");
+        static const float bonus = std::getenv("STRATA_DS41_LOOKUP_BONUS") ? float(std::atof(std::getenv("STRATA_DS41_LOOKUP_BONUS"))) : 0.5f;
+        float ema_lk = 3.0f, ema_ds = 2.5f;
+        auto history_draft = [&](int cap) {
+            std::vector<int> seq(history_.begin(), history_.begin() + pos);   // positions < pos, then tok at pos
+            seq.push_back(tok);
+            const int L = int(seq.size());
+            for (int k = std::min(lk_max, L - 1); k >= lk_min; --k) {
+                for (int j = L - k - 1; j >= 0; --j) {   // the most recent earlier occurrence of the last k tokens
+                    if (!std::equal(seq.begin() + j, seq.begin() + j + k, seq.end() - k)) continue;
+                    std::vector<int> d(seq.begin() + j + k, seq.begin() + std::min(L, j + k + cap));
+                    if (!d.empty()) return d;
+                }
+            }
+            return std::vector<int>{};
+        };
         while (int(out.size()) < steps) {
-            const auto drafts = dspark_draft(tok, pos, std::min(nd, steps - int(out.size())));
+            const int cap = std::min(nd, steps - int(out.size()));
+            std::vector<int> drafts;
+            bool from_history = false;
+            if (lookup && (!adapt || ema_lk + bonus >= ema_ds)) {
+                const auto l0 = std::chrono::steady_clock::now();
+                const int lcap = adapt ? std::max(1, std::min(lk_n, int(ema_lk + 2.0f))) : lk_n;
+                drafts = history_draft(std::min(lcap, steps - int(out.size())));
+                from_history = !drafts.empty();
+                d.lookup_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - l0).count();
+                if (from_history) {
+                    std::vector<int> toks{tok};
+                    toks.insert(toks.end(), drafts.begin(), drafts.end());
+                    engram_prefetch(pos, toks, pos + 1, pos + 1 + int(drafts.size()));
+                }
+            }
+            if (!from_history) drafts = dspark_draft(tok, pos, cap);
             const int n = int(drafts.size());   // the confidence cutoff may draft fewer
             std::vector<int> v{tok};
             v.insert(v.end(), drafts.begin(), drafts.end());
@@ -5178,6 +5262,11 @@ public:
             d.drafted += n;
             d.accepted += a;
             d.steps += 1;
+            if (from_history) { d.lookup_steps += 1; d.lookup_drafted += n; d.lookup_accepted += a; ema_lk = 0.7f * ema_lk + 0.3f * float(a); }
+            else {
+                ema_ds = 0.7f * ema_ds + 0.3f * float(a);
+                if (lookup && adapt) ema_lk = std::min(ema_lk + 0.25f, 4.0f);   // a lookup chance again after DSpark steps
+            }
             out.push_back(next);
             tok = next;
             pos += a + 1;
@@ -5186,7 +5275,11 @@ public:
         std::cerr << "DS41 dspark steps=" << d.steps << " drafted=" << d.drafted << " accepted=" << d.accepted << " accept_rate="
                   << double(d.accepted) / std::max<long>(d.drafted, 1) << " tokens_per_step=" << double(d.accepted + d.steps) / std::max<long>(d.steps, 1)
                   << " draft_s=" << d.draft_s << " (layers " << d.draft_layers_s << " of which router waits " << d.draft_route_s << ", head "
-                  << d.draft_head_s << ") verify_s=" << d.verify_s << " inject_s=" << d.inject_s << "\n";
+                  << d.draft_head_s << ") verify_s=" << d.verify_s << " inject_s=" << d.inject_s;
+        if (lookup)
+            std::cerr << " lookup_steps=" << d.lookup_steps << " lookup_drafted=" << d.lookup_drafted << " lookup_accepted=" << d.lookup_accepted
+                      << " lookup_s=" << d.lookup_s;
+        std::cerr << "\n";
         return out;
     }
 
@@ -5219,6 +5312,7 @@ public:
     double xt_[3] = {};   // decode FFN host time: enqueue, lane, peer
     double peer_gpu_ms() const { return peer_ ? peer_->gpu_ms : 0.0; }
     double peer_late_ms() const { return peer_late_ms_; }
+    const double* peer_split_ms() const { static const double zero[5] = {}; return peer_ ? peer_->split_ms : zero; }
     void dmark(int id) {
         dmark_id_.push_back(id);
         if (dmark_used_ == dpool_.size()) {
@@ -5631,7 +5725,10 @@ int run(int argc, char** argv) {
         std::cerr << " passes=" << d.dtokens_ << " host_ms_per_pass attention=" << (d.attn_host_s_ - attn_host0) * 1e3 / d.dtokens_
                   << " ffn=" << (d.ffn_host_s_ - ffn_host0) * 1e3 / d.dtokens_ << " layers=" << (d.loop_s_ - loop0) * 1e3 / d.dtokens_
                   << " (ffn: enqueue " << d.xt_[0] * 1e3 / d.dtokens_ << " lane " << d.xt_[1] * 1e3 / d.dtokens_ << " peer " << d.xt_[2] * 1e3 / d.dtokens_
-                  << " peer_gpu " << (d.peer_gpu_ms() - peer_gpu0) / d.dtokens_ << " peer_late " << (d.peer_late_ms() - peer_late0) / d.dtokens_ << ")\n";
+                  << " peer_gpu " << (d.peer_gpu_ms() - peer_gpu0) / d.dtokens_ << " peer_late " << (d.peer_late_ms() - peer_late0) / d.dtokens_ << ")";
+        const double* ps = d.peer_split_ms();   // (includes the prompt's peer calls; decode dominates at 64 tokens)
+        std::cerr << " peer_split_ms_per_pass upload=" << ps[0] / d.dtokens_ << " gu=" << ps[1] / d.dtokens_ << " mid=" << ps[2] / d.dtokens_
+                  << " down=" << ps[3] / d.dtokens_ << " tail=" << ps[4] / d.dtokens_ << "\n";
     }
     std::cerr << "DS41 profile_s step=" << d.prof_[0] << " gpu_to_router=" << d.prof_[1] << " cpu_experts=" << d.prof_[2]
               << " gpu_tier_hit=" << (d.tier_all_ > 0 ? d.tier_hits_ / d.tier_all_ : 0) << " promotions=" << d.promotions_ << " adapt=" << d.prof_[3] << " engram=" << d.prof_[4]
