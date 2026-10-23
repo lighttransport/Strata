@@ -1765,8 +1765,8 @@ class Decoder {
             throw std::runtime_error(error);
         index_gemm = std::move(gemm);
     }
-    // Opt-in: compute prefill indexer dots in blocks of this many pooled keys (4 tokens each) so their scratch
-    // stops growing with context (STRATA_GLM_INDEX_BLOCK_POOLS; 0 = one block, the default). Narrower GEMMs may
+    // Opt-in: compute indexer dots (prefill, decode and verify) in blocks of this many pooled keys (4 tokens each)
+    // so their scratch stops growing with context (STRATA_GLM_INDEX_BLOCK_POOLS; 0 = one block, the default). Narrower GEMMs may
     // round differently, so this is not bit-identical to the default.
     const int index_block_pools = [] {
         const char *v = std::getenv("STRATA_GLM_INDEX_BLOCK_POOLS");
@@ -6778,7 +6778,9 @@ private:
         if (!pooled16) inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
         int pools = capacity / pool_size, ntile = std::min(tile, B);
-        const bool block_index = fast && index_block_pools && index_block_pools < pools;
+        // Decode and verify block too: their scratch arena is 32 MiB, and unblocked dots for one query outgrow it
+        // near a 1M context (32 heads x 262144 pools x 4 bytes).
+        const bool block_index = index_block_pools && index_block_pools < pools;
         const int dot_pools = block_index ? index_block_pools : std::max(1, pools);
         auto &dots = buf("index_dots", (size_t)ntile * ih * dot_pools);
         auto &scores = buf("index_scores", (size_t)ntile * std::max(1, pools));
@@ -6885,7 +6887,9 @@ private:
                         if (!index_q16 || index_q16->bytes < qn * 2) index_q16 = std::make_unique<Device>(qn * 2);
                         k::glm_f16(d.iq + (size_t)t * ih * idim, (uint16_t *)index_q16->p, (int64_t)qn, d.stream);
                     }
-                    for (int first = 0; first < pools; first += index_block_pools) {
+                    // ACTIVE_POOLS: blocks past the scored pools hold no key selection reads.
+                    const int block_end = active_index_pools ? scored_pools : pools;
+                    for (int first = 0; first < block_end; first += index_block_pools) {
                         const int n = std::min(index_block_pools, pools - first);
                         const int scored = std::clamp(scored_pools - first, 0, n);
                         if (scored && f16)
