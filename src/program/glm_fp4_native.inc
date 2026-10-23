@@ -415,6 +415,13 @@ class Fp4NativeExecutor {
     const long long global_cache_mode=strata_env_value_ll("STRATA_GLM_FP4_GLOBAL_CACHE",0);
     const long long fp8_accumulators=strata_env_value_ll("STRATA_GLM_FP4_FP8_ACCUMULATORS",1);
     const long long cache_adapt_rows=strata_env_value_ll("STRATA_GLM_FP4_CACHE_ADAPT_ROWS",0);
+    // Opt-in: once per request and layer, after this many decode rows, choose the layer's GPU experts again from
+    // the last prefill batch's routes plus the decode routes so far (0 = off, the default).
+    const long long keep_reselect_rows=strata_env_value_ll("STRATA_GLM_FP4_KEEP_RESELECT_ROWS",0);
+    // ... at most this many swaps per device and layer (0 = no cap), and this many background uploads of the newly
+    // kept experts per decode routed() call (0 = each is uploaded when it is first routed)
+    const long long keep_reselect_swaps=strata_env_value_ll("STRATA_GLM_FP4_KEEP_RESELECT_SWAPS",0);
+    const long long keep_reselect_prefetch=strata_env_value_ll("STRATA_GLM_FP4_KEEP_RESELECT_PREFETCH",0);
     const bool cache_total_free=strata_env_is_one("STRATA_GLM_FP4_CACHE_TOTAL_FREE");
     const bool cpu_logical=strata_env_is_one("STRATA_GLM_FP4_CPU_LOGICAL");
     const std::array<long long,2> worker_cpus={strata_env_value_ll("STRATA_GLM_FP4_WORKER_CPU0",-1),
@@ -459,6 +466,13 @@ class Fp4NativeExecutor {
     std::map<int,std::array<uint64_t,288>> decode_heat;
     std::map<int,size_t> decode_heat_rows;
     uint64_t cache_promotions=0,cache_reclaimed_bytes=0;
+    // KEEP_RESELECT_ROWS: this request's decode routes per layer (those that survive the all-CPU drop budget, as
+    // adapt_cache counts them), its rows, and the layers already chosen again
+    std::map<int,std::array<uint64_t,288>> reselect_heat;
+    std::map<int,size_t> reselect_rows;
+    std::set<int> reselected,stale_bonuses;
+    uint64_t reselect_layers=0,reselect_swaps=0,reselect_reclaimed_bytes=0;
+    uint64_t reselect_prefetched=0,reselect_prefetch_skipped=0,reselect_prefetch_dropped=0;
     size_t owner(int layer,int id,bool decode)const {
         if(decode&&global_cache_mode>=2) {
             const auto it=decode_owners.find(layer);
@@ -1267,6 +1281,101 @@ class Fp4NativeExecutor {
         }
         for(auto& value:heat)value/=2;
     }
+    // KEEP_RESELECT_ROWS: the GPU set of each layer comes from the prompt's last prefill batch (select()), which
+    // covers fewer decode routes than the decode routes themselves would. After the layer has seen this many decode
+    // rows, it is chosen once more: each device swaps kept experts for hotter ones of its own (at most
+    // KEEP_RESELECT_SWAPS, each by a margin of two decode routes), ranked by the prefill share plus the decode share.
+    // A dropped expert stays cached until room is needed; a new one is uploaded in the background
+    // (KEEP_RESELECT_PREFETCH) or when first routed.
+    void reselect_keep(int layer,const int* ids,const float* weights,int nt) {
+        if(!keep_reselect_rows||!decode_phase||nt>8||layer>=45||reselected.count(layer))return;
+        auto& heat=reselect_heat[layer];
+        for(int t=0;t<nt;++t) {
+            const uint8_t mask=strata_glm_route_drop_capped(weights+t*8,0xff,route_drop_fraction,
+                                                    unsigned(route_drop_max),route_drop_cap,nullptr);
+            for(int j=0;j<8;++j)if(!(mask&(1u<<j)))++heat[size_t(ids[t*8+j])];
+        }
+        auto& rows=reselect_rows[layer];rows+=size_t(nt);
+        if(rows<size_t(keep_reselect_rows))return;
+        reselected.insert(layer);++reselect_layers;
+        uint64_t decoded=0;for(auto v:heat)decoded+=v;
+        for(size_t rank=0;rank<contexts.size();++rank) {
+            auto& c=*contexts[rank];
+            const auto f=c.frequency.find(layer);
+            const auto k=c.keep.find(layer);
+            if(f==c.frequency.end()||k==c.keep.end())continue;
+            uint64_t prompted=0;for(auto v:f->second)prompted+=v;
+            prompted=std::max<uint64_t>(prompted,1);
+            // heat/decoded + prefill/prompted, multiplied by decoded*prompted to stay in integers
+            std::array<uint64_t,288> score{};
+            for(size_t id=0;id<288;++id)score[id]=heat[id]*prompted+uint64_t(f->second[id])*decoded;
+            std::array<uint8_t,288> mask{};for(int id:k->second)mask[size_t(id)]=1;
+            std::array<int,288> removed{},added{};
+            const int n=strata_glm_fp4_cache_adapt(score.data(),mask.data(),unsigned(rank),unsigned(contexts.size()),
+                keep_reselect_swaps?unsigned(keep_reselect_swaps):288u,2*prompted,removed.data(),added.data());
+            if(n<0)throw std::logic_error("GLM FP4: invalid keep reselection");
+            if(!n)continue;
+            // All preceding expert readers have retired before routed() starts another layer (as in adapt_cache).
+            if(!c.protected_experts.empty())throw std::logic_error("GLM FP4: keep reselection has active readers");
+            DeviceScope scope(c.device);
+            for(int i=0;i<n;++i) {
+                k->second.erase(removed[size_t(i)]);k->second.insert(added[size_t(i)]);++reselect_swaps;
+                if(keep_reselect_prefetch&&!c.experts.count({layer,added[size_t(i)]}))
+                    prefetch_queue[rank].push_back({layer,added[size_t(i)]});
+            }
+            // Room for the new ones from experts no layer keeps (the dropped ones among them, least recently used
+            // first), so global LRU cannot take another layer's set.
+            size_t missing=0;
+            for(int i=0;i<n;++i)if(!c.experts.count({layer,added[size_t(i)]}))++missing;
+            while(c.cache_bytes+missing*expert_bytes>c.cache_limit) {
+                auto victim=c.experts.end();
+                for(auto it=c.experts.begin();it!=c.experts.end();++it) {
+                    if(it->first.first>=45||c.protected_experts.count(it->first))continue;
+                    const auto kept=c.keep.find(it->first.first);
+                    if(kept!=c.keep.end()&&kept->second.count(it->first.second))continue;
+                    if(victim==c.experts.end()||it->second.use<victim->second.use)victim=it;
+                }
+                if(victim==c.experts.end())break;
+                const size_t bytes=victim->second.bytes;
+                c.cache_bytes-=bytes;reselect_reclaimed_bytes+=bytes;c.experts.erase(victim);
+            }
+        }
+        // The router's bonus for kept experts (ROUTE_AFFINITY) follows the new sets: routing_bonus() writes it again,
+        // into the same buffer, where it first wrote it.
+        if(route_affinity>0)stale_bonuses.insert(layer);
+    }
+    // KEEP_RESELECT_PREFETCH: the newly kept experts not yet cached, and the uploads in flight, per device.  Uploads are
+    // issued after a decode routed() and finished before the next routed() begins, so the slots and the single upload
+    // frame are free again before any upload of routed() itself, and no expert is uploaded twice.
+    std::array<std::deque<std::pair<int,int>>,2> prefetch_queue;
+    std::array<std::vector<PendingExpert>,2> prefetching;
+    void finish_prefetches() {
+        for(size_t rank=0;rank<contexts.size()&&rank<prefetching.size();++rank) {
+            auto& list=prefetching[rank];
+            if(list.empty())continue;
+            auto& c=*contexts[rank];DeviceScope scope(c.device);
+            for(auto& p:list) {
+                p.wait();p.completed=true;
+                const auto k=c.keep.find(p.key.first);
+                finish_expert(c,p,k!=c.keep.end()&&k->second.count(p.key.second)&&!c.experts.count(p.key));
+            }
+            list.clear();
+        }
+    }
+    void issue_prefetches() {
+        for(size_t rank=0;rank<contexts.size()&&rank<prefetching.size();++rank) {
+            auto& c=*contexts[rank];auto& queue=prefetch_queue[rank];auto& list=prefetching[rank];
+            const size_t most=std::min<size_t>(size_t(keep_reselect_prefetch),size_t(c.upload_slots));
+            if(queue.empty())continue;
+            DeviceScope scope(c.device);
+            while(!queue.empty()&&list.size()<most) {
+                const auto key=queue.front();queue.pop_front();
+                const auto k=c.keep.find(key.first);
+                if(k==c.keep.end()||!k->second.count(key.second)||c.experts.count(key)){++reselect_prefetch_skipped;continue;}
+                list.push_back(prepare_expert(c,key.first,key.second));++reselect_prefetched;
+            }
+        }
+    }
     size_t cache_reserve(const Context& c,size_t reserve)const {
         if(fixed_half_borrow&&c.half_cache_extra) {
             if(reserve<c.half_cache_extra+256*MiB)
@@ -1374,6 +1483,13 @@ public:
             throw std::invalid_argument("GLM FP4: CACHE_ADAPT_ROWS must be 0, 32, 64 or 128");
         if(cache_adapt_rows&&global_cache_mode)
             throw std::invalid_argument("GLM FP4: adaptive cache and global cache admission are separate experiments");
+        if(keep_reselect_rows<0||keep_reselect_rows>65536||(keep_reselect_rows&&(cache_adapt_rows||global_cache_mode)))
+            throw std::invalid_argument("GLM FP4: KEEP_RESELECT_ROWS must be 0..65536 and excludes CACHE_ADAPT_ROWS "
+                                        "and GLOBAL_CACHE");
+        if(keep_reselect_swaps<0||keep_reselect_swaps>288||keep_reselect_prefetch<0||keep_reselect_prefetch>8||
+           ((keep_reselect_swaps||keep_reselect_prefetch)&&!keep_reselect_rows))
+            throw std::invalid_argument("GLM FP4: KEEP_RESELECT_SWAPS must be 0..288 and KEEP_RESELECT_PREFETCH 0..8, "
+                                        "both with KEEP_RESELECT_ROWS");
         if(!std::isfinite(route_affinity)||route_affinity<0||route_affinity>0.5||
            (route_affinity>0&&cache_adapt_rows))
             throw std::invalid_argument("GLM FP4: ROUTE_AFFINITY must be0..0.5 and requires fixed decode admission");
@@ -1562,6 +1678,9 @@ public:
         decode_owners.clear();
         priority_frequency.clear();
         decode_heat.clear();decode_heat_rows.clear();
+        reselect_heat.clear();reselect_rows.clear();reselected.clear();stale_bonuses.clear();
+        finish_prefetches();
+        for(auto& q:prefetch_queue){reselect_prefetch_dropped+=q.size();q.clear();}
         for(auto& c:contexts){c->phase=1;c->frequency.clear();c->keep.clear();}
     }
     void begin_prefill(size_t coordinator_bytes) {
@@ -1641,7 +1760,8 @@ public:
     const float* routing_bonus(int layer,int tokens) {
         if(route_affinity==0||!decode_phase||tokens>8||layer>=45)return nullptr;
         auto& saved=route_affinity_bonuses[layer];
-        if(!saved) {
+        const bool stale=stale_bonuses.erase(layer)>0;      // KEEP_RESELECT_ROWS changed the layer's set
+        if(!saved||stale) {
             // Fixed admission for this request, including optional cross-device
             // ownership. The router uses the bonus only to select IDs; retained
             // weights still come from their original unbiased sigmoid scores.
@@ -1652,7 +1772,8 @@ public:
                     bonus[id]=float(route_affinity);
             }
             DeviceScope scope(contexts.front()->device);
-            saved=std::make_unique<Device>(sizeof(bonus));saved->put(bonus.data(),sizeof(bonus));
+            if(!saved)saved=std::make_unique<Device>(sizeof(bonus));
+            saved->put(bonus.data(),sizeof(bonus));
         }
         return saved->f();
     }
@@ -1797,6 +1918,13 @@ public:
     }
     void routed(int layer,const float* x,const int* ids,const float* weights,float* out,int nt,
                 float limit,cudaStream_t caller,cudaEvent_t inputs_ready=nullptr) {
+        if(!keep_reselect_prefetch)return routed_body(layer,x,ids,weights,out,nt,limit,caller,inputs_ready);
+        finish_prefetches();                               // before any upload of this call
+        routed_body(layer,x,ids,weights,out,nt,limit,caller,inputs_ready);
+        if(decode_phase&&nt<=8&&layer<45)issue_prefetches();
+    }
+    void routed_body(int layer,const float* x,const int* ids,const float* weights,float* out,int nt,
+                     float limit,cudaStream_t caller,cudaEvent_t inputs_ready) {
         join_held_fill();join_restore();
         const auto started=tick();
         struct alignas(64) Times {double upload=0,gather=0,product=0,reduce=0,fused=0;};
@@ -1854,6 +1982,7 @@ public:
             join_bank(*c);
         }
         adapt_cache(layer,selected,routing,nt);
+        reselect_keep(layer,selected,routing,nt);
         if(decode_phase && decode && layer<45 && route_drop_fraction>0 && route_drop_max>0) {
             std::array<uint8_t,8> masks{};
             for(int t=0;t<nt;++t) {
@@ -2827,6 +2956,10 @@ public:
             <<" total="<<c->evictions<<" physical="<<c->room_evictions<<" cache_bytes="<<c->cache_bytes
             <<" cache_limit="<<c->cache_limit<<'\n';
         if(head_partition)std::cerr<<"FP4_HEAD_TP_STATS calls="<<head_partition->calls<<'\n';
+        if(keep_reselect_rows)std::cerr<<"FP4_KEEP_RESELECT rows="<<keep_reselect_rows<<" max_swaps="<<keep_reselect_swaps
+            <<" prefetch="<<keep_reselect_prefetch<<" layers="<<reselect_layers<<" swaps="<<reselect_swaps
+            <<" reclaimed_bytes="<<reselect_reclaimed_bytes<<" prefetched="<<reselect_prefetched
+            <<" prefetch_skipped="<<reselect_prefetch_skipped<<" prefetch_dropped="<<reselect_prefetch_dropped<<'\n';
         if(cache_adapt_rows)std::cerr<<"FP4_CACHE_ADAPT rows="<<cache_adapt_rows
             <<" max_promotions_per_device=2 hysteresis=2 promotions="<<cache_promotions
             <<" reclaimed_bytes="<<cache_reclaimed_bytes<<'\n';
