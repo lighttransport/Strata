@@ -1189,13 +1189,22 @@ static bool s26_tsum_on() {
 
 // S26 STRATA_LFUSE (PAIR): blocks n_out.. compute the same rows of w2 into y2 (two matrices of one shape on one
 // input in one launch; each output's code is the single matrix's)
-template<typename F, int NCOLS, int NW, int ROWS, bool TS = false, bool PAIR = false>
+// GROUPS (native_mmvq_groups): blockIdx.y = group g of `gridDim.y` consecutive matrices [n_out][n_in], each on its own
+// NCOLS columns (x + g NCOLS blocks-per-column) into its own y + g NCOLS n_out; a row's arithmetic is the single
+// matrix's (the same kernel configuration), so every output is bitwise the per-group launch's
+template<typename F, int NCOLS, int NW, int ROWS, bool TS = false, bool PAIR = false, bool GROUPS = false>
 __launch_bounds__(NW * WARP, (ROWS <= 2 ? 4 : 1))
 __global__ void native_mmvq_multi_kernel(const typename F::Block* __restrict__ w, const Q81Block* x_, float* y_,
                                          int n_in, int n_out,
                                          const typename F::Block* __restrict__ w2 = nullptr, float* __restrict__ y2 = nullptr) {
     const Q81Block* STRATA_PDL_RESTRICT x = x_;   // __restrict__ below sm_70 only (pdl.hpp, #1469)
     float* STRATA_PDL_RESTRICT y = y_;
+    if constexpr (GROUPS) {
+        const std::size_t g = blockIdx.y;
+        w += g * std::size_t(n_out) * std::size_t(n_in / F::DIV);
+        x += g * std::size_t(NCOLS) * std::size_t(n_in / Q8K);
+        y += g * std::size_t(NCOLS) * std::size_t(n_out);
+    }
     constexpr int BPI = F::BPI * NW / WARPS;           // blocks per iteration scale with the warp count
     const int tid = WARP * int(threadIdx.y) + int(threadIdx.x);
     int bxi = int(blockIdx.x);
@@ -1367,6 +1376,54 @@ void launch_multi_n(const void* weights, const void* x_q8_1, float* y, int n_in,
     const unsigned blocks = unsigned((std::size_t(n_out) + ROWS - 1) / ROWS);
     if (s26_tsum_on()) launch_pdl(native_mmvq_multi_kernel<F, NCOLS, WARPS, ROWS, true, false>, dim3(blocks), threads, 0, s, w, x, y, n_in, n_out, no_w2, no_y2);
     else launch_pdl(native_mmvq_multi_kernel<F, NCOLS, WARPS, ROWS, false, false>, dim3(blocks), threads, 0, s, w, x, y, n_in, n_out, no_w2, no_y2);
+}
+
+// launch_multi_n's configuration choices with the GROUPS dimension (gridDim.y = groups)
+template<typename F, int NCOLS>
+void launch_groups_n(const void* weights, const void* x_q8_1, float* y, int n_in, int n_out, int groups, cudaStream_t s) {
+    const auto* w = static_cast<const typename F::Block*>(weights);
+    const auto* x = static_cast<const Q81Block*>(x_q8_1);
+    const typename F::Block* const no_w2 = nullptr;
+    float* const no_y2 = nullptr;
+    const unsigned G = unsigned(groups);
+    if (!g_multi_exact) {
+        constexpr int NW = NCOLS <= 4 ? 4 : 2;
+        const unsigned blocks = unsigned((std::size_t(n_out) + 1) / 2);
+        launch_pdl(native_mmvq_multi_kernel<F, NCOLS, NW, 2, false, false, true>, dim3(blocks, G), dim3(WARP, NW), 0, s, w, x, y, n_in, n_out,
+                   no_w2, no_y2);
+        return;
+    }
+    const dim3 threads(WARP, WARPS);
+    if (g_multi_rows == 4 && n_in / F::DIV >= F::BPI) {
+        launch_pdl(native_mmvq_multi_kernel<F, NCOLS, WARPS, 4, false, false, true>, dim3(unsigned((std::size_t(n_out) + 3) / 4), G), threads, 0, s,
+                   w, x, y, n_in, n_out, no_w2, no_y2);
+        return;
+    }
+    static const bool rows1 = [] {
+        const char* v = std::getenv("STRATA_NO_MMVQ_ROWS2");
+        return v != nullptr && v[0] != '\0' && v[0] != '0';
+    }();
+    if ((rows1 || q8_0_rows1<F>(n_in, n_out)) && n_in / F::DIV >= F::BPI) {
+        if (s26_tsum_on()) launch_pdl(native_mmvq_multi_kernel<F, NCOLS, WARPS, 1, true, false, true>, dim3(unsigned(n_out), G), threads, 0, s, w, x, y, n_in, n_out, no_w2, no_y2);
+        else launch_pdl(native_mmvq_multi_kernel<F, NCOLS, WARPS, 1, false, false, true>, dim3(unsigned(n_out), G), threads, 0, s, w, x, y, n_in, n_out, no_w2, no_y2);
+        return;
+    }
+    constexpr int ROWS = 2;
+    const unsigned blocks = unsigned((std::size_t(n_out) + ROWS - 1) / ROWS);
+    if (s26_tsum_on()) launch_pdl(native_mmvq_multi_kernel<F, NCOLS, WARPS, ROWS, true, false, true>, dim3(blocks, G), threads, 0, s, w, x, y, n_in, n_out, no_w2, no_y2);
+    else launch_pdl(native_mmvq_multi_kernel<F, NCOLS, WARPS, ROWS, false, false, true>, dim3(blocks, G), threads, 0, s, w, x, y, n_in, n_out, no_w2, no_y2);
+}
+template<typename F>
+void launch_groups(const void* weights, const void* x_q8_1, float* y, int n_in, int n_out, int ncols, int groups, cudaStream_t s) {
+    switch (ncols) {
+        case 2: launch_groups_n<F, 2>(weights, x_q8_1, y, n_in, n_out, groups, s); break;
+        case 3: launch_groups_n<F, 3>(weights, x_q8_1, y, n_in, n_out, groups, s); break;
+        case 4: launch_groups_n<F, 4>(weights, x_q8_1, y, n_in, n_out, groups, s); break;
+        case 5: launch_groups_n<F, 5>(weights, x_q8_1, y, n_in, n_out, groups, s); break;
+        case 6: launch_groups_n<F, 6>(weights, x_q8_1, y, n_in, n_out, groups, s); break;
+        case 7: launch_groups_n<F, 7>(weights, x_q8_1, y, n_in, n_out, groups, s); break;
+        default: launch_groups_n<F, 8>(weights, x_q8_1, y, n_in, n_out, groups, s); break;
+    }
 }
 
 template<typename F>
@@ -2537,6 +2594,35 @@ bool native_mmvq_pair(int ggml_type, const void* w1, const void* w2, const void*
     }
     launch_check();
     return true;
+}
+
+bool native_mmvq_groups(int ggml_type, const void* weights, const void* x_q8_1, float* y, int n_in, int n_out, int ncols, int groups,
+                        void* stream) {
+#if defined(STRATA_HIP_GFX906)
+    return false;   // (the wave layout keeps its own launches)
+#else
+    if (ncols < 2 || ncols > MAX_NCOLS || groups < 1 || n_out <= 0 || n_in <= 0 || n_in % 32 != 0 || !weights || !x_q8_1 || !y || !stream)
+        return false;
+    if (ggml_type == 8 && q8_packed_registry().count(weights)) return false;
+    const int block_elems = (ggml_type == 11 || ggml_type == 12 || ggml_type == 13 || ggml_type == 14 || ggml_type == 23) ? 256 : 32;
+    if (n_in % block_elems != 0) return false;
+    const auto s = static_cast<cudaStream_t>(stream);
+    switch (ggml_type) {
+        case 2: launch_groups<SmallTraits<Q40Block, 4>>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 6: launch_groups<SmallTraits<Q50Block, 4>>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 8: launch_groups<SmallTraits<Q80Block, 8>>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 20: launch_groups<SmallTraits<IQ4NLBlock, 4>>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 11: launch_groups<Q3KTraits>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 12: launch_groups<Q4KTraits>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 13: launch_groups<Q5KTraits>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 14: launch_groups<Q6KTraits>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 23: launch_groups<IQ4XSTraits>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        case 42: launch_groups<Q20Traits>(weights, x_q8_1, y, n_in, n_out, ncols, groups, s); break;
+        default: return false;
+    }
+    launch_check();
+    return true;
+#endif
 }
 
 void native_q8_0_mmvq(const void* weights, const void* x_q8_1, float* y,

@@ -27,6 +27,10 @@ void glm_rms_norm_rows(const float *x, const float *weight, float *y, int width,
 // Aligned rows, width divisible by 32: normalized floats and native Q8_1 activation blocks in one launch.
 void glm_rms_norm_rows_q8(const float *x, const float *weight, float *y, void *q8, int width, int tokens,
                          float eps, void *stream);
+// DeepSeek-V4.1: x = the hyper-connection pre-mix of the 4 streams h [tokens][4][width] by coeff [tokens][24] (its
+// first 4 values), then glm_rms_norm_rows_q8 of x: the same bits as the three launches.
+void glm_hc_pre_norm_rows_q8(const float *h, const float *coeff, const float *weight, float *x, float *y, void *q8, int width, int tokens,
+                             float eps, void *stream);
 void glm_layer_norm(const float *x, const float *weight, const float *bias, float *y, int width, float eps,
                     void *stream);
 void glm_swiglu(const float *gate, const float *up, float *y, int count, float limit, void *stream);

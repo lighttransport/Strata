@@ -209,6 +209,59 @@ __global__ void rms_norm_rows_q8(const float4 *x, const float4 *w, float4 *y, No
         if (!lane) q8[i / 32].ds = q8_1_ds(d, total);
     }
 }
+// DeepSeek-V4.1's hyper-connection pre-mix (ds41_hc_pre: x = sum_s h[s] w[s], each product and add rounded) into x,
+// then rms_norm_rows_q8 of it: the three launches' arithmetic in one (a thread's elements are the same in both passes)
+__global__ void hc_pre_norm_rows_q8(const float4 *h, const float *coeff, const float4 *w, float4 *x, float4 *y, NormQ81Block *q8,
+                                    int n4, float eps) {
+    __shared__ float warps[32];
+    const int t = threadIdx.x, lane = t & 31;
+    h += (size_t)blockIdx.x * 4 * n4;
+    coeff += (size_t)blockIdx.x * 24;
+    x += (size_t)blockIdx.x * n4;
+    y += (size_t)blockIdx.x * n4;
+    q8 += (size_t)blockIdx.x * n4 / 8;
+    const float w0 = coeff[0], w1 = coeff[1], w2 = coeff[2], w3 = coeff[3];
+    float sum = 0;
+    for (int i = t; i < n4; i += 1024) {
+        const float4 a = h[i], b = h[n4 + i], c = h[2 * n4 + i], d = h[3 * n4 + i];
+        float4 v;
+        v.x = __fadd_rn(__fadd_rn(__fadd_rn(__fmul_rn(a.x, w0), __fmul_rn(b.x, w1)), __fmul_rn(c.x, w2)), __fmul_rn(d.x, w3));
+        v.y = __fadd_rn(__fadd_rn(__fadd_rn(__fmul_rn(a.y, w0), __fmul_rn(b.y, w1)), __fmul_rn(c.y, w2)), __fmul_rn(d.y, w3));
+        v.z = __fadd_rn(__fadd_rn(__fadd_rn(__fmul_rn(a.z, w0), __fmul_rn(b.z, w1)), __fmul_rn(c.z, w2)), __fmul_rn(d.z, w3));
+        v.w = __fadd_rn(__fadd_rn(__fadd_rn(__fmul_rn(a.w, w0), __fmul_rn(b.w, w1)), __fmul_rn(c.w, w2)), __fmul_rn(d.w, w3));
+        x[i] = v;
+        sum += v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+    }
+    for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+    if (!lane) warps[t / 32] = sum;
+    __syncthreads();
+    if (t < 32) {
+        sum = warps[t];
+        for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+        if (!t) warps[0] = rsqrtf(sum / (4.f * n4) + eps);
+    }
+    __syncthreads();
+    const float inv = warps[0];
+    for (int i = t; i < n4; i += 1024) {
+        float4 v = x[i];
+        const float4 g = w ? w[i] : make_float4(1.f, 1.f, 1.f, 1.f);
+        v.x = v.x * inv * g.x; v.y = v.y * inv * g.y; v.z = v.z * inv * g.z; v.w = v.w * inv * g.w;
+        y[i] = v;
+    }
+    __syncthreads();
+    const float *values = reinterpret_cast<const float *>(y);
+    for (int i = t; i < n4 * 4; i += 1024) {
+        const float xi = values[i];
+        float amax = fabsf(xi), total = xi;
+        for (int delta = 16; delta; delta >>= 1) {
+            amax = fmaxf(amax, __shfl_xor_sync(0xffffffff, amax, delta, 32));
+            total += __shfl_xor_sync(0xffffffff, total, delta, 32);
+        }
+        const float d = q8_1_finite(amax / 127.f);
+        q8[i / 32].qs[i % 32] = q8_1_quant(xi, d, amax);
+        if (!lane) q8[i / 32].ds = q8_1_ds(d, total);
+    }
+}
 __global__ void swiglu(const float *g, const float *u, float *y, int n, float limit) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
@@ -797,6 +850,17 @@ void glm_rms_norm_rows_q8(const float *x, const float *w, float *y, void *q8, in
         throw std::invalid_argument("GLM: fused norm/Q8 needs aligned rows with width divisible by 32");
     rms_norm_rows_q8<<<tokens, 1024, 0, (cudaStream_t)s>>>((const float4 *)x, (const float4 *)w,
         (float4 *)y, (NormQ81Block *)q8, n / 4, eps);
+    check();
+}
+void glm_hc_pre_norm_rows_q8(const float *h, const float *coeff, const float *w, float *x, float *y, void *q8, int n, int tokens,
+                             float eps, void *s) {
+    width(n);
+    width(tokens);
+    const auto aligned = [](const void *p) { return (reinterpret_cast<uintptr_t>(p) & 15) == 0; };
+    if (n % 32 || !aligned(h) || !aligned(x) || !aligned(y) || (w && !aligned(w)) || !q8 || (reinterpret_cast<uintptr_t>(q8) & 3))
+        throw std::invalid_argument("GLM: fused pre-mix/norm/Q8 needs aligned rows with width divisible by 32");
+    hc_pre_norm_rows_q8<<<tokens, 1024, 0, (cudaStream_t)s>>>((const float4 *)h, coeff, (const float4 *)w, (float4 *)x, (float4 *)y,
+                                                             (NormQ81Block *)q8, n / 4, eps);
     check();
 }
 void glm_layer_norm(const float *x, const float *w, const float *b, float *y, int n, float eps, void *s) {

@@ -17,6 +17,10 @@ namespace strata::kernels {
 /// tokens: rows of 24 mixes / 24 coefficients.
 void ds41_hc_coeff(const float* mixes, const float* scale, const float* base, float* coeff, int iterations, float eps,
                    void* stream, int tokens = 1);
+/// mixes() in one launch: glm_rms_norm_rows(h [tokens][4 n], no weight) -> flat, the F32 rows fn [24][4 n] -> mixes,
+/// ds41_hc_coeff -> coeff; bitwise the three. false (nothing launched): unaligned rows.
+bool ds41_hc_mixes(const float* h, const float* fn, const float* scale, const float* base, float* flat, float* mixes, float* coeff, int n,
+                   int iterations, float eps, float rms_eps, void* stream, int tokens);
 /// y[j] = sum_s w[s] h[s][j] over the 4 streams, in stream order (w: 4 values).
 /// Per token t: h + t 4n, w + t 24 (a coefficient row), y + t n.
 void ds41_hc_pre(const float* h, const float* w, float* y, int n, void* stream, int tokens = 1);
@@ -24,6 +28,9 @@ void ds41_hc_pre(const float* h, const float* w, float* y, int n, void* stream, 
 /// Per token t: x + t n, res/out + t 4n, post/comb + t 24.
 void ds41_hc_post(const float* x, const float* res, const float* post, const float* comb, float* out, int n, void* stream,
                   int tokens = 1);
+/// ds41_add(moe, peer), ds41_add(., gsum), ds41_add(., y) -> y, then ds41_hc_post(y, ...) in one launch (peer, gsum optional).
+void ds41_hc_post_sum(const float* moe, const float* peer, const float* gsum, float* y, const float* res, const float* post, const float* comb,
+                      float* out, int n, void* stream, int tokens);
 /// h[s][j] = x[j] for the 4 streams.
 void ds41_broadcast_streams(const float* x, float* h, int n, void* stream, int tokens = 1);
 /// Rotates `pairs` adjacent pairs at `offset` of each of `rows` rows (stride floats apart) by cs[i] = {cos, sin}
@@ -97,6 +104,12 @@ void ds41_bf16_gemv(const uint16_t* w, const float* x, float* y, int rows, int i
 /// y[t ldy + r] = W[r] . x[rows[t] ldx] for n <= 8 tokens, each BF16 row of W [out][in] read once (in % 64 == 0).
 void ds41_bf16_gemv_mt(const uint16_t* w, const float* x, int ldx, const int* rows, int n, float* y, int ldy, int out, int in,
                        void* stream);
+/// ds41_bf16_gemv_mt for `groups` matrices in one launch: group g's matrix at w + g w_gstride (elements), its columns
+/// x + g x_goff, its rows y + g y_goff; bitwise the `groups` calls.
+void ds41_bf16_gemv_mt_groups(const uint16_t* w, size_t w_gstride, const float* x, int ldx, int x_goff, const int* rows, int n, float* y, int ldy,
+                              int y_goff, int out, int in, int groups, void* stream);
+/// rows [t][width] of src into ring slot (pos + t) % ring of dst (one launch for a block's keys).
+void ds41_ring_rows(const float* src, int rows, int width, int pos, int ring, float* dst, void* stream);
 /// The same over MXFP4 rows (ggml block_mxfp4, row_bytes apart; in % 32 == 0).
 void ds41_mxfp4_gemv_mt(const uint8_t* w, size_t row_bytes, const float* x, int ldx, const int* rows, int n, float* y, int ldy,
                         int out, int in, void* stream);

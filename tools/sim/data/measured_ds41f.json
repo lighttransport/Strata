@@ -308,6 +308,70 @@
    "measured": {
     "tok_s": 18.3
    }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE3, Engram whole in RAM, DSpark, wikitext (10-23)",
+   "kind": "v100_decode",
+   "tolerance": 0.15,
+   "fit": false,
+   "source": "ds41data/s40_*.log (2026-10-23): 600-token prompt, 64 tokens, every decode option on, DECODE_TIMING split",
+   "plan": {
+    "pack": "IQ2_XXSE3",
+    "engram_gib": 79,
+    "drafted": 2.12,
+    "acceptance": 0.736
+   },
+   "measured": {
+    "tok_s": 30.8
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE3, Engram whole in RAM, DSpark, code (10-23)",
+   "kind": "v100_decode",
+   "tolerance": 0.15,
+   "fit": false,
+   "source": "ds41data/s40_*.log (2026-10-23): 600-token prompt, 64 tokens, every decode option on, DECODE_TIMING split",
+   "plan": {
+    "pack": "IQ2_XXSE3",
+    "engram_gib": 79,
+    "drafted": 4.53,
+    "acceptance": 0.706
+   },
+   "measured": {
+    "tok_s": 37.1
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 76 GiB, DSpark, wikitext (10-23)",
+   "kind": "v100_decode",
+   "tolerance": 0.15,
+   "fit": false,
+   "source": "ds41data/s40_*.log (2026-10-23): 600-token prompt, 64 tokens, every decode option on, DECODE_TIMING split",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 76,
+    "drafted": 2.61,
+    "acceptance": 0.683
+   },
+   "measured": {
+    "tok_s": 26.0
+   }
+  },
+  {
+   "name": "V100x2 IQ2_XXSE4, Engram 76 GiB, DSpark, code (10-23: a 12 ms/pass Lustre stall)",
+   "kind": "v100_decode",
+   "tolerance": 0.15,
+   "fit": false,
+   "source": "ds41data/s40_*.log (2026-10-23): 600-token prompt, 64 tokens, every decode option on, DECODE_TIMING split",
+   "plan": {
+    "pack": "IQ2_XXSE4",
+    "engram_gib": 76,
+    "drafted": 4.29,
+    "acceptance": 0.644
+   },
+   "measured": {
+    "tok_s": 27.1
+   }
   }
  ],
  "engram": {

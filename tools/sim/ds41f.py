@@ -792,10 +792,16 @@ def runner_prefill(rp, prompt, layers=40, top_k=6, experts=384, last_source=20):
 @dataclasses.dataclass
 class V100Hw:
     name: str = "xeon_v100"
-    pass_ms: float = 32.9             # per pass: fixed dense kernels, 40 router syncs, merges (fit)
+    pass_ms: float = 23.0             # per pass: fixed dense kernels, 40 router syncs, merges (fit, less the peer wait; the
+                                      # lumped fit was 32.9 for one- and 3.6-token passes alike)
     token_ms: float = 6.1             # per token in a pass: dense kernels, attention, MoE bookkeeping (fit)
     cpu_expert_ms: float = 0.06       # per CPU-lane expert evaluation, net of overlap (fit; the lane alone 0.12)
-    draft_ms: float = 15.0            # DSpark draft, Q8_0 trunk, device Markov chain (measured 14.9-15.9)
+    peer_wait_ms: float = 9.3         # per pass: the host's wait for the peer GPU after the CPU lane (measured 9.3 at one
+    peer_wait_token_ms: float = 0.8   # token, 13.1 at 3.6, 14.4 at 5.2; fit with pass_ms, 3 %; 0 with STRATA_DS41_PEER_THREAD)
+    draft_ms: float = 6.6             # DSpark draft less its router syncs: Q8_0 trunk, device Markov chain (measured 14.5-15.9 whole)
+    draft_route_ms: float = 8.4       # the draft's per-layer host syncs for routing (0 with DSPARK_GPU_ROUTE)
+    lane_gbps_per_core: float = 5.0   # the IQ2_XXS CPU kernel's codebook ceiling (measured 3.9 in decode): the lane cannot
+                                      # be asked to go below 9 MB x experts / (36 cores x this)
     inject_ms: float = 0.4            # the drafter's keys of the accepted positions
     host_ms: float = 1.5              # per pass: logits download, argmax (+ 0.7 ms per token, in token_ms)
     engram_iops: float = 800.0        # effective random 4 KiB Lustre reads/s for Engram misses (raw buffered: ~1,550;
@@ -832,6 +838,8 @@ class V100Plan:
     context: int = 600                # positions before the generated tokens (long context: indexer cost, KV)
     kv: str = "fp32"                  # compressed KV rows: fp32 (now), fp16, q8
     index_tc: bool = False            # FP16 tensor-core index scoring
+    engram_hit1: float = -1.0         # table 1's RAM hit fraction (-1: its leading-rows share; a frequency-ranked row
+                                      # cache, STRATA_DS41_ENGRAM_ROWS, reaches more at the same bytes)
     set: dict = dataclasses.field(default_factory=dict)   # V100Hw overrides
 
     def hw(self):
@@ -847,13 +855,16 @@ def v100_decode(vp):
     t0, t1 = h.table_gib
     share0 = min(1.0, vp.engram_gib / t0)
     share1 = min(1.0, max(0.0, vp.engram_gib - t0) / t1)
+    if vp.engram_hit1 >= 0: share1 = min(1.0, vp.engram_hit1)
     kv_gib = KV_BYTES[vp.kv] * vp.context * vp.sessions / GIB
     resident = h.gpu_expert_gib + (0.0 if vp.spec or vp.drafter_on_gpu else 7.9) + vp.extra_gpu_gib - kv_gib   # no drafter: +7.9 GiB
     hit = min(0.98, max(0.0, resident / h.expert_gib) ** h.hit_exponent)
     per = 1 + vp.drafted if vp.spec else 1.0          # tokens of one session in a pass
     T = per * vp.sessions
     cpu = 40 * T * 6 * (1 - hit)
-    dense = h.pass_ms + h.token_ms * T + h.cpu_expert_ms * cpu + h.host_ms
+    lane_floor = cpu * 9e-3 / (36 * h.lane_gbps_per_core) * 1e3 * 0.5   # GB over the cores' ceiling, half overlapped as the fit's
+    dense = h.pass_ms + h.token_ms * T + max(h.cpu_expert_ms * cpu, lane_floor) + h.host_ms
+    dense += h.peer_wait_ms + h.peer_wait_token_ms * (T - 1)
     # long context: every token's 8 index layers score 3 pos/2 + 5 pos rows of 128-dim keys, then a top-k over them
     rows = 6.5 * vp.context
     key_b = dict(fp32=512, fp16=256, q8=136)[vp.kv]          # one 128-dim key
@@ -861,7 +872,7 @@ def v100_decode(vp):
     index_ms = T * (max(rows * key_b / (h.index_gbps * 1e9), flops / (h.index_tflops * 1e12 * (4 if vp.index_tc else 1)))
                     + rows / (h.topk_gelem_s * 1e9)) * 1e3
     dense += index_ms
-    draft = (h.draft_ms * vp.sessions + h.inject_ms) if vp.spec else 0.0
+    draft = ((h.draft_ms + h.draft_route_ms) * vp.sessions + h.inject_ms) if vp.spec else 0.0
     hide = draft + 14 / 40 * dense
     m0 = h.engram_rows * T * (1 - share0)
     m1 = h.engram_rows * T * (1 - share1)
@@ -885,15 +896,25 @@ def v100_levers(base=None):
         ("Engram whole in RAM: IQ2_XXSE3 pack (KL 0.314)", r(pack="IQ2_XXSE3", engram_gib=79)),
         ("IQ2_XXSE43 pack (layer-14 table Q3_K, KL 0.307)", r(pack="IQ2_XXSE43")),
         ("Engram: Lustre at its raw 1,550 reads/s", sets(engram_iops=1550.0)),
+        ("peer GPU on its own thread (PEER_THREAD; the host no longer waits for it)", sets(peer_wait_ms=0.0, peer_wait_token_ms=0.0)),
+        ("draft routed on the device (DSPARK_GPU_ROUTE: no per-layer host sync)", sets(draft_route_ms=0.0)),
+        ("Engram rows by frequency (ENGRAM_ROWS: table 1 hit 0.8 at the same bytes)", r(engram_hit1=0.8)),
+        ("CPU lane 1.25x (placement; 2x is past its codebook ceiling)", sets(cpu_expert_ms=0.048)),
         ("CPU lane 2x faster (IQ2_XXS kernel)", sets(cpu_expert_ms=0.03)),
         ("GPU tier +6.3 GiB (GROW after a 4K prompt)", r(extra_gpu_gib=6.3)),
         ("drafter experts off GPU0 (+7.2 GiB of target experts)", r(extra_gpu_gib=7.2)),
-        ("dense kernels -25 %", sets(pass_ms=32.9 * 0.75, token_ms=6.1 * 0.75)),
+        ("dense kernels -25 % (FUSE: launch fusion)", sets(pass_ms=23.0 * 0.75, token_ms=6.1 * 0.75)),
         ("draft time -50 %", sets(draft_ms=7.5)),
         ("acceptance +10 % (0.75)", r(acceptance=0.75)),
         ("code-like text (4.2 drafted, 0.65 accepted)", r(drafted=4.2, acceptance=0.65)),
         ("Engram in RAM + lane 2x + dense -25 %", V100Plan(**dict(b, pack="IQ2_XXSE3", engram_gib=79,
-                                                             set=dict(cpu_expert_ms=0.03, pass_ms=32.9 * 0.75, token_ms=6.1 * 0.75)))),
+                                                             set=dict(cpu_expert_ms=0.03, pass_ms=23.0 * 0.75, token_ms=6.1 * 0.75)))),
+        ("the 40+ stack: peer thread + FUSE -25 % + device draft (IQ2_XXSE3)", V100Plan(**dict(b, pack="IQ2_XXSE3", engram_gib=79,
+                                                             set=dict(peer_wait_ms=0.0, peer_wait_token_ms=0.0, draft_route_ms=0.0,
+                                                                      pass_ms=23.0 * 0.75, token_ms=6.1 * 0.75)))),
+        ("the 40+ stack + Engram rows 0.8 (IQ2_XXSE4)", V100Plan(**dict(b, engram_hit1=0.8,
+                                                             set=dict(peer_wait_ms=0.0, peer_wait_token_ms=0.0, draft_route_ms=0.0,
+                                                                      pass_ms=23.0 * 0.75, token_ms=6.1 * 0.75)))),
     ]
 
 

@@ -77,6 +77,113 @@ __global__ void hc_coeff_kernel(const float* m, const float* scale, const float*
     c[8 + t] = k[t];
 }
 
+// mixes() in one launch per token (1024 threads): glm_rms_norm_rows of the 4 streams (no weight; its float4 sums and
+// 32-lane tree) into flat, then the 24 F32 rows of fn as f32_gemv_kernel's threads 0..255 would sum them, then
+// hc_coeff_kernel's sinkhorn by threads 0..15: the same bits as the three launches
+__global__ void __launch_bounds__(1024) hc_mixes_kernel(const float* h, const float* fn, const float* scale, const float* base, float* flat,
+                                                        float* mixes, float* c, int n4, int iterations, float eps, float rms_eps) {
+    __shared__ float warps[32];
+    __shared__ float red[8];
+    __shared__ float k[16];
+    const int t = threadIdx.x, lane = t & 31;
+    const float4* x = reinterpret_cast<const float4*>(h) + size_t(blockIdx.x) * n4;
+    float4* y = reinterpret_cast<float4*>(flat) + size_t(blockIdx.x) * n4;
+    float sum = 0;
+    for (int i = t; i < n4; i += 1024) {
+        const float4 v = x[i];
+        sum += v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+    }
+    for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+    if (!lane) warps[t / 32] = sum;
+    __syncthreads();
+    if (t < 32) {
+        sum = warps[t];
+        for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+        if (!t) warps[0] = rsqrtf(sum / (4.f * n4) + rms_eps);
+    }
+    __syncthreads();
+    const float inv = warps[0];
+    for (int i = t; i < n4; i += 1024) {
+        float4 v = x[i];
+        v.x = v.x * inv * 1.f; v.y = v.y * inv * 1.f; v.z = v.z * inv * 1.f; v.w = v.w * inv * 1.f;
+        y[i] = v;
+    }
+    __syncthreads();
+    // the 24 rows, each by threads 0..255 (f32_gemv_kernel's float4 path: in % 4 == 0 and 16-byte aligned rows)
+    float* m = mixes + size_t(blockIdx.x) * 24;
+    const int in = 4 * n4;
+    for (int r = 0; r < 24; ++r) {
+        if (t < 256) {
+            const float4* r4 = reinterpret_cast<const float4*>(fn + size_t(r) * in);
+            float s = 0;
+            for (int i = t; i < n4; i += 256) {
+                const float4 a = r4[i], b = y[i];
+                s += a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+            }
+            s = warp_sum(s);
+            if (lane == 0) red[t / 32] = s;
+        }
+        __syncthreads();
+        if (t == 0) {
+            float tt = 0;
+            for (int i = 0; i < 8; ++i) tt += red[i];
+            m[r] = tt;
+        }
+        __syncthreads();
+    }
+    // hc_coeff_kernel, by threads 0..15 (element d + 4 s); the block's other threads wait at its barriers
+    c += size_t(blockIdx.x) * 24;
+    const bool in16 = t < 16;
+    if (in16) {
+        if (t < 4) c[t] = sigmoid(m[t] * scale[0] + base[t]) + eps;
+        else if (t < 8) c[t] = sigmoid(m[t] * scale[1] + base[t]) * 2.0f;
+        k[t] = m[8 + t] * scale[2] + base[8 + t];
+    }
+    __syncthreads();
+    const int d = t % 4, sc = (t / 4) % 4;
+    {
+        float v = 0;
+        if (in16) {
+            float mx = -INFINITY;
+            for (int i = 0; i < 4; ++i) mx = fmaxf(mx, k[i + 4 * sc]);
+            float e[4], esum = 0;
+            for (int i = 0; i < 4; ++i) { e[i] = expf(k[i + 4 * sc] - mx); esum += e[i]; }
+            const float einv = 1.0f / esum;
+            v = e[d] * einv + eps;
+        }
+        __syncthreads();
+        if (in16) k[t] = v;
+        __syncthreads();
+    }
+    auto cols = [&] {
+        float v = 0;
+        if (in16) {
+            float ss = 0;
+            for (int i = 0; i < 4; ++i) ss += k[d + 4 * i];
+            ss += eps;
+            v = k[t] / ss;
+        }
+        __syncthreads();
+        if (in16) k[t] = v;
+        __syncthreads();
+    };
+    auto rows = [&] {
+        float v = 0;
+        if (in16) {
+            float ss = 0;
+            for (int i = 0; i < 4; ++i) ss += k[i + 4 * sc];
+            ss += eps;
+            v = k[t] / ss;
+        }
+        __syncthreads();
+        if (in16) k[t] = v;
+        __syncthreads();
+    };
+    cols();
+    for (int i = 1; i < iterations; ++i) { rows(); cols(); }
+    if (in16) c[8 + t] = k[t];
+}
+
 __global__ void hc_pre_kernel(const float* h, const float* w, float* y, int n) {
     const int j = blockIdx.x * blockDim.x + threadIdx.x;
     if (j >= n) return;
@@ -97,6 +204,29 @@ __global__ void hc_post_kernel(const float* x, const float* res, const float* po
     post += size_t(blockIdx.y) * 24;
     comb += size_t(blockIdx.y) * 24;
     const float xj = x[j];
+    for (int d = 0; d < 4; ++d) {
+        float v = __fmul_rn(xj, post[d]);
+        for (int s = 0; s < 4; ++s) v = __fadd_rn(v, __fmul_rn(res[size_t(s) * n + j], comb[d + 4 * s]));
+        out[size_t(d) * n + j] = v;
+    }
+}
+
+// the FFN tail in one launch: x = ((moe + peer) + gsum) + y (each add as ds41_add, in that order; peer / gsum may be
+// null), y = x, then hc_post
+__global__ void hc_post_sum_kernel(const float* moe, const float* peer, const float* gsum, float* y, const float* res, const float* post,
+                                   const float* comb, float* out, int n) {
+    const int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n) return;
+    const size_t at = size_t(blockIdx.y) * n + j;
+    float xj = moe[at];
+    if (peer) xj = xj + peer[at];
+    if (gsum) xj = xj + gsum[at];
+    xj = xj + y[at];
+    y[at] = xj;
+    res += size_t(blockIdx.y) * 4 * n;
+    out += size_t(blockIdx.y) * 4 * n;
+    post += size_t(blockIdx.y) * 24;
+    comb += size_t(blockIdx.y) * 24;
     for (int d = 0; d < 4; ++d) {
         float v = __fmul_rn(xj, post[d]);
         for (int s = 0; s < 4; ++s) v = __fadd_rn(v, __fmul_rn(res[size_t(s) * n + j], comb[d + 4 * s]));
@@ -1195,9 +1325,12 @@ __device__ __forceinline__ float bf16f(uint16_t v) { return __uint_as_float(uint
 constexpr int kMtTile = 512;
 // each lane: 16 BF16 of the tile (two 16-byte loads), so a warp has 1 KiB of the row in flight
 __global__ void __launch_bounds__(256) bf16_gemv_mt_kernel(const uint16_t* __restrict__ w, const float* __restrict__ x, int ldx, MtRows rows,
-                                                           float* y, int ldy, int out, int in) {
+                                                           float* y, int ldy, int out, int in, size_t w_gstride, int x_goff, int y_goff) {
     __shared__ float xs[kMtMax][kMtTile];
     const int r = blockIdx.x * 8 + threadIdx.x / 32, lane = threadIdx.x % 32;
+    w += size_t(blockIdx.y) * w_gstride;   // group g (ds41_bf16_gemv_mt_groups): its matrix, columns and rows
+    x += size_t(blockIdx.y) * size_t(x_goff);
+    y += size_t(blockIdx.y) * size_t(y_goff);
     const uint16_t* wr = w + size_t(min(r, out - 1)) * in;
     float acc[kMtMax] = {};
     for (int k0 = 0; k0 < in; k0 += kMtTile) {
@@ -1318,29 +1451,42 @@ __global__ void moe_route_kernel(const float* logits, const float* bias, int exp
 // pair p: y[p ldy + r] = W_{ids[p]}[r] . x[(p / div) ldx] (MXFP4 experts expert_bytes apart), 8 rows per block
 __global__ void __launch_bounds__(256) mxfp4_moe_kernel(const uint8_t* __restrict__ w, size_t expert_bytes, size_t row_bytes, const int* ids,
                                                         const float* __restrict__ x, int ldx, int div, float* y, int ldy, int out, int in) {
+    // (each lane had read its 17-byte block from global memory a byte at a time: the tile now goes through LDS with
+    // word loads, and the products are mxfp4_gemv_mt_kernel's, so a device-routed draft is bitwise the host-routed one)
     __shared__ float xs[kMtTile];
-    const int p = blockIdx.y, r = blockIdx.x * 8 + threadIdx.x / 32, lane = threadIdx.x % 32;
+    __shared__ uint32_t wt[8][68];
+    const int p = blockIdx.y, r = blockIdx.x * 8 + threadIdx.x / 32, lane = threadIdx.x % 32, warp = threadIdx.x / 32;
     const uint8_t* wr = w + size_t(ids[p]) * expert_bytes + size_t(min(r, out - 1)) * row_bytes;
     const float* xp = x + size_t(p / div) * ldx;
     const int half = lane & 1, bl = lane / 2;
+    const uint8_t* wb = reinterpret_cast<const uint8_t*>(wt[warp]);
     float acc = 0;
     for (int k0 = 0; k0 < in; k0 += kMtTile) {
-        const int kn = min(kMtTile, in - k0);
+        const int kn = min(kMtTile, in - k0), nb = kn / 32;
         __syncthreads();
         for (int i = threadIdx.x; i < kn; i += 256) xs[i] = xp[k0 + i];
+        const uint8_t* tile = wr + size_t(k0 / 32) * 17;
+        if ((reinterpret_cast<uintptr_t>(tile) & 3) == 0) {
+            for (int i = lane; i < (nb * 17 + 3) / 4; i += 32) wt[warp][i] = reinterpret_cast<const uint32_t*>(tile)[i];
+        } else {
+            for (int i = lane; i < nb * 17; i += 32) reinterpret_cast<uint8_t*>(wt[warp])[i] = tile[i];
+        }
         __syncthreads();
-        if (bl * 32 < kn) {
-            const uint8_t* blk = wr + size_t(k0 / 32 + bl) * 17;
+        if (bl < nb) {
+            const uint8_t* blk = wb + bl * 17;
             const uint32_t e = blk[0];
-            const float d = e < 2 ? __uint_as_float(0x00200000u << e) : __uint_as_float((e - 1) << 23);
-            const int base = bl * 32 + half * 16;
-            float s = 0;
+            const float d = e < 2 ? __uint_as_float(0x00200000u << e) : __uint_as_float((e - 1) << 23);   // 2^(e - 128)
+            float v[16];
 #pragma unroll
             for (int j = 0; j < 16; ++j) {
                 const uint8_t q = blk[1 + j];
-                s += kFp4[half ? q >> 4 : q & 15] * xs[base + j];
+                v[j] = kFp4[half ? q >> 4 : q & 15] * d;
             }
-            acc += s * d;
+            const int base = bl * 32 + half * 16;
+            float s2 = 0;
+#pragma unroll
+            for (int j = 0; j < 16; ++j) s2 += v[j] * xs[base + j];
+            acc += s2;
         }
     }
     for (int o = 16; o; o >>= 1) acc += __shfl_xor_sync(0xffffffffu, acc, o);
@@ -1407,6 +1553,15 @@ void ds41_hc_coeff(const float* mixes, const float* scale, const float* base, fl
     check("hc_coeff");
 }
 
+bool ds41_hc_mixes(const float* h, const float* fn, const float* scale, const float* base, float* flat, float* mixes, float* coeff, int n,
+                   int iterations, float eps, float rms_eps, void* stream, int tokens) {
+    const auto aligned = [](const void* p) { return (reinterpret_cast<uintptr_t>(p) & 15) == 0; };
+    if (n < 1 || !aligned(h) || !aligned(fn) || !aligned(flat)) return false;
+    hc_mixes_kernel<<<unsigned(tokens), 1024, 0, (cudaStream_t)stream>>>(h, fn, scale, base, flat, mixes, coeff, n, iterations, eps, rms_eps);
+    check("hc_mixes");
+    return true;
+}
+
 void ds41_hc_pre(const float* h, const float* w, float* y, int n, void* stream, int tokens) {
     hc_pre_kernel<<<dim3(blocks(n, 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(h, w, y, n);
     check("hc_pre");
@@ -1416,6 +1571,12 @@ void ds41_hc_post(const float* x, const float* res, const float* post, const flo
                   int tokens) {
     hc_post_kernel<<<dim3(blocks(n, 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(x, res, post, comb, out, n);
     check("hc_post");
+}
+
+void ds41_hc_post_sum(const float* moe, const float* peer, const float* gsum, float* y, const float* res, const float* post, const float* comb,
+                      float* out, int n, void* stream, int tokens) {
+    hc_post_sum_kernel<<<dim3(blocks(n, 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(moe, peer, gsum, y, res, post, comb, out, n);
+    check("hc_post_sum");
 }
 
 void ds41_broadcast_streams(const float* x, float* h, int n, void* stream, int tokens) {
@@ -1603,8 +1764,28 @@ void ds41_bf16_gemv_mt(const uint16_t* w, const float* x, int ldx, const int* ro
     if (n < 1 || n > kMtMax || in % 64) throw std::invalid_argument("ds41_bf16_gemv_mt: shape");
     MtRows r{n, {}};
     for (int t = 0; t < n; ++t) r.row[t] = rows[t];
-    bf16_gemv_mt_kernel<<<unsigned((out + 7) / 8), 256, 0, (cudaStream_t)stream>>>(w, x, ldx, r, y, ldy, out, in);
+    bf16_gemv_mt_kernel<<<unsigned((out + 7) / 8), 256, 0, (cudaStream_t)stream>>>(w, x, ldx, r, y, ldy, out, in, 0, 0, 0);
     check("bf16_gemv_mt");
+}
+void ds41_bf16_gemv_mt_groups(const uint16_t* w, size_t w_gstride, const float* x, int ldx, int x_goff, const int* rows, int n, float* y, int ldy,
+                              int y_goff, int out, int in, int groups, void* stream) {
+    if (n < 1 || n > kMtMax || in % 64 || groups < 1) throw std::invalid_argument("ds41_bf16_gemv_mt_groups: shape");
+    MtRows r{n, {}};
+    for (int t = 0; t < n; ++t) r.row[t] = rows[t];
+    bf16_gemv_mt_kernel<<<dim3(unsigned((out + 7) / 8), unsigned(groups)), 256, 0, (cudaStream_t)stream>>>(w, x, ldx, r, y, ldy, out, in, w_gstride,
+                                                                                                          x_goff, y_goff);
+    check("bf16_gemv_mt_groups");
+}
+// rows [t][width] of src into ring slot (pos + t) % ring of dst
+__global__ void ring_rows_kernel(const float* src, int width, int pos, int ring, float* dst) {
+    const int t = blockIdx.y;
+    float* d = dst + size_t((pos + t) % ring) * width;
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < width; i += gridDim.x * blockDim.x) d[i] = src[size_t(t) * width + i];
+}
+void ds41_ring_rows(const float* src, int rows, int width, int pos, int ring, float* dst, void* stream) {
+    if (rows < 1) return;
+    ring_rows_kernel<<<dim3(std::min(unsigned(blocks(width, 256)), 4u), unsigned(rows)), 256, 0, (cudaStream_t)stream>>>(src, width, pos, ring, dst);
+    check("ring_rows");
 }
 
 void ds41_mxfp4_gemv_mt(const uint8_t* w, size_t row_bytes, const float* x, int ldx, const int* rows, int n, float* y, int ldy,

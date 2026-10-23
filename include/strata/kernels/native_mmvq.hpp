@@ -138,6 +138,12 @@ void native_mmvq(int ggml_type, const void* weights, const void* x_q8_1, float* 
 /// bitwise the two calls. Returns false (nothing launched) where that is not the case (Q8_0, 2-8 columns only).
 bool native_mmvq_pair(int ggml_type, const void* w1, const void* w2, const void* x_q8_1, float* y1, float* y2,
                       int n_in, int n_out, int ncols, void* stream);
+/// `groups` consecutive matrices [n_out][n_in] of one type (weights + g native_mmvq_weight_bytes), each times its own
+/// ncols columns (x_q8_1 + g native_q8_1_bytes(n_in, ncols)) into y + g ncols n_out, in ONE launch: bitwise the
+/// `groups` native_mmvq calls. false (nothing launched): ncols 1, a type without the multi-column kernel (the
+/// i-quants), a packed Q8_0 matrix, or the wave layout.
+bool native_mmvq_groups(int ggml_type, const void* weights, const void* x_q8_1, float* y, int n_in, int n_out, int ncols, int groups,
+                        void* stream);
 
 // Fork F4 (Eddoursul): 2..4 columns also INTERLEAVED, so one 16-byte load reads a position of every column: CP = 2 (2
 // columns) or 4 (3-4), zero-padded; nb = n_in / 32 blocks; int32 bm[nb][8][CP] (block-major), int32 pm[8][nb][CP]

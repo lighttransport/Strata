@@ -102,7 +102,7 @@ class KernelBoundTest(unittest.TestCase):
 class ValidationTest(unittest.TestCase):
     def test_rows(self):
         rows = ds41f.validate()
-        self.assertEqual(len(rows), 18)
+        self.assertEqual(len(rows), 22)
         for r in rows:
             self.assertTrue(r["within"], r["name"])
         fitted = [r for r in rows if r["fit"]]
@@ -150,7 +150,7 @@ class UntouchedTest(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             code = glm_ds41f_sim.main(["validate"])
         self.assertEqual(code, 0)
-        self.assertIn("18 of 18 rows within tolerance", out.getvalue())
+        self.assertIn("22 of 22 rows within tolerance", out.getvalue())
 
 class RunnerTest(unittest.TestCase):
     def test_target_beats_now(self):
@@ -173,7 +173,7 @@ class RunnerTest(unittest.TestCase):
 class V100Test(unittest.TestCase):
     def test_calibration_points(self):
         rows = [r for r in ds41f.validate() if r["kind"] == "v100_decode"]
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 12)
         for r in rows:
             self.assertTrue(r["within"], r["name"])
             if r["fit"]:
