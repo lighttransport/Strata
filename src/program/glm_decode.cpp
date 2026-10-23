@@ -8315,13 +8315,15 @@ private:
             check(cudaStreamWaitEvent(hidden_stream, hidden_ready, 0));
             check(cudaMemcpyAsync(hidden_rows->p, x.p, bytes, cudaMemcpyDeviceToHost, hidden_stream));
             std::exception_ptr failure;
+            // The draft priming moves `position` to the draft position while it runs; read it here.
+            const size_t first = position;
             std::thread copier([&] {
                 try {
-                    hidden_trim(position);
-                    hidden_resize(position + nt);
+                    hidden_trim(first);
+                    hidden_resize(first + nt);
                     check(cudaStreamSynchronize(hidden_stream));
                     const auto *rows = static_cast<const char *>(hidden_rows->p);
-                    auto *out = reinterpret_cast<char *>(hidden_row(position));
+                    auto *out = reinterpret_cast<char *>(hidden_row(first));
                     std::vector<std::jthread> pool;
                     constexpr int workers = 8;
                     for (int w = 0; w < workers; ++w)
