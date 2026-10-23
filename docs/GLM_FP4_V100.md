@@ -23,6 +23,7 @@ a **181 GiB RAM allocation**, with 32 CPU workers:
 | Weights and profile | Decode tok/s | Prefill tok/s | Request |
 | --- | ---: | ---: | --- |
 | Full native ModelOpt FP4/FP8, grouped resident experts, MTP depth 3 | **41.24** | **519.34** | 8,192 input / 512 output tokens |
+| The same plus [streamed prefill](GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in) ([profile](../configs/experimental/glm53f-fp4-dual-v100-streamed.json)), four same-job pairs | 41.34-41.73 | **779.79-783.71** | 8,192 input / 512 output tokens |
 
 Both rates come from the same profile, with three complete warmups and three
 timed requests. Timed requests had zero major faults or swap. Clocks were
@@ -34,7 +35,8 @@ Separate reused coding checks passed **8/8 long-context and 8/8 natural-length
 cases** on both control and candidate. These are small reused panels, not a
 HumanEval score; Fresh20 remains unscored. The original absolute speed-selection
 gate remains failed. Decode tuning is paused at this working configuration,
-and the **800 prefill tok/s target remains unmet**. See the
+and the **800 prefill tok/s target remains unmet** at this context (streamed: 779.79-783.71; a 1M-context pair
+measured 807.31). See the
 [timing and quality history](GLM_DFLASH2_V100.md),
 [recorded evidence](glm_fp4_v100_dflash2_measurement.json), and
 [prefill findings and next opportunities](GLM_FP4_V100_PREFILL.md).

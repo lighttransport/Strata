@@ -30,6 +30,7 @@ evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
 | Ryzen 9 3950X, 64 GB, **RTX 3070 8 GB** | REAP-50 Q23 | 10-20 | 210-510 | matched perplexity within +10% and a 30-task HumanEval subset |
 | 2x Xeon Gold 6240, 160 GB, **2x Tesla V100 32 GB** | full UD-Q2_K_XL | 29 | 790 (16K) | logit parity and 400k C++ oracle cases |
 | 2x Xeon Gold 6240, 181 GiB allocation, **2x Tesla V100 32 GB** | full ModelOpt FP4/FP8, experimental grouped profile | **41.24** | **519.34 (8K)** | 8/8 long + 8/8 natural-length reused coding cases; Fresh20 unscored |
+| 2x Xeon Gold 6240, 181 GiB allocation, **2x Tesla V100 32 GB** | same, plus experimental streamed prefill | 41.3-41.7 | **780-784 (8K)** | same panels on both sides of three same-job pairs; identical 512-token outputs |
 | Ryzen 9 3950X, 64 GB, **RX 570 16 GB**, experimental Vulkan runner | REAP-50 Q23 | 3.6 strict, 15.8 fast engine (short prompt) | 34 | not gated: the fast engine fails the numerical gate against strict |
 
 Decode numbers are at 1K-8K context with 256-512 generated tokens; prompt numbers at 2K-16K prompts. The
@@ -40,7 +41,9 @@ quality gate and is not shipped. Removing every approximation leaves 20 tok/s.
 
 The [native FP4 result](docs/GLM_FP4_V100.md#current-measured-profile) measures both phases with the same opt-in
 profile: three full warmups and three timed 8,192-input / 512-output requests. It uses approximate CPU Q8,
-bounded decode routing and soft MTP acceptance; it has no HumanEval score. The 800 prefill tok/s target remains unmet.
+bounded decode routing and soft MTP acceptance; it has no HumanEval score. Streamed prefill
+([how](docs/GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in)) raised prompt processing from 520-523 to 780-784 tok/s
+in four same-job pairs at a 12K context; the 800 tok/s target is met only in a 1M-context pair (807 tok/s).
 
 - **[Release notes: measurements, weights on Hugging Face, setup for one and two GPUs](docs/GLM53F_RELEASE.md)**
 - **[Running and benchmarking it on your own hardware](docs/GLM53F_NEW_HARDWARE.md)**

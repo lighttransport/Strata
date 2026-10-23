@@ -51,7 +51,7 @@ Timed requests had zero major faults or swap; clocks were unlocked and RAM speed
 was not measured. Decode tuning is paused at this user-settled experimental
 profile; its original absolute speed-selection gate remains failed. Soft MTP
 acceptance and routing approximations remain opt-in, and the 800 prefill tok/s
-target remains unmet. The [FP4 guide](GLM_FP4_V100.md#current-measured-profile)
+target remains unmet at an 8K prompt (streamed prefill: next paragraph). The [FP4 guide](GLM_FP4_V100.md#current-measured-profile)
 links the timing and quality evidence; the original 5.26 tok/s reference and
 installer defaults remain unchanged.
 
