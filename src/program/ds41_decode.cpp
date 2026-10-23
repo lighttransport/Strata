@@ -54,6 +54,7 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <set>
 #include <memory>
 #include <numeric>
 #include <sstream>
@@ -2020,10 +2021,44 @@ private:
     const float* w(const std::string& name) const { return weight(name).data.f(); }
 
     // y[t] = W x[t] for nt tokens (x[t] at t W.in, y[t] at t rows) over rows [row0, row0 + rows) of W (rows 0: all)
+    // STRATA_DS41_DENSE_MMQ=1: a quantized trunk matrix times a pass of 9..kDenseRows tokens (batched sessions) by
+    // llama.cpp's MMQ, int8 tensor cores: the weights are read once for every token (MMVQ takes 8 columns per launch,
+    // the GEMM path dequantizes to FP16). x: nt rows of `in` floats, ldx apart; y rows ldy apart. false: not covered
+    // (type, shape, or K not a multiple of 256: MMQ reads 256-value K chunks).
+    static constexpr int kDenseRows = 256;
+    Dev dm_xq_, dm_bounds_, dm_iota_;
+    std::set<int> dm_off_;   // types said once to take the other path
+    bool dense_mmq(int type, const uint8_t* w, const float* x, int ldx, float* y, int ldy, int in, int rows, int nt) {
+        namespace mq = strata::prefill::mmq;
+        static const bool on = std::getenv("STRATA_DS41_DENSE_MMQ") && std::string(std::getenv("STRATA_DS41_DENSE_MMQ")) == "1";
+        // (passes from gemm_min_ tokens up keep the GEMM path unless they are sessions: a prompt chunk's GEMMs win)
+        if (!on || nt <= 8 || nt > kDenseRows || (nt >= gemm_min_ && !sess_) || in % 256 || !mq::built()) return false;
+        if (type == GGML_TYPE_F32 || type == GGML_TYPE_BF16 || !mq::fits(type, rows)) {
+            if (dm_off_.insert(type).second) std::cerr << "DS41 dense_mmq off for type " << type << "\n";
+            return false;
+        }
+        if (!mmq_) mmq_ = std::make_unique<mq::Context>();
+        if (dm_xq_.bytes < mq::q8_bytes(kDenseRows, in)) dm_xq_ = Dev(mq::q8_bytes(kDenseRows, std::max(in, 8192)));
+        if (!dm_iota_.p) {
+            dm_bounds_ = Dev(256);
+            dm_iota_ = Dev((size_t(kDenseRows) + 128) * 4);
+            mq::iota(dm_iota_.i(), kDenseRows + 128, stream_);
+        }
+        mq::set_bounds(dm_bounds_.i(), nt, stream_);
+        mq::quantize(x, nullptr, dm_xq_.p, type, in, ldx, nt, stream_);
+        mq::Product pr;
+        pr.w = w; pr.type = type; pr.w_rows = rows; pr.w_cols = in; pr.expert_bytes = mq::matrix_bytes(type, rows, in);
+        pr.n = 1; pr.xq = dm_xq_.p; pr.bounds = dm_bounds_.i(); pr.ids = dm_iota_.i(); pr.total_rows = nt; pr.max_rows = nt;
+        pr.dst = y; pr.ld_dst = ldy;
+        mmq_->run(pr, stream_);
+        return true;
+    }
+
     void mat(const std::string& name, const float* x, float* y, int nt = 1, int row0 = 0, int rows = 0) {
         const Weight& W = weight(name);
         if (!rows) rows = W.out;
         const uint8_t* base = static_cast<const uint8_t*>(W.data.p) + size_t(row0) * W.row_bytes;
+        if (dense_mmq(W.type, base, x, W.in, y, rows, W.in, rows, nt)) return;
         if (nt >= gemm_min_) {   // a chunk: GEMMs (cuBLAS FP32, BF16, or the native blocks dequantized to FP16)
             if (W.type == GGML_TYPE_F32) {
                 const float one = 1, zero = 0;
@@ -2063,7 +2098,11 @@ private:
     void quantize_xn() { if (share_q8()) quantize(xn_.f(), q8x_.p, cfg_.hidden, tokens_); }
     void mat_xn(const std::string& name, float* y) {
         const Weight& W = weight(name);
-        if (!share_q8() || W.type == GGML_TYPE_F32 || W.type == GGML_TYPE_BF16 || W.in != cfg_.hidden) { mat(name, xn_.f(), y, tokens_); return; }
+        if (!share_q8() || W.type == GGML_TYPE_F32 || W.type == GGML_TYPE_BF16 || W.in != cfg_.hidden ||
+            dense_mmq(W.type, static_cast<const uint8_t*>(W.data.p), xn_.f(), W.in, y, W.out, W.in, W.out, tokens_)) {
+            if (!share_q8() || W.type == GGML_TYPE_F32 || W.type == GGML_TYPE_BF16 || W.in != cfg_.hidden) mat(name, xn_.f(), y, tokens_);
+            return;
+        }
         mmvq(W.type, static_cast<const uint8_t*>(W.data.p), q8x_.p, y, W.in, W.out, tokens_);
     }
 
@@ -2492,6 +2531,14 @@ private:
         const Weight& A = weight(p + "attn_output_a.weight");
         if (A.in != group_in) throw std::runtime_error("ds41: attn_output_a width");
         if (A.type == GGML_TYPE_F32 || A.type == GGML_TYPE_BF16) throw std::runtime_error("ds41: float attn_output_a");
+        if (T > 8 && dense_mmq(A.type, static_cast<const uint8_t*>(A.data.p), att_.f(), width, oa_.f(), c.out_groups * c.out_rank, group_in,
+                               c.out_rank, T)) {   // group 0 by MMQ: the others too (same type and shape)
+            for (int g = 1; g < c.out_groups; ++g)
+                dense_mmq(A.type, static_cast<const uint8_t*>(A.data.p) + size_t(g) * c.out_rank * A.row_bytes, att_.f(size_t(g) * group_in), width,
+                          oa_.f(size_t(g) * c.out_rank), c.out_groups * c.out_rank, group_in, c.out_rank, T);
+            mat(p + "attn_output_b.weight", oa_.f(), y_.f(), T);
+            return;
+        }
         if (T >= gemm_min_) {
             k::glm_f16(att_.f(), xh_.h(), int64_t(T) * width, stream_);
             uint16_t* xg = xh_.h() + size_t(T) * width;   // one group's columns, packed
