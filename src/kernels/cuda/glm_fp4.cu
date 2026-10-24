@@ -825,8 +825,8 @@ __global__ void route_gather_half(const half* x,const int* routes,half* out,int 
 __global__ void grouped_route_scatter(const GlmFp4ExpertGroup* __restrict__ groups,int count,
                                       const int* __restrict__ routes,const float* __restrict__ weights,
                                       const float* __restrict__ values,float* __restrict__ sum) {
-    __shared__ int rows[64];
-    __shared__ float coefficients[64];
+    __shared__ int rows[256];
+    __shared__ float coefficients[256];
     const int token=blockIdx.y,g=threadIdx.x;
     if(g<count) {
         const auto* group=groups+g;
@@ -922,7 +922,7 @@ void glm_mxfp8_gemm_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection
 }
 void glm_fp4_expert_group_products(const GlmFp4ExpertGroup* groups,int count,bool down,
                                    const uint16_t* input,float* output,float* up,void* stream) {
-    if(count<1||count>64||!groups||!input||!output||(!down&&!up))
+    if(count<1||count>256||!groups||!input||!output||(!down&&!up))
         throw std::invalid_argument("GLM FP4: invalid resident expert batch");
     const auto s=static_cast<cudaStream_t>(stream);
     if(down)fp4_qpn_grouped<8,2,false,true><<<dim3(4096/32,count),256,0,s>>>(groups,reinterpret_cast<const half*>(input),output,nullptr,4096,2048);
@@ -1037,7 +1037,7 @@ void glm_fp4_route_gather_half(const uint16_t* x,const int* routes,uint16_t* out
 void glm_fp4_expert_group_scatter(const GlmFp4ExpertGroup* groups,int count,
                                  const int* routes,const float* weights,const float* values,
                                  float* sum,int tokens,void* stream) {
-    if(count<1||count>64||tokens<1||tokens>8||!groups||!routes||!weights||!values||!sum)
+    if(count<1||count>256||tokens<1||tokens>64||!groups||!routes||!weights||!values||!sum)
         throw std::invalid_argument("GLM FP4: invalid grouped ordered scatter");
     grouped_route_scatter<<<dim3(4096/256,tokens),256,0,static_cast<cudaStream_t>(stream)>>>(groups,count,routes,weights,values,sum);
 }

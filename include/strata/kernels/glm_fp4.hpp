@@ -27,7 +27,7 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* weights,const void* scales,
                   bool sm70,void* stream,float* partials=nullptr,int fp8_accumulators=1);
 // Resident narrow expert products. Descriptors are device memory, grouped in
 // original expert order. Each count is 1..8; offsets are packed row offsets,
-// offset+count<=64. All weights are NVFP4 2048x4096 gate/up, 4096x2048 down.
+// offset+count<=256, at most 256 descriptors. All weights are NVFP4 2048x4096 gate/up, 4096x2048 down.
 struct alignas(16) GlmFp4ExpertGroup {
     const uint8_t* weights[3];
     const uint8_t* scales[3];
@@ -41,7 +41,7 @@ void glm_fp4_expert_group_products(const GlmFp4ExpertGroup* groups,int count,boo
                                    const uint16_t* input,float* output,float* up,void* stream);
 // One writer per token/column, accumulating groups in their original order.
 // Preserves separate FP32 multiply/add rounding of per-expert route scatter.
-// Same descriptor contract as grouped products; tokens1..8, disjoint buffers.
+// Same descriptor contract as grouped products; tokens1..64, disjoint buffers.
 void glm_fp4_expert_group_scatter(const GlmFp4ExpertGroup* groups,int count,
                                  const int* routes,const float* weights,const float* values,
                                  float* sum,int tokens,void* stream);

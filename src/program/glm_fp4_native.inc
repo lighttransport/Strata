@@ -181,7 +181,7 @@ class Fp4NativeExecutor {
         std::unique_ptr<Expert> temporary;
         std::unique_ptr<Pinned> result_host;size_t result_host_bytes=0;
         std::unique_ptr<Pinned> route_ids_host;
-        std::unique_ptr<Pinned> grouped_host;
+        std::unique_ptr<Pinned> grouped_host;size_t grouped_host_bytes=0;
         uint64_t grouped_calls=0,grouped_experts=0,grouped_rows=0,grouped_scatters=0;
         uint64_t route_id_uploads=0,route_id_groups=0,route_id_entries=0;
         std::map<int,std::set<int>> keep;
@@ -418,6 +418,13 @@ class Fp4NativeExecutor {
     // Opt-in: once per request and layer, after this many decode rows, choose the layer's GPU experts again from
     // the last prefill batch's routes plus the decode routes so far (0 = off, the default).
     const long long keep_reselect_rows=strata_env_value_ll("STRATA_GLM_FP4_KEEP_RESELECT_ROWS",0);
+    // STRATA_GLM_FP4_BATCH_KEEP (opt-in): one decode expert ranking for every request, so a new request (an admitted
+    // batch slot) does not replace the kept experts the running slots use. "first" keeps the first request's prefill
+    // ranking; "prior:PATH" loads per-layer route counts ("layer count0 ... count287" per line, for example from
+    // strata-glm-batch-route-sim --write-prior). Keep sets are still sized to each decode phase's cache.
+    const std::string batch_keep=[]{const char* v=std::getenv("STRATA_GLM_FP4_BATCH_KEEP");return std::string(v?v:"");}();
+    bool keep_frozen=false;
+    std::map<int,std::vector<uint64_t>> prior_frequency;
     // ... at most this many swaps per device and layer (0 = no cap), and this many background uploads of the newly
     // kept experts per decode routed() call (0 = each is uploaded when it is first routed)
     const long long keep_reselect_swaps=strata_env_value_ll("STRATA_GLM_FP4_KEEP_RESELECT_SWAPS",0);
@@ -461,6 +468,12 @@ class Fp4NativeExecutor {
     uint64_t decode_device_calls=0,decode_host_calls=0;
     uint64_t early_readback_calls=0;
     bool decode_phase=false;
+    // Independent decode batches (glm_batch_serve.inc, Decoder::enable_sequences) may pass more than eight decode
+    // rows. Such a call keeps the decode treatment (CPU experts, keep sets, route drop, affinity) and runs every
+    // product in the existing 8-row kernels, eight rows at a time. 8 = the original limit.
+    int decode_rows_max=8;
+    bool wide_decode(int nt)const {return decode_phase&&nt>8&&nt<=decode_rows_max;}
+    size_t route_id_capacity()const {return size_t(std::max(8,decode_rows_max))*8*sizeof(int);}
     std::map<int,std::array<uint8_t,288>> decode_owners;
     std::map<int,std::vector<uint64_t>> priority_frequency;
     std::map<int,std::array<uint64_t,288>> decode_heat;
@@ -1486,6 +1499,25 @@ public:
         if(keep_reselect_rows<0||keep_reselect_rows>65536||(keep_reselect_rows&&(cache_adapt_rows||global_cache_mode)))
             throw std::invalid_argument("GLM FP4: KEEP_RESELECT_ROWS must be 0..65536 and excludes CACHE_ADAPT_ROWS "
                                         "and GLOBAL_CACHE");
+        if(!batch_keep.empty()) {
+            if(batch_keep!="first"&&!batch_keep.starts_with("prior:"))
+                throw std::invalid_argument("GLM FP4: BATCH_KEEP must be first or prior:PATH");
+            if(cache_adapt_rows||global_cache_mode||keep_reselect_rows)
+                throw std::invalid_argument("GLM FP4: BATCH_KEEP excludes CACHE_ADAPT_ROWS, GLOBAL_CACHE and KEEP_RESELECT_ROWS");
+            if(batch_keep.starts_with("prior:")) {
+                std::ifstream in(batch_keep.substr(6));
+                if(!in)throw std::runtime_error("GLM FP4: cannot read BATCH_KEEP prior "+batch_keep.substr(6));
+                for(std::string line;std::getline(in,line);) {
+                    if(line.empty()||line[0]=='#')continue;
+                    std::istringstream row(line);int layer=-1;row>>layer;
+                    std::vector<uint64_t> counts;for(uint64_t v;row>>v;)counts.push_back(v);
+                    if(layer<0||layer>45||counts.size()!=288||!row.eof()||prior_frequency.count(layer))
+                        throw std::runtime_error("GLM FP4: BATCH_KEEP prior lines need a layer 0..45 and 288 counts");
+                    prior_frequency[layer]=std::move(counts);
+                }
+                if(prior_frequency.empty())throw std::runtime_error("GLM FP4: empty BATCH_KEEP prior");
+            }
+        }
         if(keep_reselect_swaps<0||keep_reselect_swaps>288||keep_reselect_prefetch<0||keep_reselect_prefetch>8||
            ((keep_reselect_swaps||keep_reselect_prefetch)&&!keep_reselect_rows))
             throw std::invalid_argument("GLM FP4: KEEP_RESELECT_SWAPS must be 0..288 and KEEP_RESELECT_PREFETCH 0..8, "
@@ -1681,7 +1713,7 @@ public:
         reselect_heat.clear();reselect_rows.clear();reselected.clear();stale_bonuses.clear();
         finish_prefetches();
         for(auto& q:prefetch_queue){reselect_prefetch_dropped+=q.size();q.clear();}
-        for(auto& c:contexts){c->phase=1;c->frequency.clear();c->keep.clear();}
+        for(auto& c:contexts){c->phase=1;if(!keep_frozen){c->frequency.clear();c->keep.clear();}}
     }
     void begin_prefill(size_t coordinator_bytes) {
         if(prefill_bank_enabled)release_banks();
@@ -1752,13 +1784,24 @@ public:
             }
             if(decode_reserve_mib>=0||cache_total_free)std::cerr<<"FP4_DECODE_CACHE device="<<c->device
                 <<" reserve_MiB="<<reserve/MiB<<" limit_MiB="<<c->cache_limit/MiB<<'\n';
+            if(!keep_frozen&&!prior_frequency.empty())
+                for(const auto& [layer,counts]:prior_frequency)c->frequency[layer]=counts;
             for(const auto& [layer,_]:c->frequency)select(*c,layer);
         }
+        if(!batch_keep.empty())keep_frozen=true;
         select_global();
         host_x.reset();host_routes.reset();host_weights.reset();host_rows=0;host_x_rows=0;
     }
+    // One {"kind":"fp4_keep"} routing-trace event per device and layer: the experts kept for decode.
+    void trace_keep(std::ostream& out,int request) const {
+        for(size_t d=0;d<contexts.size();++d)for(const auto& [layer,ids]:contexts[d]->keep) {
+            out<<"{\"kind\":\"fp4_keep\",\"request\":"<<request<<",\"device\":"<<d<<",\"layer\":"<<layer<<",\"experts\":[";
+            bool comma=false;for(int id:ids){if(comma)out<<',';out<<id;comma=true;}
+            out<<"]}\n";
+        }
+    }
     const float* routing_bonus(int layer,int tokens) {
-        if(route_affinity==0||!decode_phase||tokens>8||layer>=45)return nullptr;
+        if(route_affinity==0||!decode_phase||tokens>std::max(8,decode_rows_max)||layer>=45)return nullptr;
         auto& saved=route_affinity_bonuses[layer];
         const bool stale=stale_bonuses.erase(layer)>0;      // KEEP_RESELECT_ROWS changed the layer's set
         if(!saved||stale) {
@@ -1795,9 +1838,16 @@ public:
         check(cudaMemcpyPeerAsync(rows,other.device,half,c.device,size_t(nt)*4096*2,other.stream));
         early_input_layer=layer;
     }
+    void set_decode_rows(int rows) {
+        if(rows<8||rows>64)throw std::invalid_argument("GLM FP4: decode rows must be 8..64");
+        if(rows>8&&(!device_routing_enabled||!decode_device_routing_enabled))
+            throw std::invalid_argument("GLM FP4: decode batches over eight rows require DEVICE_ROUTING and DECODE_ROUTING");
+        decode_rows_max=rows;
+    }
+    int decode_rows()const {return decode_rows_max;}
     bool kda_qkv_batch_enabled()const {return kda_qkv_batch;}
     bool can_batch_kda_qkv(const std::array<std::string,3>& names,int rows,int columns,int nt)const {
-        if(!kda_qkv_batch||!sm70||dense_split_enabled||fp8_accumulators!=1||nt<1||nt>8||
+        if(!kda_qkv_batch||!sm70||dense_split_enabled||fp8_accumulators!=1||nt<1||nt>(wide_decode(nt)?decode_rows_max:8)||
            rows<=512||rows%32||columns%64)return false;
         const auto& c=*contexts.front();
         for(const auto& name:names) {
@@ -1811,6 +1861,13 @@ public:
                        const std::array<float*,3>& y,int nt,cudaStream_t caller) {
         Context& c=*contexts.front();DeviceScope scope(c.device);
         const auto& a=c.dense.at(names[0]);
+        if(nt>8) {
+            for(int first=0;first<nt;first+=8) {
+                const size_t out=size_t(first)*a.rows;
+                batch_kda_qkv(names,x+size_t(first)*a.columns,{y[0]+out,y[1]+out,y[2]+out},std::min(8,nt-first),caller);
+            }
+            return;
+        }
         auto& hx=c.buffer("dense_x_half",size_t(8)*16384*2);
         const auto trace=profile?c.trace_start("kda_qkv_batch",caller,a.rows,a.columns,nt,int(a.format)):SIZE_MAX;
         k::glm_f16(x,static_cast<uint16_t*>(hx.p),size_t(nt)*a.columns,caller);
@@ -1840,6 +1897,13 @@ public:
             const auto& t=artifact.at(name);
             if(!t.native)throw std::logic_error("GLM FP4: expected native dense binding");
             it=c.dense.emplace(name,upload(c,model.matrix(t.native->source))).first;
+        }
+        if(wide_decode(nt)) {
+            if(head_partition&&name=="output.weight")throw std::logic_error("GLM FP4: the head is computed in 8-row panels");
+            const int columns=it->second.columns,rows=it->second.rows;
+            for(int first=0;first<nt;first+=8)
+                dense(name,x+size_t(first)*columns,y+size_t(first)*rows,std::min(8,nt-first),caller);
+            return;
         }
         // Dense products stay on the coordinator stream. This preserves its
         // producer ordering and permits recurrent CUDA graph capture after
@@ -1929,7 +1993,8 @@ public:
         const auto started=tick();
         struct alignas(64) Times {double upload=0,gather=0,product=0,reduce=0,fused=0;};
         std::array<Times,2> times{};Times cpu_times;
-        const bool skip_activation=gpu_reduce_enabled&&nt>8&&device_routing_enabled&&
+        const bool decode=nt<=8||wide_decode(nt);
+        const bool skip_activation=gpu_reduce_enabled&&!decode&&device_routing_enabled&&
             (contexts.size()==1||peer_enabled);
         if(inputs_ready) {
             if(!early_readback||nt<1||nt>8||size_t(nt)>host_rows||size_t(nt)>host_x_rows)
@@ -1950,10 +2015,10 @@ public:
             if(selected[i]<0||selected[i]>=288)throw std::runtime_error("GLM FP4: invalid expert route");
             grouped[selected[i]].push_back(i);
         }
-        const bool decode=nt<=8;
         bool device_routing=decode?decode_device_routing_enabled:device_routing_enabled;
         if(device_routing)for(const auto& [id,routes]:grouped)
             for(size_t j=1;j<routes.size();++j)if(routes[j]/8==routes[j-1]/8)device_routing=false;
+        if(nt>8&&decode&&!device_routing)throw std::logic_error("GLM FP4: a decode batch over eight rows needs device routing");
         if(skip_activation&&!device_routing) {
             ensure_host_rows(nt,caller,true);activation=static_cast<const float*>(host_x->p);
             check(cudaMemcpyAsync(host_x->p,x,size_t(nt)*4096*4,cudaMemcpyDeviceToHost,caller));
@@ -1972,7 +2037,7 @@ public:
                 for(int j=0;j<8;++j)if(!(mask&(1u<<j)))++counts[size_t(selected[t*8+j])];
             }
         }
-        for(auto& c:contexts)if(!decode || !c->frequency.count(layer)) {
+        for(auto& c:contexts)if((!decode&&!keep_frozen) || !c->frequency.count(layer)) {
             auto& counts=c->frequency[layer];counts.assign(288,0);
             for(const auto& [id,routes]:grouped)counts[id]=routes.size();
             select(*c,layer);
@@ -1984,7 +2049,7 @@ public:
         adapt_cache(layer,selected,routing,nt);
         reselect_keep(layer,selected,routing,nt);
         if(decode_phase && decode && layer<45 && route_drop_fraction>0 && route_drop_max>0) {
-            std::array<uint8_t,8> masks{};
+            std::vector<uint8_t> masks(size_t(nt),0);
             for(int t=0;t<nt;++t) {
                 uint8_t eligible=0;
                 for(int j=0;j<8;++j) {
@@ -2020,9 +2085,15 @@ public:
             cpu::GlmFp4Q8 qinput,qhidden;
         };
         std::vector<CpuJob> cpu_jobs;
+        std::deque<std::vector<int>> cpu_parts;   // an expert's rows beyond eight, as further jobs of at most eight
         if(decode)for(const auto& [id,routes]:grouped) {
             auto& c=*contexts[owner(layer,id,decode)];
-            if(!c.keep.at(layer).count(id))cpu_jobs.push_back({id,&routes,{},{},{},{},{},{},{},{}});
+            if(c.keep.at(layer).count(id))continue;
+            if(routes.size()<=8){cpu_jobs.push_back({id,&routes,{},{},{},{},{},{},{},{}});continue;}
+            for(size_t first=0;first<routes.size();first+=8) {
+                cpu_parts.emplace_back(routes.begin()+long(first),routes.begin()+long(std::min(routes.size(),first+8)));
+                cpu_jobs.push_back({id,&cpu_parts.back(),{},{},{},{},{},{},{},{}});
+            }
         }
         std::vector<float> cpu_sum(cpu_jobs.empty()?0:size_t(nt)*4096,0);
         const double input_wait_ms=elapsed(started);
@@ -2032,7 +2103,7 @@ public:
             if(cpu_q8_policy||cpu_scale_local_m1)for(const auto& job:cpu_jobs)++cpu_width_groups.at(job.routes->size());
             auto begin=tick();
             cpu::GlmFp4Q8 shared_input;
-            if(cpu_input_reuse&&cpu_q8_enabled) {
+            if(cpu_input_reuse&&cpu_q8_enabled&&nt<=8) {
                 std::vector<float> rounded(activation,activation+size_t(nt)*4096);
                 cpu::glm_fp4_round_f16(rounded.data(),rounded.size());
                 shared_input=cpu::glm_fp4_quantize_q8(rounded.data(),4096,nt);
@@ -2282,12 +2353,16 @@ public:
             // Do not admit or upload new weights in this path. Protect every
             // resident operand before allocating bounded scratch, which can evict.
             bool group_ready=resident_grouped&&sm70&&decode&&device_routing&&gpu_reduce&&peer_enabled&&
-                !expert_fusion&&nt<=8&&jobs.size()>1&&(!c.bank||c.bank->layer!=layer);
-            size_t total_rows=0;
+                !expert_fusion&&(nt<=8||wide_decode(nt))&&jobs.size()>1&&(!c.bank||c.bank->layer!=layer);
+            // A wide decode call gives an expert with more than eight rows one descriptor per eight rows.
+            const size_t group_cap=decode_rows_max>8?256:64;
+            size_t total_rows=0,groups=0;
             if(group_ready)for(int id:jobs) {
                 const auto it=c.experts.find({layer,id});
                 const auto& rows=grouped.at(id);
-                if(it==c.experts.end()||rows.empty()||rows.size()>8||rows.size()>64-total_rows){group_ready=false;break;}
+                if(it==c.experts.end()||rows.empty()||rows.size()>group_cap-total_rows){group_ready=false;break;}
+                groups+=(rows.size()+7)/8;
+                if(groups>group_cap){group_ready=false;break;}
                 for(int row:rows)if(row<0||row>=nt*8)group_ready=false;
                 for(int p=0;p<3;++p) {
                     const auto& w=it->second.projection[p];
@@ -2297,26 +2372,30 @@ public:
             }
             if(group_ready) {
                 for(int id:jobs)c.protected_experts.insert({layer,id});
-                constexpr size_t descriptor_bytes=64*sizeof(k::GlmFp4ExpertGroup),metadata_bytes=descriptor_bytes+64*sizeof(int);
+                const size_t descriptor_bytes=group_cap*sizeof(k::GlmFp4ExpertGroup),metadata_bytes=descriptor_bytes+group_cap*sizeof(int);
                 size_t bytes=metadata_bytes;
                 auto reserve=[&](size_t n){const size_t at=(bytes+255)/256*256;bytes=at+n;return at;};
                 const size_t xo=reserve(total_rows*4096*2),go=reserve(total_rows*2048*4),
                     uo=reserve(total_rows*2048*4),ho=reserve(total_rows*2048*2),yo=reserve(total_rows*4096*4);
                 auto* base=static_cast<uint8_t*>(c.buffer("decode_grouped_workspace",bytes).p);
-                if(!c.grouped_host)c.grouped_host=std::make_unique<Pinned>(metadata_bytes,true);
+                if(!c.grouped_host||c.grouped_host_bytes<metadata_bytes) {
+                    c.grouped_host.reset();c.grouped_host=std::make_unique<Pinned>(metadata_bytes,true);c.grouped_host_bytes=metadata_bytes;
+                }
                 // The previous call's final stream synchronization retires this
                 // portable pinned source before reuse. Drain also covers exceptions.
                 std::memset(c.grouped_host->p,0,metadata_bytes);
                 auto* desc=static_cast<k::GlmFp4ExpertGroup*>(c.grouped_host->p);
                 auto* routes=reinterpret_cast<int*>(static_cast<uint8_t*>(c.grouped_host->p)+descriptor_bytes);
-                size_t offset=0;
-                for(size_t i=0;i<jobs.size();++i) {
-                    const int id=jobs[i];auto& e=c.experts.at({layer,id});const auto& rows=grouped.at(id);
+                size_t offset=0,i=0;
+                for(int id:jobs) {
+                    auto& e=c.experts.at({layer,id});const auto& rows=grouped.at(id);
                     ++c.hits;e.use=++c.clock;
-                    desc[i]={};desc[i].count=int(rows.size());desc[i].offset=int(offset);
-                    for(int p=0;p<3;++p) {
-                        const auto& w=e.projection[p];desc[i].weights[p]=static_cast<const uint8_t*>(w.data->p);
-                        desc[i].scales[p]=static_cast<const uint8_t*>(w.scales());desc[i].global[p]=w.global;
+                    for(size_t first=0;first<rows.size();first+=8,++i) {
+                        desc[i]={};desc[i].count=int(std::min<size_t>(8,rows.size()-first));desc[i].offset=int(offset+first);
+                        for(int p=0;p<3;++p) {
+                            const auto& w=e.projection[p];desc[i].weights[p]=static_cast<const uint8_t*>(w.data->p);
+                            desc[i].scales[p]=static_cast<const uint8_t*>(w.scales());desc[i].global[p]=w.global;
+                        }
                     }
                     std::copy(rows.begin(),rows.end(),routes+offset);offset+=rows.size();
                 }
@@ -2327,12 +2406,12 @@ public:
                 auto* up=reinterpret_cast<float*>(base+uo);auto* hidden=reinterpret_cast<uint16_t*>(base+ho);
                 auto* result=reinterpret_cast<float*>(base+yo);
                 k::glm_fp4_route_gather(device_input,dr,hx,int(total_rows),4096,8,c.stream);
-                k::glm_fp4_expert_group_products(dg,int(jobs.size()),false,hx,gate,up,c.stream);
+                k::glm_fp4_expert_group_products(dg,int(groups),false,hx,gate,up,c.stream);
                 k::glm_swiglu(gate,up,gate,int(total_rows)*2048,limit,c.stream);
                 k::glm_f16(gate,hidden,total_rows*2048,c.stream);
-                k::glm_fp4_expert_group_products(dg,int(jobs.size()),true,hidden,result,nullptr,c.stream);
+                k::glm_fp4_expert_group_products(dg,int(groups),true,hidden,result,nullptr,c.stream);
                 if(grouped_scatter) {
-                    k::glm_fp4_expert_group_scatter(dg,int(jobs.size()),dr,device_weights,result,device_sum,nt,c.stream);
+                    k::glm_fp4_expert_group_scatter(dg,int(groups),dr,device_weights,result,device_sum,nt,c.stream);
                     ++c.grouped_scatters;
                 }else {
                 offset=0;
@@ -2352,7 +2431,7 @@ public:
             std::array<int,288> route_offsets;
             if(batch_routes&&!jobs.empty()) {
                 route_offsets.fill(-1);
-                if(!c.route_ids_host)c.route_ids_host=std::make_unique<Pinned>(64*sizeof(int),true);
+                if(!c.route_ids_host)c.route_ids_host=std::make_unique<Pinned>(route_id_capacity(),true);
                 auto* packed=static_cast<int*>(c.route_ids_host->p);size_t count=0;
                 for(int id:jobs) {
                     const auto& rows=grouped.at(id);
@@ -2366,7 +2445,7 @@ public:
                 }
                 // This buffer is not resized by execute while the batch is active.
                 // The pinned source remains owned by this context until its stream retires.
-                auto* target=static_cast<int*>(c.buffer("expert_route_ids",64*sizeof(int)).p);
+                auto* target=static_cast<int*>(c.buffer("expert_route_ids",route_id_capacity()).p);
                 check(cudaMemcpyAsync(target,packed,count*sizeof(int),cudaMemcpyHostToDevice,c.stream));
                 batched_device_routes=target;++c.route_id_uploads;c.route_id_groups+=jobs.size();c.route_id_entries+=count;
             }
@@ -2411,6 +2490,14 @@ public:
                 product(c,e.projection[2],static_cast<uint16_t*>(hidden.p),dy.f(),count,0,part(2));
                 if(device_routing)k::glm_fp4_route_scatter(dy.f(),device_routes,device_weights,device_sum,count,4096,8,c.stream);
                 else check(cudaMemcpyAsync(result.data(),dy.p,result.size()*4,cudaMemcpyDeviceToHost,c.stream));
+            };
+            // A decode batch over eight rows runs an expert's rows through the 8-row kernels, eight at a time.
+            auto execute_rows=[&](Expert& e,const std::vector<int>& routes,const int* uploaded_routes) {
+                if(routes.size()<=8)return execute(e,routes,nullptr,uploaded_routes);
+                for(size_t first=0;first<routes.size();first+=8) {
+                    const std::vector<int> part(routes.begin()+long(first),routes.begin()+long(std::min(routes.size(),first+8)));
+                    execute(e,part,nullptr,uploaded_routes?uploaded_routes+first:nullptr);
+                }
             };
             auto execute_batch=[&](std::vector<PendingExpert>& experts,const std::vector<int>& ids) {
                 const int batch=int(ids.size());int count=0;
@@ -2831,7 +2918,7 @@ public:
                 }
                 if(profile)times[rank].gather+=elapsed(begin);
                 begin=tick();
-                execute(e,routes,nullptr,batched_device_routes?batched_device_routes+route_offsets[id]:nullptr);
+                execute_rows(e,routes,batched_device_routes?batched_device_routes+route_offsets[id]:nullptr);
                 PendingExpert next;
                 if(pipeline&&job+1<jobs.size())next=prepare_expert(c,layer,jobs[job+1]);
                 if(!decode||!device_routing)check(cudaStreamSynchronize(c.stream));
@@ -2956,6 +3043,8 @@ public:
             <<" total="<<c->evictions<<" physical="<<c->room_evictions<<" cache_bytes="<<c->cache_bytes
             <<" cache_limit="<<c->cache_limit<<'\n';
         if(head_partition)std::cerr<<"FP4_HEAD_TP_STATS calls="<<head_partition->calls<<'\n';
+        if(!batch_keep.empty())std::cerr<<"FP4_BATCH_KEEP mode="<<(prior_frequency.empty()?"first":"prior")
+            <<" prior_layers="<<prior_frequency.size()<<" frozen="<<keep_frozen<<'\n';
         if(keep_reselect_rows)std::cerr<<"FP4_KEEP_RESELECT rows="<<keep_reselect_rows<<" max_swaps="<<keep_reselect_swaps
             <<" prefetch="<<keep_reselect_prefetch<<" layers="<<reselect_layers<<" swaps="<<reselect_swaps
             <<" reclaimed_bytes="<<reselect_reclaimed_bytes<<" prefetched="<<reselect_prefetched

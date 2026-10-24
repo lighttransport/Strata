@@ -348,6 +348,21 @@ class Hints(unittest.TestCase):
         e.slot_busy[1] = True
         self.assertEqual(e.pick_slot([9, 9], "b"), 2)             # its slot is busy: as before
 
+    def test_slot_contexts_pick_the_smallest_free_slot_that_holds_the_request(self):
+        e = StrataEngine("missing-executable", [], lazy=True)
+        e.batch, e.slot_groups, e.slot_gs = 4, 1, 0
+        e.slot_order, e.slot_group = [0, 1, 2, 3], [0] * 4
+        e.slot_busy = [False] * 4
+        e.slot_held = [[], [], [], [1, 2]]
+        e.slot_used = [0.0] * 4
+        e.slot_ctx = [8192, 8192, 1024, 1024]
+        self.assertEqual(e.pick_slot([9] * 100, None, 600), 2)       # a short slot
+        self.assertEqual(e.pick_slot([1, 2, 3], None, 600), 3)       # its held start, which it fits
+        self.assertEqual(e.pick_slot([9] * 100, None, 4000), 0)      # only the long slots hold it
+        e.slot_busy[0] = e.slot_busy[1] = True
+        self.assertIsNone(e.pick_slot([9] * 100, None, 4000))        # it waits for a long slot
+        self.assertEqual(e.pick_slot([9] * 100), 2)                  # no need given: as before
+
 
 class ResponsesForcedCall(unittest.TestCase):
     """Responses tool_choice "required" / a named function opens the call, as on the chat route."""
