@@ -1,5 +1,5 @@
-// include/strata/net/tp_storage.hpp - a tensor-parallel worker's expert rows: anonymous memory or a kept --weights-dir
-// file (strata-glm-tp-worker, strata-ds41-worker; include/strata/net/expert_tp.hpp).
+// include/strata/net/tp_storage.hpp - a tensor-parallel worker's expert rows: anonymous memory, 2 MiB hugetlb pages, or a
+// kept --weights-dir file (strata-glm-tp-worker, strata-ds41-worker; include/strata/net/expert_tp.hpp).
 #pragma once
 
 #include <cstddef>
@@ -28,18 +28,45 @@ inline size_t mem_available() {
     return (size_t)sysconf(_SC_AVPHYS_PAGES) * (size_t)sysconf(_SC_PAGESIZE);
 }
 
-// The expert rows: anonymous memory, or a shared mapping of a --weights-dir file (kept for the next worker).
+inline constexpr size_t kHugePage = size_t(1) << 21;
+
+// Bytes of the 2 MiB hugetlb pool not yet handed out (free minus reserved pages; vm.nr_hugepages sets the pool).
+inline size_t hugetlb_available() {
+    auto read = [](const char *name) {
+        std::ifstream f(std::string("/sys/kernel/mm/hugepages/hugepages-2048kB/") + name);
+        size_t n = 0;
+        f >> n;
+        return n;
+    };
+    const size_t free_pages = read("free_hugepages"), resv = read("resv_hugepages");
+    return (free_pages > resv ? free_pages - resv : 0) * kHugePage;
+}
+
+// The expert rows: anonymous memory, 2 MiB hugetlb pages, or a shared mapping of a --weights-dir file (kept for the next worker).
 struct Storage {
     uint8_t *data = nullptr;
     size_t bytes = 0;
-    std::string path; // the complete file; rows are received into path + ".partial" and renamed when complete
+    size_t mapped = 0; // the mapping's length when it differs from bytes (hugetlb: whole 2 MiB pages)
+    std::string path;  // the complete file; rows are received into path + ".partial" and renamed when complete
     ~Storage() {
-        if (data) munmap(data, bytes);
+        if (data) munmap(data, mapped ? mapped : bytes);
     }
     void map_anonymous() {
         void *p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (p == MAP_FAILED) throw std::runtime_error("cannot allocate the expert rows");
         data = (uint8_t *)p;
+    }
+    // Rows on the 2 MiB hugetlb pool, faulted in now: the pool is set aside at boot or by vm.nr_hugepages, its pages are
+    // not on the reclaim lists, and with vm.hugetlb_optimize_vmemmap=1 most of their struct-page memory is freed.
+    // Returns false (errno set) when the pool cannot hold the rows.
+    bool map_hugetlb() {
+        const size_t len = (bytes + kHugePage - 1) / kHugePage * kHugePage;
+        void *p = mmap(nullptr, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | (21 << MAP_HUGE_SHIFT) | MAP_POPULATE,
+                       -1, 0);
+        if (p == MAP_FAILED) return false;
+        data = (uint8_t *)p;
+        mapped = len;
+        return true;
     }
     void map_file(const std::string &file, bool create) {
         const int fd = open(file.c_str(), create ? O_RDWR | O_CREAT | O_TRUNC : O_RDWR, 0600);

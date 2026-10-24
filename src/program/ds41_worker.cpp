@@ -8,7 +8,7 @@
 //     and is refilled from the scores after each prompt pass;
 //   prompt passes: every route on the GPU with MMQ, the layer's blobs uploaded while the previous layer computes.
 // TpReady.ok = 2 tells the decoder it may send prompt passes instead of fetching the rows.
-//   strata-ds41-worker --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm | --rows=pinned|anon] [--reserve-gib=16]
+//   strata-ds41-worker --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm | --rows=pinned|anon|hugetlb] [--reserve-gib=16]
 //                      [--gpu-reserve-mib=1024] [--backend=auto|ib|udp]
 #include "ggml.h"
 #include "strata/ds41/expert_lane.hpp"
@@ -22,6 +22,7 @@
 #include "ucomm.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -91,15 +92,23 @@ int main(int argc, char** argv) {
         else if (a.starts_with("--weights-dir=")) weights_dir = a.substr(14);
         else if (a.starts_with("--reserve-gib=")) reserve_gib = std::stod(a.substr(14));
         else if (a.starts_with("--gpu-reserve-mib=")) gpu_reserve_mib = std::stod(a.substr(18));
-        else if (a.starts_with("--rows=")) rows_mode = a.substr(7);   // pinned (default without --weights-dir) or anon
+        else if (a.starts_with("--rows=")) rows_mode = a.substr(7);   // pinned (default without --weights-dir), anon or hugetlb
         else {
-            std::fprintf(stderr, "usage: %s --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm] [--reserve-gib=6] "
+            std::fprintf(stderr, "usage: %s --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm | --rows=pinned|anon|hugetlb] [--reserve-gib=16] "
                                  "[--gpu-reserve-mib=1024] [--backend=auto|ib|udp]\n", argv[0]);
             return 2;
         }
     }
     if (root.empty()) {
         std::fprintf(stderr, "--root is required (the decoder's --remote-tp address)\n");
+        return 2;
+    }
+    if (rows_mode != "pinned" && rows_mode != "anon" && rows_mode != "hugetlb") {
+        std::fprintf(stderr, "--rows must be pinned, anon or hugetlb\n");
+        return 2;
+    }
+    if (rows_mode == "hugetlb" && !weights_dir.empty()) {
+        std::fprintf(stderr, "--rows=hugetlb keeps the rows in this process; it cannot be combined with --weights-dir\n");
         return 2;
     }
     try {
@@ -185,18 +194,41 @@ int main(int argc, char** argv) {
                 if (free_bytes < available) { available = free_bytes; where = weights_dir + " free space"; }
             }
             const size_t reserve = size_t(reserve_gib * net::kGiB);
-            accept.available_bytes = available > reserve ? available - reserve : 0;
-            if (total > accept.available_bytes) {
-                accept.ok = 0;
-                std::snprintf(accept.reason, sizeof accept.reason, "worker rows need %.2f GiB; %s minus --reserve-gib=%.1f leaves %.2f GiB",
-                              total / net::kGiB, where.c_str(), reserve_gib, accept.available_bytes / net::kGiB);
+            if (rows_mode == "hugetlb") {
+                // the pool is set aside already: the rows need its free pages, and --reserve-gib of other RAM stays free
+                accept.available_bytes = net::hugetlb_available();
+                if (available < reserve) {
+                    accept.ok = 0;
+                    std::snprintf(accept.reason, sizeof accept.reason, "MemAvailable %.2f GiB (outside the hugetlb pool) is below --reserve-gib=%.1f",
+                                  available / net::kGiB, reserve_gib);
+                } else if (total > accept.available_bytes) {
+                    accept.ok = 0;
+                    std::snprintf(accept.reason, sizeof accept.reason, "worker rows need %.2f GiB; the 2 MiB hugetlb pool has %.2f GiB free (vm.nr_hugepages)",
+                                  total / net::kGiB, accept.available_bytes / net::kGiB);
+                }
+            } else {
+                accept.available_bytes = available > reserve ? available - reserve : 0;
+                if (total > accept.available_bytes) {
+                    accept.ok = 0;
+                    std::snprintf(accept.reason, sizeof accept.reason, "worker rows need %.2f GiB; %s minus --reserve-gib=%.1f leaves %.2f GiB",
+                                  total / net::kGiB, where.c_str(), reserve_gib, accept.available_bytes / net::kGiB);
+                }
             }
         }
         // Without --weights-dir the rows live in this process: by default page-locked host memory (cudaHostAlloc),
         // one buffer per layer, all allocated before the decoder is told to send. A shortfall then refuses the setup
         // instead of the OOM killer ending the transfer at 40+ GB, and the GPU and IB read the buffers without a
         // later 40 GB registration. --rows=anon keeps lazily faulted anonymous memory (the earlier behaviour).
-        const bool pinned_rows = store.path.empty() && rows_mode != "anon";
+        // --rows=hugetlb puts them on the 2 MiB hugetlb pool, registered with cudaHostRegister after the fill: a 60 GiB
+        // cudaHostAlloc on the 62.7 GiB B550 left 0.35 GiB free (2026-10-25); the pool's pages skip most struct-page
+        // memory (vm.hugetlb_optimize_vmemmap) and the reclaim lists.
+        const bool pinned_rows = store.path.empty() && rows_mode == "pinned";
+        const bool huge_rows = store.path.empty() && rows_mode == "hugetlb";
+        if (accept.ok && huge_rows && !store.map_hugetlb()) {   // mapped before the decoder sends: a shortfall refuses the setup
+            accept.ok = 0;
+            std::snprintf(accept.reason, sizeof accept.reason, "hugetlb rows: cannot map %.2f GiB of 2 MiB pages (%s; pool has %.2f GiB free)",
+                          total / net::kGiB, std::strerror(errno), net::hugetlb_available() / net::kGiB);
+        }
         std::vector<uint8_t*> pinned_layers;
         auto free_pinned = [&] { for (auto* p : pinned_layers) cudaFreeHost(p); pinned_layers.clear(); };
         if (accept.ok && pinned_rows) {
@@ -223,7 +255,7 @@ int main(int argc, char** argv) {
         ok(ucomm_send(c, 0, net::kTagAccept, &accept, sizeof accept), "accept");
         if (!accept.ok) throw std::runtime_error(accept.reason);
         const auto fill0 = std::chrono::steady_clock::now();
-        if (!accept.have && !pinned_rows) {
+        if (!accept.have && !pinned_rows && !huge_rows) {
             if (store.path.empty()) store.map_anonymous();
             else store.map_file(store.path + ".partial", true);
         }
@@ -253,7 +285,7 @@ int main(int argc, char** argv) {
         const bool registered = pinned_rows || cudaHostRegister(store.data, store.bytes, cudaHostRegisterPortable) == cudaSuccess;
         if (!registered) (void)cudaGetLastError();
         std::fprintf(stderr, "DS41_WORKER rows GiB=%.2f %s storage=%s fill_s=%.1f registered=%d (%.1f s)\n", total / net::kGiB,
-                     accept.have ? "kept" : "received", pinned_rows ? "page-locked" : store.path.empty() ? "anonymous" : store.path.c_str(),
+                     accept.have ? "kept" : "received", pinned_rows ? "page-locked" : huge_rows ? "hugetlb 2 MiB" : store.path.empty() ? "anonymous" : store.path.c_str(),
                      fill_ms / 1e3, int(registered), since(r0) / 1e3);
         const int K_max = 16, maxT = 4096;
         // prompt-pass buffers: two layers of blobs (double-buffered), the routes' rows
