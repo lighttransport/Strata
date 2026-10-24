@@ -827,6 +827,36 @@ Every needle run found the code word. `INDEX_FAST` gave the same tokens as the w
 3. Rank the routes of the generated tokens, not only the prompt's, for the rebalance. Either rebalance again after
    the first decode steps, or let the tier promote on misses.
 
+## 8i. ISTA-DASLab GSQ-RCO GGUFs on 2x V100 (measured 2026-10-25)
+
+`ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF`: per-tensor quantization types chosen by RCO, standard GGUF
+scalar quants (not EXL3). Builds IQ1_M 120.7 GB, IQ2_XXS 138.2 GB, IQ2_XS 155.2 GB, plus one shared Engram file
+(IQ4_NL, 110.6 GB). The IQ2_XXS build's routed experts: IQ1_M 59.5 GB, IQ2_XXS 49.1 GB, IQ2_XS 23.6 GB (132.1 GB,
+mean expert 8.60 MB against 9.95 for IQ2_XXSE4); gate and up share a type per layer, down may differ. Dense
+tensors Q5_K / Q8_0 / BF16, 6.2 GB.
+
+What Strata needed: the separate Engram file (`<arch>.engram.file`), a third metadata schema (Engram hash tables
+as integer tensors, `attention.candidate_*` keys), and an IQ1_M MMQ kernel for prompt passes, mapped losslessly onto
+Q6_K's tile (`third_party/ggml/patches/apply_mmq_iq1m.py`, within 5e-5 of the exact reference).
+
+Quality: wikitext-2 test, 16 x 2048 tokens, KL against the Q8_0 reference over the second half of each chunk
+(llama.cpp's `--kl-divergence` definition; `tools/ds41f_kl_base.py`):
+
+| Pack | Runner | Mean KL | Top-1 | PPL (Q8_0: 2.667) |
+|---|---|---|---|---|
+| Q23 | llama.cpp | 0.214 | 85.7% | 3.210 |
+| IQ2_XXSE4 | llama.cpp | 0.2888 | 83.02% | 3.356 |
+| IQ2_XXSE4 | Strata | 0.2901 | 83.02% | 3.361 |
+| GSQ-RCO IQ2_XXS | Strata | 0.3785 | 80.43% | 3.540 |
+
+Strata reproduces llama.cpp on IQ2_XXSE4 (chunk 1: KL 0.1889 against 0.1897, PPL 1.851 against 1.852), so the GSQ
+number is the pack's own. On this test the GSQ IQ2_XXS build is below IQ2_XXSE4; 49 % of its backbone parameters are
+IQ1_M. Its model card reports reasoning benchmarks, which this test does not measure.
+
+Speed (IQ2_XXS build): load 261 s; plain decode wiki600 21.3 tok/s; DSpark code600 25.0 tok/s (4.27 tokens per
+step) at Engram 64 GiB (IQ2_XXSE4: 30.1). At Engram 80 GiB the DSpark run did not complete. 2048-token prompt
+passes need `STRATA_DS41_STREAM_MIN=1000000` (the streaming buffers otherwise exceed VRAM after residency).
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;
