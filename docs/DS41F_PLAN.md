@@ -760,6 +760,70 @@ confirmed against logit margins.
 If the dense part falls to ~50 ms and the peer stops trailing the lane, a 32-session pass becomes bound by the CPU
 lane (~150 ms). That is about 120-150 tok/s aggregate.
 
+## 8h. Long context on 2x V100: 27K to 256K (measured 2026-10-23/24)
+
+**Setup.** The compressed KV caches are stored as FP16 or Q8_0 rows (`STRATA_DS41_KV=f16|q8`). The indexer's score
+buffer is tiled (`STRATA_DS41_SCORE_MIB`), so a 2048-token prompt pass at 256K no longer needs a T x context
+buffer. A Q8_0 row is 1.7 KB per token, about 0.44 GB at 256K.
+
+**Prompts.** The needle prompts are wikitext with a code word planted at 10 % of the length and asked for at the
+end. They are 26.7K, 106K and 255K tokens; the 255K one is built from wikitext-103 train. The continuation prompts are
+plain wikitext-103 text with no question.
+
+**First runs.** These ran plain decoding at a 60 GiB Engram budget, without DSpark or rebalance. Every run found the
+needle:
+
+| prompt | KV | prefill tok/s | decode tok/s |
+|---|---|---|---|
+| 26.7K needle | FP32 / FP16 / Q8 | 257 / 227 / 253 | 14.6 / 13.3 / 14.9 |
+| 106K needle | Q8 / FP16 | 207 / 148 | 9.9 / 9.6 |
+
+At 106K a token cost ~101 ms against ~45 at 600 tokens:
+- **GPU expert hit 0.33 (0.68 at 600).** No rebalance ran after the prompt, so the CPU lane took 29 ms.
+- **Engram misses, 20 ms.** Only 60 GiB of the tables was in RAM.
+- **Index scoring and top-k, 13.4 ms** (`kv_index`). This is the only part that grows with the context.
+
+Attention stayed at ~3.5 ms.
+
+**Full decode configuration.** IQ2_XXSE4 with DSpark, rebalance, 64 GiB of ranked Engram rows, Q8 KV, the streamed
+prompt (`PROMPT_BATCH=2048`) and 32 tokens:
+
+| prompt | index kernels | prefill tok/s | decode tok/s | kv_index ms/pass | GPU hit |
+|---|---|---|---|---|---|
+| 106K needle | warp per row | 202 | 15.5 | 23.4 | 0.28 |
+| 106K needle | `INDEX_FAST` | 242 | 16.7 | 15.9 | 0.28 |
+| 255K needle | `INDEX_FAST` | 215 | 17.4 | 34.2 | 0.29 |
+| 27K needle | `INDEX_FAST` + `TOPK_CHUNKED` | 179 | 18.8 | 19.7 | 0.28 |
+| 106K continuation | `INDEX_FAST` | 244 | 13.2 | 13.1 | 0.50 |
+| 106K continuation | `INDEX_FAST` + `TOPK_CHUNKED` | 242 | 15.3 | 8.5 | 0.50 |
+
+Every needle run found the code word. `INDEX_FAST` gave the same tokens as the warp-per-row kernel.
+
+**Index kernels.**
+- **`STRATA_DS41_INDEX_FAST=1`** scores with a thread per cache row. The token's queries sit in LDS and every head's
+  dot product stays in registers. The default kernel spends a warp per row and reduces across the warp once per
+  head. The math at 106K is ~690K rows x 32 heads x 128 per token, about 0.4 ms of FP32.
+- **`STRATA_DS41_TOPK_CHUNKED=1`** is the top-k compaction with a contiguous run of keys per thread and two block
+  scans. The default kernel ran two scans per 256 keys, ~13K barriers per token and index layer at 106K.
+- **Chunked top-k exactness is not confirmed.** `TOPK_CHECK` reported 17 of 128 checked selections differing from
+  the host's selection. That needs the same check on the default kernel before chunked top-k can be called exact.
+
+**Where the time goes at long context.**
+- **The CPU lane.** It took 68-82 ms per verify pass in the needle runs. Their GPU hit (0.28) is low even after
+  rebalance, because the needle runs decode the planted code word and a repeated question, whose routes the prompt
+  did not rank. The continuation runs reach 0.50.
+- **GPU 0 holds 11.8-12.2 GiB of experts after a long streamed prompt (17.8 at 600).** The prompt's chunk buffers,
+  stream slots and score buffer take that VRAM when the residency is placed.
+- **The index work grows with context** (8.5-34 ms per pass).
+- **The draft.** Plain continuation drafts poorly (1.5 tokens/step against 3.2-3.6 on the needle task).
+
+**For 256K, in order:**
+1. Place the decode residency after the prompt, or refill GPU 0 to its 600-token size after it. `GROW` covers only
+   GPU 0's freed VRAM and does not move the RAM copy.
+2. Confirm or fix the chunked top-k's exactness. Then bring the selection's radix histogram down too (per-warp bins).
+3. Rank the routes of the generated tokens, not only the prompt's, for the rebalance. Either rebalance again after
+   the first decode steps, or let the tier promote on misses.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;
