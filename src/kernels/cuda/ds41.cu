@@ -1057,15 +1057,34 @@ __device__ inline uint32_t order_key(float v) {   // ascending in v
 // The key at rank k (1-based, from the largest) of n keys and how many keys equal to it the top k takes (the
 // lowest indices first). get(i) gives key i. Every thread returns both.
 template <class Get>
-__device__ void radix_threshold(Get get, int n, int k, uint32_t* hist, uint32_t* shared2, uint32_t& thr, int& take) {
+__device__ void radix_threshold(Get get, int n, int k, uint32_t* hist, uint32_t* shared2, uint32_t& thr, int& take, uint32_t* whist = nullptr) {
     uint32_t prefix = 0, mask = 0;
     int remaining = k;
+    // whist (8 x 256, with 256 threads): a sub-histogram per warp, summed into hist - the high-byte passes put most
+    // keys in a few bins, where one shared histogram serializes the block's atomics (the same counts either way)
+    const bool split = whist != nullptr && blockDim.x == 256 && n > 4096;
     for (int shift = 24; shift >= 0; shift -= 8) {
-        for (int b = threadIdx.x; b < 256; b += blockDim.x) hist[b] = 0;
-        __syncthreads();
-        for (int i = threadIdx.x; i < n; i += blockDim.x) {
-            const uint32_t key = get(i);
-            if ((key & mask) == prefix) atomicAdd(&hist[(key >> shift) & 255u], 1u);
+        if (split) {
+            for (int b = threadIdx.x; b < 8 * 256; b += blockDim.x) whist[b] = 0;
+            __syncthreads();
+            uint32_t* wh = whist + (threadIdx.x / 32) * 256;
+            for (int i = threadIdx.x; i < n; i += blockDim.x) {
+                const uint32_t key = get(i);
+                if ((key & mask) == prefix) atomicAdd(&wh[(key >> shift) & 255u], 1u);
+            }
+            __syncthreads();
+            for (int b = threadIdx.x; b < 256; b += blockDim.x) {
+                uint32_t sum = 0;
+                for (int w = 0; w < 8; ++w) sum += whist[w * 256 + b];
+                hist[b] = sum;
+            }
+        } else {
+            for (int b = threadIdx.x; b < 256; b += blockDim.x) hist[b] = 0;
+            __syncthreads();
+            for (int i = threadIdx.x; i < n; i += blockDim.x) {
+                const uint32_t key = get(i);
+                if ((key & mask) == prefix) atomicAdd(&hist[(key >> shift) & 255u], 1u);
+            }
         }
         __syncthreads();
         if (threadIdx.x == 0) {
@@ -1107,11 +1126,12 @@ __device__ inline int block_scan(int v, int* buf, int* total) {
 // equal keys' ranks and the picks' positions from one block scan each, instead of two scans per 256 keys (a 106K-key
 // selection had ~13K barriers). The same picks in the same order.
 template <class Get, class Keep>
-__device__ int select_sorted_chunked(Get get, Keep keep, int n, int k, uint32_t* hist, uint32_t* shared2, int* scan, int* out) {
+__device__ int select_sorted_chunked(Get get, Keep keep, int n, int k, uint32_t* hist, uint32_t* shared2, int* scan, int* out,
+                                     uint32_t* whist = nullptr) {
     const bool all = n <= k;
     uint32_t thr = 0;
     int take = 0;
-    if (!all) radix_threshold(get, n, k, hist, shared2, thr, take);
+    if (!all) radix_threshold(get, n, k, hist, shared2, thr, take, whist);
     const int per = (n + int(blockDim.x) - 1) / int(blockDim.x);
     const int i0 = min(n, int(threadIdx.x) * per), i1 = min(n, i0 + per);
     int eq = 0;
@@ -1186,6 +1206,7 @@ __device__ int select_sorted(Get get, Keep keep, int n, int k, uint32_t* hist, u
 __global__ void index_topk_kernel(const float* score, int score_stride, int pos0, int ratio, int k, int* sel, int* count, int mode,
                                   uint8_t* cand, int cand_stride, int bs, int cand_k, const int* tpos, int chunked) {
     __shared__ uint32_t hist[256], shared2[2];
+    __shared__ uint32_t whist[8 * 256];   // the chunked selection's per-warp histograms
     __shared__ int scan[kTopkThreads];
     extern __shared__ float best[];   // mode 1: [blocks] maxima, then [cand_k] picks (as ints)
     const int t = blockIdx.x, visible = ((tpos ? tpos[t] : pos0 + t) + 1) / ratio;
@@ -1220,9 +1241,68 @@ __global__ void index_topk_kernel(const float* score, int score_stride, int pos0
     const uint32_t ninf = order_key(-INFINITY);
     auto get = [&](int i) { return masked && !keep_blocks[i / bs] ? ninf : order_key(s[i]); };
     auto keep = [&](int i) { return !(masked && !keep_blocks[i / bs]) && !(isinf(s[i]) && s[i] < 0); };
-    const int n = chunked ? select_sorted_chunked(get, keep, visible, k, hist, shared2, scan, out)
+    const int n = chunked ? select_sorted_chunked(get, keep, visible, k, hist, shared2, scan, out, whist)
                           : select_sorted(get, keep, visible, k, hist, shared2, scan, out);
     if (threadIdx.x == 0) count[t] = n;
+}
+
+
+// STRATA_DS41_TOPK_2STAGE: the selection of index_topk_kernel (modes 0 and 2) in two stages. Stage 1, block (chunk,
+// token): the top k of keys [c kChunk2, +kChunk2) of the token's visible rows, kept picks as global indices in
+// ascending order (cand[t][c][..], cnt[t][c]). Stage 2, a block per token: the top k over the concatenated
+// candidates. Exact: a key in the global top k (key desc, index asc) has fewer than k keys above it, so it is in its
+// chunk's top k; the concatenation keeps index order (the lowest-index tie rule), and masked / -inf keys sort below
+// every kept key in both.
+constexpr int kChunk2 = 8192;
+__global__ void index_topk2_stage1(const float* score, int score_stride, int pos0, int ratio, int k, int mode, const uint8_t* cand, int cand_stride,
+                                   int bs, const int* tpos, int nchunks, int* cbuf, int* ccnt) {
+    __shared__ uint32_t hist[256], shared2[2];
+    __shared__ uint32_t whist[8 * 256];
+    __shared__ int scan[kTopkThreads];
+    const int c = blockIdx.x, t = blockIdx.y, visible = ((tpos ? tpos[t] : pos0 + t) + 1) / ratio;
+    const int c0 = c * kChunk2, n = max(0, min(visible, c0 + kChunk2) - c0);
+    int* out = cbuf + (size_t(t) * nchunks + c) * k;
+    if (n == 0) { if (threadIdx.x == 0) ccnt[size_t(t) * nchunks + c] = 0; return; }
+    const float* s = score + size_t(t) * score_stride + c0;
+    const uint8_t* keep_blocks = cand + size_t(t) * cand_stride;
+    const bool masked = mode == 2;
+    const uint32_t ninf = order_key(-INFINITY);
+    auto get = [&](int i) { return masked && !keep_blocks[(c0 + i) / bs] ? ninf : order_key(s[i]); };
+    auto keep = [&](int i) { return !(masked && !keep_blocks[(c0 + i) / bs]) && !(isinf(s[i]) && s[i] < 0); };
+    const int m = select_sorted_chunked(get, keep, n, k, hist, shared2, scan, out, whist);
+    __syncthreads();
+    for (int j = threadIdx.x; j < m; j += blockDim.x) out[j] += c0;
+    if (threadIdx.x == 0) ccnt[size_t(t) * nchunks + c] = m;
+}
+__global__ void index_topk2_stage2(const float* score, int score_stride, int pos0, int ratio, int k, const int* tpos, int nchunks, const int* cbuf,
+                                   const int* ccnt, int* sel, int* count) {
+    __shared__ uint32_t hist[256], shared2[2];
+    __shared__ uint32_t whist[8 * 256];
+    __shared__ int scan[kTopkThreads];
+    __shared__ int offs[1024 + 1];
+    const int t = blockIdx.x, visible = ((tpos ? tpos[t] : pos0 + t) + 1) / ratio;
+    int* out = sel + size_t(t) * k;
+    if (visible == 0) { if (threadIdx.x == 0) count[t] = 0; return; }
+    if (threadIdx.x == 0) {
+        offs[0] = 0;
+        for (int c = 0; c < nchunks; ++c) offs[c + 1] = offs[c] + ccnt[size_t(t) * nchunks + c];
+    }
+    __syncthreads();
+    const int M = offs[nchunks];
+    const float* s = score + size_t(t) * score_stride;
+    const int* cb = cbuf + size_t(t) * nchunks * k;
+    auto at = [&](int j) {   // candidate j -> its global row
+        int lo = 0, hi = nchunks - 1;
+        while (lo < hi) { const int mid = (lo + hi + 1) / 2; if (offs[mid] <= j) lo = mid; else hi = mid - 1; }
+        return cb[size_t(lo) * k + (j - offs[lo])];
+    };
+    auto get = [&](int j) { return order_key(s[at(j)]); };
+    auto keep = [](int) { return true; };   // (stage 1 kept only the kept rows)
+    const int m = select_sorted_chunked(get, keep, M, k, hist, shared2, scan, out, whist);
+    __syncthreads();
+    // local candidate positions -> rows, in place (each thread its own slots, read before written)
+    for (int j = threadIdx.x; j < m; j += blockDim.x) out[j] = at(out[j]);
+    if (threadIdx.x == 0) count[t] = m;
 }
 
 // the batched attention's per-token selected-row counts from the GPU indexer
@@ -1785,10 +1865,41 @@ void ds41_index_score_batched(const float* q, int heads, int dim, const float* k
 void ds41_index_topk(const float* score, int score_stride, int tokens, int pos0, int ratio, int k, int* sel, int* count, int mode,
                      uint8_t* cand, int cand_stride, int block, int cand_k, void* stream, const int* tpos) {
     if (tokens < 1) return;
+    static const bool two_stage = std::getenv("STRATA_DS41_TOPK_2STAGE") && std::string(std::getenv("STRATA_DS41_TOPK_2STAGE")) == "1";
+    const int max_visible = (tpos ? score_stride : pos0 + tokens) / std::max(ratio, 1);
+    if (two_stage && mode != 1 && max_visible > 2 * kChunk2) {
+        const int nchunks = (max_visible + kChunk2 - 1) / kChunk2;
+        if (nchunks <= 1024) {
+            static void* buf = nullptr;
+            static size_t buf_bytes = 0;
+            const size_t need = size_t(tokens) * nchunks * (size_t(k) + 1) * 4;
+            if (need > buf_bytes) {
+                if (buf) cudaFree(buf);
+                if (cudaMalloc(&buf, need * 2) != cudaSuccess) throw std::runtime_error("ds41_index_topk: two-stage buffer");
+                buf_bytes = need * 2;
+            }
+            int* cbuf = static_cast<int*>(buf);
+            int* ccnt = cbuf + size_t(tokens) * nchunks * k;
+            index_topk2_stage1<<<dim3(unsigned(nchunks), unsigned(tokens)), kTopkThreads, 0, (cudaStream_t)stream>>>(
+                score, score_stride, pos0, ratio, k, mode, cand, cand_stride, block, tpos, nchunks, cbuf, ccnt);
+            check("index_topk stage 1");
+            index_topk2_stage2<<<unsigned(tokens), kTopkThreads, 0, (cudaStream_t)stream>>>(score, score_stride, pos0, ratio, k, tpos, nchunks, cbuf,
+                                                                                         ccnt, sel, count);
+            check("index_topk stage 2");
+            return;
+        }
+    }
     // STRATA_DS41_TOPK_CHUNKED=1: select_sorted_chunked (two block scans per selection; the same picks)
     static const bool chunked = std::getenv("STRATA_DS41_TOPK_CHUNKED") && std::string(std::getenv("STRATA_DS41_TOPK_CHUNKED")) == "1";
     const int nb = mode == 1 ? (score_stride + block - 1) / block : 0;
     const size_t smem = mode == 1 ? size_t(nb + cand_k) * 4 : 0;
+    if (smem > 48 * 1024) {   // mode 1's block maxima scale with the context: raise the kernel's limit as far as the device goes
+        int dev = 0, opt = 0;
+        cudaGetDevice(&dev);
+        cudaDeviceGetAttribute(&opt, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
+        if (smem > size_t(opt)) throw std::invalid_argument("ds41_index_topk: candidate-block maxima exceed shared memory (context too long for mode 1)");
+        cudaFuncSetAttribute(index_topk_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, int(smem));
+    }
     index_topk_kernel<<<unsigned(tokens), kTopkThreads, smem, (cudaStream_t)stream>>>(score, score_stride, pos0, ratio, k, sel, count, mode,
                                                                                      cand, cand_stride, block, cand_k, tpos, chunked ? 1 : 0);
     check("index_topk");
