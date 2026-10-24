@@ -455,6 +455,17 @@ struct PeerGpu {
     // the grown routes of a call into out (x uploaded, out zeroed by the caller)
     void grown_routes(int l, int nt, int K, const int* ids, const float* wts) {
         if (gpos.empty()) return;
+        // STRATA_DS41_GROWN_GROUPED=1: all of them in one grouped launch (a GEMV chain per route is launch-bound)
+        static const bool grouped_on = std::getenv("STRATA_DS41_GROWN_GROUPED") && std::string(std::getenv("STRATA_DS41_GROWN_GROUPED")) == "1";
+        if (grouped_on && k::native_expert_supported(gu_type[size_t(l)], d_type[size_t(l)], hidden, ff)) {
+            std::map<int, std::vector<std::pair<int, float>>> by;
+            for (int i = 0; i < nt * K; ++i)
+                if (ids[i] >= 0 && grown(l, ids[i])) by[ids[i]].push_back({i / K, wts[i]});
+            std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>> groups;
+            for (auto& [e, r] : by) groups.push_back({gbase[size_t(gpos[size_t(l)][size_t(e)])], std::move(r)});
+            grown_runner.run(gu_type[size_t(l)], d_type[size_t(l)], hidden, ff, clamp[size_t(l)], groups, x.f(), nt, out.f(), stream);
+            return;
+        }
         const size_t gb = ggml_row_size(ggml_type(gu_type[size_t(l)]), hidden) * size_t(ff);
         for (int t = 0; t < nt; ++t) {
             bool quantized = false;
@@ -567,7 +578,7 @@ struct PeerGpu {
         extra.clear();
         return true;
     }
-    GroupedRunner grouped_runner;
+    GroupedRunner grouped_runner, grown_runner;
     bool grouped(int l, int nt, int K, const int* ids, const float* wts, const float* z) {
         Guard g(dev);
         std::map<int, std::vector<std::pair<int, float>>> by;
@@ -3672,6 +3683,7 @@ private:
     }
     std::vector<Dev> dstream_;   // STRATA_DS41_DECODE_STREAM: GPU 0's slots for the CPU's experts
     GroupedRunner grouped0_;     // STRATA_DS41_DECODE_GROUPED: GPU 0's
+    GroupedRunner grown0_;       // STRATA_DS41_GROWN_GROUPED: GPU 0's grown experts
     size_t max_stride_ = 0;
     void gpu_experts(int l, int i, const int* ids, const float* wts, int n) {
         const auto& c = cfg_;
@@ -4092,47 +4104,85 @@ private:
         }
         std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.gain > b.gain; });
         if (int(cands.size()) > budget) cands.resize(size_t(budget));
+        // the swaps in batches of kBatch: every GPU expert out to a pinned buffer and the RAM expert in over two streams
+        // per GPU (both GPUs at once), then the outgoing experts into the RAM positions by threads (a swap had been
+        // two blocking copies and a memcpy, ~3 ms)
+        constexpr int kBatch = 32;
         uint8_t* tmpp = nullptr;
-        ck(cudaHostAlloc(reinterpret_cast<void**>(&tmpp), max_stride_, cudaHostAllocPortable), "rebalance buffer");
+        const int nb = int(std::min<size_t>(cands.size(), kBatch));
+        ck(cudaHostAlloc(reinterpret_cast<void**>(&tmpp), std::max(nb, 1) * max_stride_, cudaHostAllocPortable), "rebalance buffer");
         struct Free { uint8_t* p; ~Free() { cudaFreeHost(p); } } free_tmp{tmpp};
+        cudaStream_t st[2][2] = {{nullptr, nullptr}, {nullptr, nullptr}};
+        for (int d = 0; d < (peer_ ? 2 : 1); ++d) {
+            PeerGpu::Guard g(d == 0 ? 0 : peer_->dev);
+            for (auto& x : st[d]) ck(cudaStreamCreateWithFlags(&x, cudaStreamNonBlocking), "rebalance stream");
+        }
+        auto sync_all = [&] {
+            for (int d = 0; d < (peer_ ? 2 : 1); ++d) {
+                PeerGpu::Guard g(d == 0 ? 0 : peer_->dev);
+                for (auto x : st[d]) ck(cudaStreamSynchronize(x), "rebalance copies");
+            }
+        };
         int n0 = 0, n1 = 0;
-        for (const Cand& x : cands) {
-            const int l = x.l, A = x.gpu, B = x.ram;
-            const size_t stride = stream_stride(l);
-            const int pB = ram_pos_[size_t(l)][size_t(B)];
-            uint8_t* hostB = packed_[size_t(l)] + size_t(pB) * stride;
-            if (where_[size_t(l)][size_t(A)] == 1) {   // GPU 0: its slot
-                const int si = slot_[size_t(l)][size_t(A)];
-                uint8_t* dev = slots_[size_t(si)].p;
-                ck(cudaMemcpy(tmpp, dev, stride, cudaMemcpyDeviceToHost), "rebalance out");
-                ck(cudaMemcpy(dev, hostB, stride, cudaMemcpyHostToDevice), "rebalance in");
-                slot_[size_t(l)][size_t(B)] = si;
-                slot_[size_t(l)][size_t(A)] = -1;
-                slots_[size_t(si)].owner = l * c.experts + B;
-                auto& ord = order_[size_t(l)];
-                for (size_t q = size_t(n_stream_[size_t(l)]); q < ord.size(); ++q) if (ord[q] == A) { ord[q] = B; break; }
-                ++n0;
-            } else {   // the peer GPU: its arena position
-                const int q = peer_->pos[size_t(l)][size_t(A)];
-                uint8_t* dev = peer_->base[size_t(l)] + size_t(q) * stride;
-                {
-                    PeerGpu::Guard g(peer_->dev);
-                    ck(cudaMemcpy(tmpp, dev, stride, cudaMemcpyDeviceToHost), "rebalance out");
-                    ck(cudaMemcpy(dev, hostB, stride, cudaMemcpyHostToDevice), "rebalance in");
+        for (size_t b0 = 0; b0 < cands.size(); b0 += kBatch) {
+            const size_t b1 = std::min(cands.size(), b0 + kBatch);
+            for (size_t k = b0; k < b1; ++k) {
+                const Cand& x = cands[k];
+                const int l = x.l, A = x.gpu, B = x.ram;
+                const size_t stride = stream_stride(l);
+                uint8_t* hostB = packed_[size_t(l)] + size_t(ram_pos_[size_t(l)][size_t(B)]) * stride;
+                uint8_t* tmp = tmpp + (k - b0) * max_stride_;
+                const bool on0 = where_[size_t(l)][size_t(A)] == 1;
+                uint8_t* dev = on0 ? slots_[size_t(slot_[size_t(l)][size_t(A)])].p
+                                   : peer_->base[size_t(l)] + size_t(peer_->pos[size_t(l)][size_t(A)]) * stride;
+                PeerGpu::Guard g(on0 ? 0 : peer_->dev);
+                cudaStream_t s1 = st[on0 ? 0 : 1][k & 1];
+                ck(cudaMemcpyAsync(tmp, dev, stride, cudaMemcpyDeviceToHost, s1), "rebalance out");
+                ck(cudaMemcpyAsync(dev, hostB, stride, cudaMemcpyHostToDevice, s1), "rebalance in");
+            }
+            sync_all();
+            std::vector<std::thread> th;
+            const int nth = std::min<int>(8, int(b1 - b0));
+            for (int t = 0; t < nth; ++t)
+                th.emplace_back([&, t] {
+                    for (size_t k = b0 + size_t(t); k < b1; k += size_t(nth)) {
+                        const Cand& x = cands[k];
+                        const size_t stride = stream_stride(x.l);
+                        std::memcpy(packed_[size_t(x.l)] + size_t(ram_pos_[size_t(x.l)][size_t(x.ram)]) * stride, tmpp + (k - b0) * max_stride_, stride);
+                    }
+                });
+            for (auto& t : th) t.join();
+            for (size_t k = b0; k < b1; ++k) {
+                const Cand& x = cands[k];
+                const int l = x.l, A = x.gpu, B = x.ram;
+                const int pB = ram_pos_[size_t(l)][size_t(B)];
+                if (where_[size_t(l)][size_t(A)] == 1) {   // GPU 0: its slot
+                    const int si = slot_[size_t(l)][size_t(A)];
+                    slot_[size_t(l)][size_t(B)] = si;
+                    slot_[size_t(l)][size_t(A)] = -1;
+                    slots_[size_t(si)].owner = l * c.experts + B;
+                    auto& ord = order_[size_t(l)];
+                    for (size_t q = size_t(n_stream_[size_t(l)]); q < ord.size(); ++q) if (ord[q] == A) { ord[q] = B; break; }
+                    ++n0;
+                } else {   // the peer GPU: its arena position
+                    const int q = peer_->pos[size_t(l)][size_t(A)];
+                    peer_->pos[size_t(l)][size_t(B)] = q;
+                    peer_->pos[size_t(l)][size_t(A)] = -1;
+                    ++n1;
                 }
-                peer_->pos[size_t(l)][size_t(B)] = q;
-                peer_->pos[size_t(l)][size_t(A)] = -1;
-                ++n1;
+                std::swap(where_[size_t(l)][size_t(A)], where_[size_t(l)][size_t(B)]);
+                ram_pos_[size_t(l)][size_t(A)] = pB;
+                ram_pos_[size_t(l)][size_t(B)] = -1;
+                order_[size_t(l)][size_t(pB)] = A;
+                if (peer_ && !peer_->spos.empty() && pB >= s0_[size_t(l)]) {   // the peer streams that position
+                    peer_->spos[size_t(l)][size_t(A)] = pB - s0_[size_t(l)];
+                    peer_->spos[size_t(l)][size_t(B)] = -1;
+                }
             }
-            std::memcpy(hostB, tmpp, stride);
-            std::swap(where_[size_t(l)][size_t(A)], where_[size_t(l)][size_t(B)]);
-            ram_pos_[size_t(l)][size_t(A)] = pB;
-            ram_pos_[size_t(l)][size_t(B)] = -1;
-            order_[size_t(l)][size_t(pB)] = A;
-            if (peer_ && !peer_->spos.empty() && pB >= s0_[size_t(l)]) {   // the peer streams that position
-                peer_->spos[size_t(l)][size_t(A)] = pB - s0_[size_t(l)];
-                peer_->spos[size_t(l)][size_t(B)] = -1;
-            }
+        }
+        for (int d = 0; d < (peer_ ? 2 : 1); ++d) {
+            PeerGpu::Guard g(d == 0 ? 0 : peer_->dev);
+            for (auto x : st[d]) cudaStreamDestroy(x);
         }
         std::fill(rt_count_.begin(), rt_count_.end(), 0.0f);
         residency_changed();
@@ -4767,7 +4817,20 @@ private:
             ck(cudaMemsetAsync(g_sum_.p, 0, size_t(T) * H * 4, stream_), "tier sum");
             any_gpu = true;
             batched = resident_mmq(l, T, K, ids.data(), wts.data());
-            if (batched && grown_)   // GROW's experts (where_ 3, outside the resident arena): a GEMV chain per route
+            static const bool grown_grouped = std::getenv("STRATA_DS41_GROWN_GROUPED") && std::string(std::getenv("STRATA_DS41_GROWN_GROUPED")) == "1";
+            const auto& LE = experts_[size_t(l)];
+            if (batched && grown_ && grown_grouped && fl_ == c.ff && k::native_expert_supported(LE.f.gu_type, LE.f.d_type, c.hidden, c.ff)) {
+                // STRATA_DS41_GROWN_GROUPED=1: GROW's experts in one grouped launch
+                std::map<int, std::vector<std::pair<int, float>>> by;
+                for (int i = 0; i < T; ++i)
+                    for (int j = 0; j < gn[size_t(i)]; ++j) {
+                        const int e = gids[size_t(i) * 16 + size_t(j)];
+                        if (where_[size_t(l)][size_t(e)] == 3) by[e].push_back({i, gws[size_t(i) * 16 + size_t(j)]});
+                    }
+                std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>> groups;
+                for (auto& [e, r] : by) groups.push_back({slots_[size_t(slot_[size_t(l)][size_t(e)])].p, std::move(r)});
+                grown0_.run(LE.f.gu_type, LE.f.d_type, c.hidden, c.ff, c.clamp[size_t(l)], groups, xn_.f(), T, g_sum_.f(), stream_);
+            } else if (batched && grown_)   // GROW's experts (where_ 3, outside the resident arena): a GEMV chain per route
                 for (int i = 0; i < T; ++i) {
                     int gi[16], m = 0;
                     float gw[16];
