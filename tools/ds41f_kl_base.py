@@ -115,7 +115,9 @@ def cmd_kl(a):
         base = b.log_probs(c)                                  # rows: positions first .. first + rows - 1
         toks = b.tokens(c)
         lo = log_softmax(ours[first : first + b.rows])
-        kl = (np.exp(base.astype(np.float64)) * (base - lo)).sum(1)
+        # llama.cpp's sum: only the base's tokens above log-probability -16 (the 16-bit codes' tail is not a distribution)
+        b64 = base.astype(np.float64)
+        kl = np.where(b64 > -16.0, np.exp(b64) * (b64 - lo), 0.0).sum(1)
         nxt = toks[first + 1 : first + 1 + b.rows]
         idx = np.arange(b.rows)
         top = base.argmax(1) == lo.argmax(1)
