@@ -929,6 +929,61 @@ __global__ void index_score_q8_kernel(const float* q, int heads, int dim, const 
     }
     if (!lane) score[size_t(t) * score_stride + r] = total;
 }
+
+// STRATA_DS41_INDEX_FAST: the index scores with a thread per cache row and a block per (256 rows, token): the token's
+// queries [heads][dim] and head weights in LDS, the row's key decoded 32 values at a time (one Q8_0 block, or 32 floats /
+// halves), all heads' dots in registers. heads <= 32, dim % 32 == 0, heads * dim <= 4096. (The warp-per-row kernels
+// reduce across the warp once per head.) Same products, another summation order.
+template <int KIND>
+__global__ void __launch_bounds__(256) index_score_fast_kernel(const float* q, int heads, int dim, const uint8_t* cache, size_t row_bytes,
+                                                               int key_off, int pos0, int ratio, const float* w, float w_scale, float* score,
+                                                               int score_stride, int fixed_rows, const int* tpos, size_t css) {
+    __shared__ float qs[4096];
+    __shared__ float ws[32];
+    const int t = blockIdx.y;
+    const int rows = tpos ? (tpos[t] + 1) / ratio : fixed_rows > 0 ? fixed_rows : (pos0 + t + 1) / ratio;
+    if (int(blockIdx.x) * 256 >= rows) return;
+    cache += size_t(t) * css;
+    q += size_t(t) * heads * dim;
+    for (int i = threadIdx.x; i < heads * dim; i += 256) qs[i] = q[i];
+    if (threadIdx.x < heads) ws[threadIdx.x] = w[size_t(t) * heads + threadIdx.x] * w_scale;
+    __syncthreads();
+    const int r = blockIdx.x * 256 + threadIdx.x;
+    if (r >= rows) return;
+    const uint8_t* row = cache + size_t(r) * row_bytes;
+    float acc[32];
+#pragma unroll
+    for (int h = 0; h < 32; ++h) acc[h] = 0.0f;
+    for (int c0 = 0; c0 < dim; c0 += 32) {
+        float k[32];
+        if constexpr (KIND == 2) {
+            const uint8_t* b = row + size_t((key_off + c0) / 32) * 34;
+            const float d = h2f(uint16_t(b[0] | (b[1] << 8)));
+#pragma unroll
+            for (int j = 0; j < 32; ++j) k[j] = d * float(int8_t(b[2 + j]));
+        } else {
+#pragma unroll
+            for (int j = 0; j < 32; ++j) k[j] = kv_at<KIND>(row, key_off + c0 + j);
+        }
+#pragma unroll
+        for (int h = 0; h < 32; ++h) {
+            if (h < heads) {
+                const float* qh = qs + h * dim + c0;
+                float s = 0.0f;
+#pragma unroll
+                for (int j = 0; j < 32; j += 4) {
+                    const float4 qv = *reinterpret_cast<const float4*>(qh + j);
+                    s += k[j] * qv.x + k[j + 1] * qv.y + k[j + 2] * qv.z + k[j + 3] * qv.w;
+                }
+                acc[h] += s;
+            }
+        }
+    }
+    float total = 0.0f;
+#pragma unroll
+    for (int h = 0; h < 32; ++h) if (h < heads) total += fmaxf(acc[h], 0.0f) * ws[h];
+    score[size_t(t) * score_stride + r] = total;
+}
 // a Q8_0 cache's selected rows as floats (see gather_sel_h_kernel)
 __global__ void gather_sel_q8_kernel(const uint8_t* cache, size_t row_bytes, int rw, const int* sel, int topk, int pos0, int ratio, float* out,
                                      const int* tpos, size_t css) {
@@ -1048,6 +1103,48 @@ __device__ inline int block_scan(int v, int* buf, int* total) {
     return incl - v;
 }
 
+// select_sorted with each thread on a contiguous run of the keys (ascending index order kept across threads): the
+// equal keys' ranks and the picks' positions from one block scan each, instead of two scans per 256 keys (a 106K-key
+// selection had ~13K barriers). The same picks in the same order.
+template <class Get, class Keep>
+__device__ int select_sorted_chunked(Get get, Keep keep, int n, int k, uint32_t* hist, uint32_t* shared2, int* scan, int* out) {
+    const bool all = n <= k;
+    uint32_t thr = 0;
+    int take = 0;
+    if (!all) radix_threshold(get, n, k, hist, shared2, thr, take);
+    const int per = (n + int(blockDim.x) - 1) / int(blockDim.x);
+    const int i0 = min(n, int(threadIdx.x) * per), i1 = min(n, i0 + per);
+    int eq = 0;
+    if (!all)
+        for (int i = i0; i < i1; ++i) eq += get(i) == thr ? 1 : 0;
+    int eq_total;
+    const int eq_base = block_scan(eq, scan, &eq_total);
+    int cnt = 0, er = eq_base;
+    for (int i = i0; i < i1; ++i) {
+        bool picked = true;
+        if (!all) {
+            const uint32_t key = get(i);
+            picked = key > thr || (key == thr && er < take);
+            if (key == thr) ++er;
+        }
+        if (picked && keep(i)) ++cnt;
+    }
+    int total;
+    const int base = block_scan(cnt, scan, &total);
+    int at = base;
+    er = eq_base;
+    for (int i = i0; i < i1; ++i) {
+        bool picked = true;
+        if (!all) {
+            const uint32_t key = get(i);
+            picked = key > thr || (key == thr && er < take);
+            if (key == thr) ++er;
+        }
+        if (picked && keep(i)) out[at++] = i;
+    }
+    return total;
+}
+
 // The k largest of n keys (ties to the lowest index), written in ascending index order where keep(i); the count kept.
 template <class Get, class Keep>
 __device__ int select_sorted(Get get, Keep keep, int n, int k, uint32_t* hist, uint32_t* shared2, int* scan, int* out) {
@@ -1087,7 +1184,7 @@ __device__ int select_sorted(Get get, Keep keep, int n, int k, uint32_t* hist, u
 // mode 0: plain; 1: candidate source (block maxima, the newest block pinned, top cand_k blocks into cand); 2: only rows
 // in cand's blocks. sel [T][k], count [T].
 __global__ void index_topk_kernel(const float* score, int score_stride, int pos0, int ratio, int k, int* sel, int* count, int mode,
-                                  uint8_t* cand, int cand_stride, int bs, int cand_k, const int* tpos) {
+                                  uint8_t* cand, int cand_stride, int bs, int cand_k, const int* tpos, int chunked) {
     __shared__ uint32_t hist[256], shared2[2];
     __shared__ int scan[kTopkThreads];
     extern __shared__ float best[];   // mode 1: [blocks] maxima, then [cand_k] picks (as ints)
@@ -1111,8 +1208,10 @@ __global__ void index_topk_kernel(const float* score, int score_stride, int pos0
         for (int b = threadIdx.x; b < nb; b += blockDim.x) flags[b] = 0;
         __syncthreads();
         int* picks = reinterpret_cast<int*>(best + nb);
-        const int n = select_sorted([&](int i) { return order_key(best[i]); }, [](int) { return true; }, nb, cand_k, hist, shared2,
-                                    scan, picks);
+        auto best_get = [&](int i) { return order_key(best[i]); };
+        auto all_keep = [](int) { return true; };
+        const int n = chunked ? select_sorted_chunked(best_get, all_keep, nb, cand_k, hist, shared2, scan, picks)
+                              : select_sorted(best_get, all_keep, nb, cand_k, hist, shared2, scan, picks);
         __syncthreads();
         for (int j = threadIdx.x; j < n; j += blockDim.x) flags[picks[j]] = 1;
         __syncthreads();
@@ -1121,7 +1220,8 @@ __global__ void index_topk_kernel(const float* score, int score_stride, int pos0
     const uint32_t ninf = order_key(-INFINITY);
     auto get = [&](int i) { return masked && !keep_blocks[i / bs] ? ninf : order_key(s[i]); };
     auto keep = [&](int i) { return !(masked && !keep_blocks[i / bs]) && !(isinf(s[i]) && s[i] < 0); };
-    const int n = select_sorted(get, keep, visible, k, hist, shared2, scan, out);
+    const int n = chunked ? select_sorted_chunked(get, keep, visible, k, hist, shared2, scan, out)
+                          : select_sorted(get, keep, visible, k, hist, shared2, scan, out);
     if (threadIdx.x == 0) count[t] = n;
 }
 
@@ -1685,10 +1785,12 @@ void ds41_index_score_batched(const float* q, int heads, int dim, const float* k
 void ds41_index_topk(const float* score, int score_stride, int tokens, int pos0, int ratio, int k, int* sel, int* count, int mode,
                      uint8_t* cand, int cand_stride, int block, int cand_k, void* stream, const int* tpos) {
     if (tokens < 1) return;
+    // STRATA_DS41_TOPK_CHUNKED=1: select_sorted_chunked (two block scans per selection; the same picks)
+    static const bool chunked = std::getenv("STRATA_DS41_TOPK_CHUNKED") && std::string(std::getenv("STRATA_DS41_TOPK_CHUNKED")) == "1";
     const int nb = mode == 1 ? (score_stride + block - 1) / block : 0;
     const size_t smem = mode == 1 ? size_t(nb + cand_k) * 4 : 0;
     index_topk_kernel<<<unsigned(tokens), kTopkThreads, smem, (cudaStream_t)stream>>>(score, score_stride, pos0, ratio, k, sel, count, mode,
-                                                                                     cand, cand_stride, block, cand_k, tpos);
+                                                                                     cand, cand_stride, block, cand_k, tpos, chunked ? 1 : 0);
     check("index_topk");
 }
 
@@ -1941,6 +2043,20 @@ void ds41_scatter_rows(const float* src, int rows, int width, const int* dst_row
     scatter_rows_kernel<<<dim3(std::min(unsigned(blocks(width, 256)), 4u), unsigned(rows)), 256, 0, (cudaStream_t)stream>>>(src, width, dst_row, dst,
                                                                                                                          dst_stride);
     check("scatter_rows");
+}
+
+bool ds41_index_score_fast(int kind, const float* q, int heads, int dim, const void* cache, size_t row_bytes, int key_off, int pos0, int ratio,
+                           int tokens, int max_rows, int fixed_rows, const float* w, float w_scale, float* score, int score_stride, void* stream,
+                           const int* tpos, size_t css) {
+    if (heads > 32 || dim % 32 || heads * dim > 4096 || max_rows < 1 || tokens < 1) return false;
+    const dim3 grid(unsigned((max_rows + 255) / 256), unsigned(tokens));
+    const auto* c = static_cast<const uint8_t*>(cache);
+    auto* st = (cudaStream_t)stream;
+    if (kind == 2) index_score_fast_kernel<2><<<grid, 256, 0, st>>>(q, heads, dim, c, row_bytes, key_off, pos0, ratio, w, w_scale, score, score_stride, fixed_rows, tpos, css);
+    else if (kind == 1) index_score_fast_kernel<1><<<grid, 256, 0, st>>>(q, heads, dim, c, row_bytes, key_off, pos0, ratio, w, w_scale, score, score_stride, fixed_rows, tpos, css);
+    else index_score_fast_kernel<0><<<grid, 256, 0, st>>>(q, heads, dim, c, row_bytes, key_off, pos0, ratio, w, w_scale, score, score_stride, fixed_rows, tpos, css);
+    check("index_score_fast");
+    return true;
 }
 
 }  // namespace strata::kernels

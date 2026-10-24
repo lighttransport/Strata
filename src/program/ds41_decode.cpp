@@ -294,8 +294,13 @@ inline unsigned long gpu_socket_nodes(int dev) {
 // into `sum`. Expert blobs at device pointers in the tier layout [gate | up | down].
 struct GroupedRunner {
     Dev table, scratch, out, xq;
-    uint8_t* staging = nullptr;   // pinned, portable: the tables
-    size_t staging_bytes = 0;
+    // the tables' pinned (portable) staging, two buffers by call parity: a buffer is refilled once its upload two calls
+    // back is done (an event), so the host never waits for the stream's other work (it had synchronized the stream,
+    // on GPU 0 the whole decode stream, every layer)
+    uint8_t* stagings[2] = {nullptr, nullptr};
+    size_t staging_sizes[2] = {0, 0};
+    cudaEvent_t uploaded[2] = {nullptr, nullptr};
+    unsigned calls = 0;
     int cap = 0;
     // groups: (expert blob, its routes (token, weight)); x: [nt][hidden] floats on this GPU
     bool run(int gu_type, int d_type, int hidden, int ff, float clamp, const std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>>& groups,
@@ -313,12 +318,15 @@ struct GroupedRunner {
         if (xq.bytes < k::native_q8_1_bytes(hidden, 1) * size_t(nt)) xq = Dev(k::native_q8_1_bytes(hidden, 1) * size_t(nt) * 2);
         // tables: ptr[G] (u64), start[G + 1], n_groups, dst[E], tok[E], w[E]
         const size_t need = size_t(G) * 8 + size_t(G + 1) * 4 + 4 + size_t(E) * 12 + 64;
-        if (need > staging_bytes) {
-            if (staging) cudaFreeHost(staging);
-            ck(cudaHostAlloc(reinterpret_cast<void**>(&staging), need * 2, cudaHostAllocPortable), "grouped staging");
-            staging_bytes = need * 2;
+        const int sb = int(calls++ & 1u);
+        if (uploaded[sb]) ck(cudaEventSynchronize(uploaded[sb]), "grouped staging");   // its upload two calls back
+        else ck(cudaEventCreateWithFlags(&uploaded[sb], cudaEventDisableTiming), "grouped event");
+        if (need > staging_sizes[sb]) {
+            if (stagings[sb]) cudaFreeHost(stagings[sb]);
+            ck(cudaHostAlloc(reinterpret_cast<void**>(&stagings[sb]), need * 2, cudaHostAllocPortable), "grouped staging");
+            staging_sizes[sb] = need * 2;
         }
-        ck(cudaStreamSynchronize(stream), "grouped staging");   // the previous call's tables uploaded
+        uint8_t* staging = stagings[sb];
         auto* ptr = reinterpret_cast<unsigned long long*>(staging);
         auto* start = reinterpret_cast<int32_t*>(ptr + G);
         int32_t* ng = start + G + 1;
@@ -336,6 +344,7 @@ struct GroupedRunner {
         const size_t bytes = reinterpret_cast<uint8_t*>(w + E) - staging;
         if (table.bytes < bytes) table = Dev(bytes * 2);
         ck(cudaMemcpyAsync(table.p, staging, bytes, cudaMemcpyHostToDevice, stream), "grouped tables");
+        ck(cudaEventRecord(uploaded[sb], stream), "grouped event");
         const uint8_t* tb = table.b();
         const size_t o_start = size_t(G) * 8, o_ng = o_start + size_t(G + 1) * 4, o_dst = o_ng + 4, o_tok = o_dst + size_t(E) * 4,
                      o_w = o_tok + size_t(E) * 4;
@@ -1879,7 +1888,8 @@ public:
                 }
             }
             if (peer_ && !e1.empty()) {
-                for (int mode = 0; mode < 3; ++mode) {
+                const bool grouped_ok = k::native_expert_supported(L.f.gu_type, L.f.d_type, c.hidden, c.ff);
+                for (int mode = 0; mode < (grouped_ok ? 3 : 2); ++mode) {
                     const double g0 = peer_->gpu_ms;
                     const double h = host_ms(reps, [&] {
                         const bool ran = mode == 1 ? peer_->prefill(l, T, K, ids1.data(), wts.data(), pinned_[0])
@@ -3259,9 +3269,14 @@ private:
             // STRATA_DS41_INDEX_GEMM=1 (FP16 or Q8 caches): the scores as an FP16 tensor-core GEMM of the keys and the
             // token-heads' queries per tile of rows (products into a 256 MiB buffer), then relu and the head weights
             static const bool index_gemm = std::getenv("STRATA_DS41_INDEX_GEMM") && std::string(std::getenv("STRATA_DS41_INDEX_GEMM")) == "1";
+            static const bool index_fast = std::getenv("STRATA_DS41_INDEX_FAST") && std::string(std::getenv("STRATA_DS41_INDEX_FAST")) == "1";
             for (int t0 = 0; t0 < T; t0 += score_tile_) {   // score_tile_ tokens at a time through the score buffer
                 const int n = std::min(score_tile_, T - t0);
-                if (index_gemm && kv_kind_ != 0) {
+                if (index_fast &&
+                    k::ds41_index_score_fast(kv_kind_, iq_.f(size_t(t0) * c.index_heads * c.index_dim), c.index_heads, c.index_dim, caches_[size_t(src)].p,
+                                             kv_row_bytes(), c.head_dim, pos0_ + t0, ratio, n, (pos0_ + t0 + n) / ratio, 0,
+                                             iw_.f(size_t(t0) * c.index_heads), w_scale, scores_.f(), score_stride_, stream_)) {
+                } else if (index_gemm && kv_kind_ != 0) {
                     index_gemm_scores(src, t0, n, ratio, w_scale);
                 } else if (kv_kind_ == 2)
                     k::ds41_index_score_q8(iq_.f(size_t(t0) * c.index_heads * c.index_dim), c.index_heads, c.index_dim, caches_[size_t(src)].b(),

@@ -157,6 +157,12 @@ void ds41_compress_sessions(const float* v, const float* s, float* stash_v, floa
                             float* out, void* stream);
 void ds41_scatter_bytes(const void* src, int rows, size_t row_bytes, const int* dst_row, void* dst, size_t dst_pitch, void* stream);
 void ds41_scatter_rows(const float* src, int rows, int width, const int* dst_row, float* dst, size_t dst_stride, void* stream);
+/// STRATA_DS41_INDEX_FAST: the index scores of `tokens` tokens over a cache of `kind` (0 float, 1 FP16, 2 Q8_0) rows of
+/// row_bytes, keys from value key_off; rows (pos0 + t + 1) / ratio per token (tpos: per-token positions, cache at t css
+/// bytes; fixed_rows > 0: that many for all), max_rows the grid's bound. A thread per row. false: not covered.
+bool ds41_index_score_fast(int kind, const float* q, int heads, int dim, const void* cache, size_t row_bytes, int key_off, int pos0, int ratio,
+                           int tokens, int max_rows, int fixed_rows, const float* w, float w_scale, float* score, int score_stride, void* stream,
+                           const int* tpos = nullptr, size_t css = 0);
 /// dst[b][a][j] = src[a][b][j] (a < na, b < nb, j < width floats): [tokens][groups][w] <-> [groups][tokens][w].
 void ds41_swap_blocks(const float* src, float* dst, int na, int nb, int width, void* stream);
 /// dst[t ld_dst + j] = mean over the 4 hyper-connection streams of h[t][s][j].
