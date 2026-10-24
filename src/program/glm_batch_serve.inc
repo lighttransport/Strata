@@ -134,6 +134,9 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         std::cerr << "BATCH_DECODE active=" << ids.size() << " generated=" << delivered << " ms=" << ms(start) << '\n'
                   << "BATCH_MTP proposed=" << proposed << " accepted=" << accepted_total << " replayed=" << replayed << '\n';
     };
+    // STRATA_GLM_BATCH_CUDA_PROFILE_STEP=N: a CUDA profiler range over full-batch decode steps N..N+2 (for nsys).
+    const long long profile_step = strata_env_value_ll("STRATA_GLM_BATCH_CUDA_PROFILE_STEP", 0);
+    long long full_steps = 0;
     auto pump = [&] {
         std::vector<int> ids, tokens;
         for (int i = 0; i < count; ++i) if (slots[i].active) {
@@ -143,7 +146,13 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         if (ids.empty()) return;
         if (batch_mtp) { speculative_pump(ids); return; }
         const auto start = Clock::now();
+        const long long step = profile_step > 0 && ids.size() == (size_t)count ? ++full_steps : 0;
+        if (step && step == profile_step) check(cudaProfilerStart());
         auto logits = decoder.step_sequences(ids, tokens);
+        if (step && step == profile_step + 2) {
+            check(cudaDeviceSynchronize()); check(cudaProfilerStop());
+            std::cerr << "BATCH_CUDA_PROFILE steps=" << profile_step << ".." << step << '\n';
+        }
         for (size_t row = 0; row < ids.size(); ++row) {
             auto &s = slots[ids[row]];
             s.token = draw(s, logits, row * decoder.vocabulary(), s.next++);

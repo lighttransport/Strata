@@ -3,6 +3,7 @@
 // https://github.com/huggingface/transformers/tree/main/src/transformers/models/glm5_next
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_mailbox.hpp"
+#include "strata/kernels/glm_rows.hpp"
 #include "strata/kernels/q8_1_finite.hpp"
 #include <cmath>
 #include <cstdint>
@@ -533,10 +534,8 @@ __global__ void hyper_head_tokens(const float *r, float *out, int n) {
         out[row*n+d]=(r[d]+r[n+d]+r[2*n+d]+r[3*n+d])*.25f;
     }
 }
-__global__ void conv(const float *x, const float *w, float *history, float *y, int n, int k) {
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
+__device__ __forceinline__ void conv_channel(const float *x, const float *w, float *history, float *y, int n, int k,
+                                             int i) {
     float sum = x[i] * w[i * k + k - 1];
     for (int j = 0; j < k - 1; ++j)
         sum += history[i * (k - 1) + j] * w[i * k + j];
@@ -546,11 +545,30 @@ __global__ void conv(const float *x, const float *w, float *history, float *y, i
         history[i * (k - 1) + k - 2] = x[i];
     y[i] = sum * sig(sum);
 }
+__global__ void conv(const float *x, const float *w, float *history, float *y, int n, int k) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    conv_channel(x, w, history, y, n, k, i);
+}
+__global__ void conv_rows(const float *x, const float *w, GlmRowPointers history, float *y, int n, int k) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x, r = blockIdx.y;
+    if (i >= n)
+        return;
+    conv_channel(x + (size_t)r * n, w, history.p[r], y + (size_t)r * n, n, k, i);
+}
 __global__ void kda_gate(const float *x, const float *bias, const float *a, float *out, int h, int d,
                          float lower) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < h * d)
         out[i] = lower * sig(-a[i / d] * (x[i] + bias[i]));
+}
+__global__ void kda_gate_rows(const float *x, const float *bias, const float *a, float *out, int h, int d,
+                              float lower) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t row = (size_t)blockIdx.y * h * d;
+    if (i < h * d)
+        out[row + i] = lower * sig(-a[i / d] * (x[row + i] + bias[i]));
 }
 __global__ void kda_step(float *state, const float *q, const float *k, const float *v, const float *g,
                          const float *beta, float *out, int d) {
@@ -912,6 +930,22 @@ void glm_conv(const float *x, const float *w, float *history, float *y, int n, i
     width(n);
     width(k);
     conv<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(x, w, history, y, n, k);
+    check();
+}
+void glm_conv_rows(const float *x, const float *w, GlmRowPointers history, float *y, int n, int k, int rows,
+                   void *s) {
+    width(n);
+    width(k);
+    if (rows < 1 || rows > kGlmRowsMax) throw std::invalid_argument("GLM: invalid convolution rows");
+    conv_rows<<<dim3((n + 255) / 256, rows), 256, 0, (cudaStream_t)s>>>(x, w, history, y, n, k);
+    check();
+}
+void glm_kda_gate_rows(const float *x, const float *b, const float *a, float *y, int h, int d, float lower,
+                       int rows, void *s) {
+    width(h);
+    width(d);
+    if (rows < 1 || rows > kGlmRowsMax) throw std::invalid_argument("GLM: invalid KDA gate rows");
+    kda_gate_rows<<<dim3((h * d + 255) / 256, rows), 256, 0, (cudaStream_t)s>>>(x, b, a, y, h, d, lower);
     check();
 }
 void glm_kda_gate(const float *x, const float *b, const float *a, float *y, int h, int d, float lower,
