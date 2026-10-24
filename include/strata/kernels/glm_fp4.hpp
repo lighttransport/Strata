@@ -19,7 +19,9 @@ void glm_fp4_csf32_scales(const uint8_t* bases,const uint8_t* codes,
                           const uint16_t* offsets,const uint32_t* pages,const uint16_t* exceptions,
                           uint8_t* packed_scales,int* invalid,int rows,int columns,void* stream);
 // Inputs are FP16, outputs FP32. Both paths consume the same packed bytes.
-// SM70 supports 1..8 rows per call; reference supports arbitrary rows.
+// SM70 supports 1..32 rows per call; reference supports arbitrary rows. Rows 9..32 give
+// the bytes of 8-row calls over consecutive row chunks; FP8/FP16/BF16/F32 with one
+// accumulator chain read the weights once for all of them.
 // FP8 may use 1 (default), 2 or 4 independent accumulator chains. Extra
 // chains preserve K partitioning but change the floating-point reduction tree.
 void glm_fp4_gemm(GlmPackedFormat format,const void* weights,const void* scales,float global,
@@ -48,7 +50,8 @@ void glm_fp4_expert_group_scatter(const GlmFp4ExpertGroup* groups,int count,
 struct GlmFp8Projection {const void* weights;const void* scales;float* output;};
 // Three independent resident MXFP8 QPN products in one SM70 launch. Uses the
 // ordinary single-accumulator, eight-warp reduction without outer K splitting.
-// Requires rows%32=0, columns%64=0, tokens1..8; outputs must not alias.
+// Requires rows%32=0, columns%64=0, tokens1..32 (bytes of 8-token calls over
+// consecutive chunks, one weight pass); outputs must not alias.
 void glm_mxfp8_gemm_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection c,
                          const uint16_t* x,int rows,int columns,int tokens,void* stream);
 // Opt-in SM70 NVFP4 gate/up + SwiGLU + FP16 output. Same two accumulator
@@ -57,9 +60,12 @@ void glm_fp4_gate_up_f16(const uint8_t* gate,const uint8_t* gate_scales,float ga
                          const uint8_t* up,const uint8_t* up_scales,float up_global,
                          const uint16_t* x,uint16_t* hidden,int rows,int columns,int tokens,
                          float limit,void* stream);
-// Optional scratch for small fixed projections: 64 K partitions, eight rows.
+// Optional scratch for small fixed projections: 64 K partitions, eight rows
+// (tokens rounded up to a multiple of eight for 9..32 tokens).
 // Passing it keeps K splitting fixed across all verification widths.
-constexpr size_t glm_fp4_partial_bytes(int rows) {return size_t(64)*8*rows*sizeof(float);}
+constexpr size_t glm_fp4_partial_bytes(int rows,int tokens=8) {
+    return size_t(64)*(tokens>8?(tokens+7)/8*8:8)*rows*sizeof(float);
+}
 // Bounded prefill reconstruction from the same resident compressed matrix.
 void glm_fp4_dequant_f16(GlmPackedFormat format,const void* weights,const void* scales,
                          float global,uint16_t* output,int rows,int columns,void* stream,bool sm70=false);

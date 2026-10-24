@@ -371,6 +371,9 @@ class Fp4NativeExecutor {
     const bool profile=strata_env_is_one("STRATA_GLM_FP4_PROFILE");
     const bool dense_split_enabled=strata_env_is_one("STRATA_GLM_FP4_DENSE_SPLIT");
     const bool kda_qkv_batch=strata_env_is_one("STRATA_GLM_FP4_KDA_QKV_BATCH");
+    // Opt-in: decode rows 9..32 (batched decode) run dense and KDA qkv products in one call that reads the
+    // weights once, instead of one call per 8 rows; the bytes are those of the 8-row calls.
+    const bool wide_products=strata_env_is_one("STRATA_GLM_FP4_WIDE_PRODUCTS");
     const bool gpu_reduce_enabled=strata_env_is_one("STRATA_GLM_FP4_GPU_REDUCE");
     const bool expert_fusion=strata_env_is_one("STRATA_GLM_FP4_EXPERT_FUSION");
     const bool early_readback=strata_env_is_one("STRATA_GLM_FP4_EARLY_READBACK");
@@ -1402,7 +1405,7 @@ class Fp4NativeExecutor {
         return reserve-extra;
     }
     void product(Context& c,const Matrix& w,const uint16_t* x,float* y,int tokens,int accumulators=0,const void* reconstructed=nullptr) {
-        if(tokens<=8) {
+        if(tokens<=8||(wide_products&&sm70&&!reconstructed&&wide_decode(tokens))) {
             const auto trace=c.trace_start("skinny",c.stream);
             float* partials=nullptr;
             const bool split_gate=block_gate_pack&&w.format==k::GlmPackedFormat::BlockFp8Qpn&&
@@ -1410,7 +1413,7 @@ class Fp4NativeExecutor {
             if(sm70 && w.format!=k::GlmPackedFormat::Nvfp4 &&
                (w.rows<=(dense_split_enabled?8192:512)||split_gate) && w.columns>=4096)
                 // The largest medium split (8192 rows, 8 tokens, 2 parts) also fits this scratch.
-                partials=c.buffer("matrix_partial",k::glm_fp4_partial_bytes(512)).f();
+                partials=c.buffer("matrix_partial",k::glm_fp4_partial_bytes(512,tokens)).f();
             k::glm_fp4_gemm(w.format,w.data->p,w.scales(),w.global,x,y,w.rows,w.columns,tokens,sm70,c.stream,partials,
                            accumulators?accumulators:int(fp8_accumulators));
             c.trace_end(trace,c.stream);
@@ -1861,14 +1864,14 @@ public:
                        const std::array<float*,3>& y,int nt,cudaStream_t caller) {
         Context& c=*contexts.front();DeviceScope scope(c.device);
         const auto& a=c.dense.at(names[0]);
-        if(nt>8) {
+        if(nt>8&&!wide_products) {
             for(int first=0;first<nt;first+=8) {
                 const size_t out=size_t(first)*a.rows;
                 batch_kda_qkv(names,x+size_t(first)*a.columns,{y[0]+out,y[1]+out,y[2]+out},std::min(8,nt-first),caller);
             }
             return;
         }
-        auto& hx=c.buffer("dense_x_half",size_t(8)*16384*2);
+        auto& hx=c.buffer("dense_x_half",std::max(size_t(8)*16384,size_t(nt)*a.columns)*2);
         const auto trace=profile?c.trace_start("kda_qkv_batch",caller,a.rows,a.columns,nt,int(a.format)):SIZE_MAX;
         k::glm_f16(x,static_cast<uint16_t*>(hx.p),size_t(nt)*a.columns,caller);
         std::array<k::GlmFp8Projection,3> p;
@@ -1898,8 +1901,9 @@ public:
             if(!t.native)throw std::logic_error("GLM FP4: expected native dense binding");
             it=c.dense.emplace(name,upload(c,model.matrix(t.native->source))).first;
         }
-        if(wide_decode(nt)) {
-            if(head_partition&&name=="output.weight")throw std::logic_error("GLM FP4: the head is computed in 8-row panels");
+        if(wide_decode(nt)&&head_partition&&name=="output.weight")
+            throw std::logic_error("GLM FP4: the head is computed in 8-row panels");
+        if(wide_decode(nt)&&!(wide_products&&sm70)) {
             const int columns=it->second.columns,rows=it->second.rows;
             for(int first=0;first<nt;first+=8)
                 dense(name,x+size_t(first)*columns,y+size_t(first)*rows,std::min(8,nt-first),caller);
