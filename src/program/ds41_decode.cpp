@@ -604,10 +604,15 @@ struct PeerGpu {
         // products: runs within the row cap inside one segment (item -1: the resident area, else a streamed item)
         struct Prod { int item, j0, j1, first, rows, b0, mx; };
         std::vector<Prod> prods;
+        // STRATA_DS41_MMQ_COMPACT=1: products over runs of consecutive experts that have rows only (the empty ones
+        // between are skipped), instead of one product spanning every resident expert
+        static const bool compact = std::getenv("STRATA_DS41_MMQ_COMPACT") && std::string(std::getenv("STRATA_DS41_MMQ_COMPACT")) == "1";
         auto group = [&](int item, int base, int count) {
             for (int j0 = base; j0 < base + count;) {
+                if (compact && tok[size_t(order[size_t(j0)])].empty()) { ++j0; continue; }
                 int j1 = j0, r = 0, mx = 0;
-                while (j1 < base + count && (j1 == j0 || r + int(tok[size_t(order[size_t(j1)])].size()) <= rcap)) {
+                while (j1 < base + count && (j1 == j0 || r + int(tok[size_t(order[size_t(j1)])].size()) <= rcap) &&
+                       !(compact && tok[size_t(order[size_t(j1)])].empty())) {
                     r += int(tok[size_t(order[size_t(j1)])].size());
                     mx = std::max(mx, int(tok[size_t(order[size_t(j1)])].size()));
                     ++j1;
@@ -1741,6 +1746,154 @@ public:
     }
 
     const Config& config() const { return cfg_; }
+
+    /// STRATA_DS41_GPU_BENCH=1: the GPU expert kernels of both GPUs on the same synthetic routes of one layer (the real
+    /// resident experts), then the program exits: raw copy bandwidth, one expert's gate GEMV, and per call the MMQ
+    /// product, the GEMV chains and the grouped kernel on GPU 0 and on the peer GPU. GPU time by events on each device's
+    /// own stream; "host" is the wall time of enqueue + wait.
+    void gpu_bench() {
+        const auto& c = cfg_;
+        const int l = c.layers / 2, K = c.top_k, T = 6;
+        const auto& L = experts_[size_t(l)];
+        auto attrs = [&](int dev) {
+            int clk = 0, mclk = 0, bus = 0, sm = 0;
+            cudaDeviceGetAttribute(&clk, cudaDevAttrClockRate, dev);
+#if !defined(__HIP_PLATFORM_AMD__)
+            cudaDeviceGetAttribute(&mclk, cudaDevAttrMemoryClockRate, dev);
+            cudaDeviceGetAttribute(&bus, cudaDevAttrGlobalMemoryBusWidth, dev);
+#endif
+            cudaDeviceGetAttribute(&sm, cudaDevAttrMultiProcessorCount, dev);
+            char pci[32] = {};
+            cudaDeviceGetPCIBusId(pci, sizeof pci, dev);
+            std::cerr << "DS41 gpu_bench dev=" << dev << " pci=" << pci << " sm=" << sm << " clock_MHz=" << clk / 1000 << " mem_clock_MHz=" << mclk / 1000
+                      << " bus_bits=" << bus << "\n";
+        };
+        // GPU time of `reps` calls of fn on (dev, stream), ms per call
+        auto gpu_ms = [&](int dev, cudaStream_t st, int reps, const std::function<void()>& fn) {
+            cudaSetDevice(dev);
+            cudaEvent_t a, b;
+            cudaEventCreate(&a);
+            cudaEventCreate(&b);
+            fn();
+            cudaStreamSynchronize(st);
+            cudaEventRecord(a, st);
+            for (int r = 0; r < reps; ++r) fn();
+            cudaEventRecord(b, st);
+            cudaEventSynchronize(b);
+            float ms = 0;
+            cudaEventElapsedTime(&ms, a, b);
+            cudaEventDestroy(a);
+            cudaEventDestroy(b);
+            cudaSetDevice(0);
+            return ms / reps;
+        };
+        std::vector<int> devs{0};
+        if (peer_) devs.push_back(peer_->dev);
+        for (int dev : devs) {
+            attrs(dev);
+            cudaSetDevice(dev);
+            cudaStream_t st;
+            ck(cudaStreamCreateWithFlags(&st, cudaStreamNonBlocking), "bench stream");
+            try {   // raw device copy (64 MiB: the VRAM is full of experts)
+                const size_t n = size_t(64) << 20;
+                Dev a(n), b(n);
+                const double ms = gpu_ms(dev, st, 50, [&] { cudaMemcpyAsync(b.p, a.p, n, cudaMemcpyDeviceToDevice, st); });
+                std::cerr << "DS41 gpu_bench dev=" << dev << " d2d_GBps=" << 2.0 * n / (ms * 1e-3) / 1e9 << "\n";
+            } catch (const std::exception& e) {
+                std::cerr << "DS41 gpu_bench dev=" << dev << " d2d skipped: " << e.what() << "\n";
+            }
+            cudaSetDevice(dev);
+            // one resident expert's gate rows: native_mmvq at 1 and 6 columns
+            const uint8_t* w = nullptr;
+            if (dev == 0) {
+                const int S = n_stream_[size_t(l)];
+                if (int(order_[size_t(l)].size()) > S) w = res0_base_[size_t(l)];
+            } else {
+                w = peer_->base[size_t(l)];
+            }
+            if (w) {
+                Dev xq(k::native_q8_1_bytes(c.hidden, 8)), y(size_t(8) * c.ff * 4), x(size_t(8) * c.hidden * 4);
+                cudaMemset(x.p, 0, x.bytes);
+                k::native_quantize_q8_1(x.f(), xq.p, c.hidden, 8, st);
+                for (int nc : {1, 6}) {
+                    const double ms = gpu_ms(dev, st, 200, [&] { k::native_mmvq(L.f.gu_type, w, xq.p, y.f(), c.hidden, c.ff, nc, st); });
+                    std::cerr << "DS41 gpu_bench dev=" << dev << " gate_gemv cols=" << nc << " us=" << ms * 1e3 << " GBps="
+                              << double(L.f.gu_row) * c.ff / (ms * 1e-3) / 1e9 << "\n";
+                }
+            }
+            cudaSetDevice(0);
+            cudaStreamDestroy(st);
+        }
+        // the decode paths on synthetic routes: `routes` of T x K route slots, each to a distinct expert resident on the GPU
+        std::vector<int> e0, e1;
+        for (int e = 0; e < c.experts; ++e) {
+            if (where_[size_t(l)][size_t(e)] == 1) e0.push_back(e);
+            if (where_[size_t(l)][size_t(e)] == 2) e1.push_back(e);
+        }
+        std::cerr << "DS41 gpu_bench layer=" << l << " resident gpu0=" << e0.size() << " gpu1=" << e1.size() << "\n";
+        ck(cudaMemsetAsync(xn_.p, 0, size_t(T) * c.hidden * 4, stream_), "bench x");
+        std::fill(pinned_[0], pinned_[0] + size_t(T) * c.hidden, 0.0f);
+        ck(cudaStreamSynchronize(stream_), "bench");
+        const bool timing0 = peer_ ? peer_->timing : false;
+        if (peer_) peer_->timing = true;
+        for (int routes : {4, 8, 16, 36}) {
+            std::vector<int> ids(size_t(T) * K, -1), ids1(size_t(T) * K, -1);
+            std::vector<float> wts(size_t(T) * K, 0.1f);
+            for (int r = 0; r < routes && r < T * K; ++r) {
+                if (!e0.empty()) ids[size_t(r)] = e0[size_t(r * 7) % e0.size()];
+                if (!e1.empty()) ids1[size_t(r)] = e1[size_t(r * 7) % e1.size()];
+            }
+            tokens_ = T;
+            auto host_ms = [&](int reps, const std::function<void()>& fn) {
+                fn();
+                const auto t0 = std::chrono::steady_clock::now();
+                for (int r = 0; r < reps; ++r) fn();
+                return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() * 1e3 / reps;
+            };
+            const int reps = 40;
+            std::cerr << "DS41 gpu_bench routes=" << routes;
+            if (!e0.empty() && !res0_base_.empty()) {
+                const double g = gpu_ms(0, stream_, reps, [&] { resident_mmq(l, T, K, ids.data(), wts.data()); });
+                const double h = host_ms(reps, [&] { resident_mmq(l, T, K, ids.data(), wts.data()); ck(cudaStreamSynchronize(stream_), "b"); });
+                std::cerr << " gpu0_mmq_ms=" << g << " (host " << h << ")";
+                std::vector<int> gi;
+                std::vector<float> gw;
+                const double c0 = gpu_ms(0, stream_, reps, [&] {
+                    for (int i = 0; i < T; ++i) {
+                        int ii[16], n = 0;
+                        float ww[16];
+                        for (int k2 = 0; k2 < K; ++k2) if (ids[size_t(i) * K + k2] >= 0) { ii[n] = ids[size_t(i) * K + k2]; ww[n] = 0.1f; ++n; }
+                        if (n) gpu_experts(l, i, ii, ww, n);
+                    }
+                });
+                std::cerr << " gpu0_gemv_ms=" << c0;
+                if (k::native_expert_supported(L.f.gu_type, L.f.d_type, c.hidden, c.ff) && fl_ == c.ff) {
+                    std::map<int, std::vector<std::pair<int, float>>> by;
+                    for (int i = 0; i < T * K; ++i) if (ids[size_t(i)] >= 0) by[ids[size_t(i)]].push_back({i / K, 0.1f});
+                    std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>> groups;
+                    for (auto& [e, r] : by) groups.push_back({slots_[size_t(slot_[size_t(l)][size_t(e)])].p, r});
+                    const double gg = gpu_ms(0, stream_, reps, [&] {
+                        grouped0_.run(L.f.gu_type, L.f.d_type, c.hidden, c.ff, c.clamp[size_t(l)], groups, xn_.f(), T, g_sum_.f(), stream_);
+                    });
+                    std::cerr << " gpu0_grouped_ms=" << gg;
+                }
+            }
+            if (peer_ && !e1.empty()) {
+                for (int mode = 0; mode < 3; ++mode) {
+                    const double g0 = peer_->gpu_ms;
+                    const double h = host_ms(reps, [&] {
+                        const bool ran = mode == 1 ? peer_->prefill(l, T, K, ids1.data(), wts.data(), pinned_[0])
+                                       : mode == 2 ? peer_->grouped(l, T, K, ids1.data(), wts.data(), pinned_[0])
+                                                   : peer_->decode(l, T, K, ids1.data(), wts.data(), pinned_[0]);
+                        if (ran) peer_->collect();
+                    });
+                    std::cerr << " gpu1_" << (mode == 1 ? "mmq" : mode == 2 ? "grouped" : "gemv") << "_ms=" << (peer_->gpu_ms - g0) / (reps + 1) << " (host " << h << ")";
+                }
+            }
+            std::cerr << "\n";
+        }
+        if (peer_) peer_->timing = timing0;
+    }
     int chunk() const { return chunk_; }
 
     /// Comparison hooks for --check (single-token passes only): (name, layer, device pointer, floats) / a host pointer.
@@ -3974,22 +4127,60 @@ private:
             mx = std::max(mx, int(tok[size_t(q)].size()));
         }
         hb[R] = at;
+        static const bool compact = std::getenv("STRATA_DS41_MMQ_COMPACT") && std::string(std::getenv("STRATA_DS41_MMQ_COMPACT")) == "1";
         ck(cudaMemcpyAsync(dq_idx_.p, hidx, size_t(rows) * 4, cudaMemcpyHostToDevice, stream_), "dq rows");
         ck(cudaMemcpyAsync(dq_w_.p, hw, size_t(rows) * 4, cudaMemcpyHostToDevice, stream_), "dq weights");
         ck(cudaMemcpyAsync(dq_bound_.p, hb, size_t(R + 1) * 4, cudaMemcpyHostToDevice, stream_), "dq bounds");
         const size_t g = L.f.gu_row * size_t(c.ff), stride = res0_stride_[size_t(l)];
-        mq::quantize(xn_.f(), dq_idx_.i(), dq_xq_.p, L.f.gu_type, c.hidden, c.hidden, rows, stream_);
-        mq::Product gu;
-        gu.w = res0_base_[size_t(l)]; gu.type = L.f.gu_type; gu.w_rows = 2 * c.ff; gu.w_cols = c.hidden; gu.expert_bytes = stride;
-        gu.n = R; gu.xq = dq_xq_.p; gu.bounds = dq_bound_.i(); gu.ids = dq_iota_.i(); gu.total_rows = rows;
-        gu.max_rows = mx; gu.dst = dq_gu_.f(); gu.ld_dst = 2 * c.ff;
-        mmq_->run(gu, stream_);
+        // the products: one over every resident expert, or (MMQ_COMPACT) one per run of experts with rows. A run's rows
+        // are the contiguous block [hb[q0], hb[q1]); its activations are quantized on their own (the MMQ layout is
+        // blocked by K over all rows), its bounds relative to it (uploaded after the absolute ones)
+        std::vector<std::pair<int, int>> runs;
+        if (compact) {
+            for (int q = 0; q < R;) {
+                if (hb[q + 1] == hb[q]) { ++q; continue; }
+                int q1 = q;
+                while (q1 < R && hb[q1 + 1] > hb[q1]) ++q1;
+                runs.push_back({q, q1});
+                q = q1;
+            }
+            int* rb = hb + R + 1;
+            int at2 = 0;
+            for (auto [q0, q1] : runs) for (int q = q0; q <= q1; ++q) rb[at2++] = hb[q] - hb[q0];
+            if (R + 1 + at2 <= c.experts + 8) ck(cudaMemcpyAsync(dq_bound_.i() + R + 1, rb, size_t(at2) * 4, cudaMemcpyHostToDevice, stream_), "dq run bounds");
+            else runs.clear();
+        }
+        const bool whole = runs.empty();
+        if (whole) runs.push_back({0, R});
+        auto run_products = [&](bool down) {
+            int boff = R + 1;
+            for (auto [q0, q1] : runs) {
+                const int r0 = whole ? 0 : hb[q0], nrows = whole ? rows : hb[q1] - hb[q0];
+                int rmx = mx;
+                if (!whole) { rmx = 0; for (int q = q0; q < q1; ++q) rmx = std::max(rmx, hb[q + 1] - hb[q]); }
+                mq::Product pr;
+                pr.type = down ? L.f.d_type : L.f.gu_type;
+                pr.w = res0_base_[size_t(l)] + size_t(q0) * stride + (down ? 2 * g : 0);
+                pr.w_rows = down ? c.hidden : 2 * c.ff;
+                pr.w_cols = down ? c.ff : c.hidden;
+                pr.expert_bytes = stride;
+                pr.n = q1 - q0;
+                if (down) mq::quantize(dq_hf_.f(size_t(r0) * c.ff), nullptr, dq_hq_.p, L.f.d_type, c.ff, c.ff, nrows, stream_);
+                else mq::quantize(xn_.f(), dq_idx_.i() + r0, dq_xq_.p, L.f.gu_type, c.hidden, c.hidden, nrows, stream_);
+                pr.xq = down ? dq_hq_.p : dq_xq_.p;
+                pr.bounds = whole ? dq_bound_.i() : dq_bound_.i() + boff;
+                pr.ids = dq_iota_.i();
+                pr.total_rows = nrows;
+                pr.max_rows = rmx;
+                pr.dst = down ? dq_dout_.f(size_t(r0) * c.hidden) : dq_gu_.f(size_t(r0) * 2 * c.ff);
+                pr.ld_dst = down ? c.hidden : 2 * c.ff;
+                mmq_->run(pr, stream_);
+                boff += q1 - q0 + 1;
+            }
+        };
+        run_products(false);
         mq::swiglu(dq_gu_.f(), dq_hf_.f(), rows, c.ff, false, stream_, c.clamp[size_t(l)]);
-        mq::quantize(dq_hf_.f(), nullptr, dq_hq_.p, L.f.d_type, c.ff, c.ff, rows, stream_);
-        mq::Product dn = gu;
-        dn.w = res0_base_[size_t(l)] + 2 * g; dn.type = L.f.d_type; dn.w_rows = c.hidden; dn.w_cols = c.ff; dn.xq = dq_hq_.p;
-        dn.dst = dq_dout_.f(); dn.ld_dst = c.hidden;
-        mmq_->run(dn, stream_);
+        run_products(true);
         k::ds41_scatter_axpy(dq_dout_.f(), dq_idx_.i(), dq_w_.f(), rows, c.hidden, g_sum_.f(), stream_);
         return true;
     }
@@ -5602,6 +5793,7 @@ int run(int argc, char** argv) {
     const auto t1 = std::chrono::steady_clock::now();
     std::cerr << "DS41 load_s=" << std::chrono::duration<double>(t1 - t0).count() << " threads=" << threads << "\n";
     if (sessions) return run_sessions(d, prompt, sessions, slen, steps);
+    if (std::getenv("STRATA_DS41_GPU_BENCH")) { d.gpu_bench(); return 0; }
     // --check: every observed tensor of every prompt position against the dump's s<pos>/<name>-<layer>.bin
     int position = 0;
     double worst = 0, kl_sum = 0;
