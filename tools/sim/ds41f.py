@@ -30,7 +30,7 @@ GIB = 2 ** 30
 
 # ggml block sizes not in model.BLOCK_BYTES (elements per block, bytes per block); MXFP4 as released: 32 FP4 + E8M0.
 BLOCK_BYTES = dict(model.BLOCK_BYTES, **{"IQ1_S": (256, 50), "IQ1_M": (256, 56), "IQ2_XXS": (256, 66), "IQ2_S": (256, 82),
-                                        "IQ3_S": (256, 110), "MXFP4": (32, 17), "FP8": (1, 1)})
+                                        "IQ3_S": (256, 110), "IQ4_NL": (32, 18), "MXFP4": (32, 17), "FP8": (1, 1)})
 
 
 def tensor_bytes(elements, fmt):
@@ -801,7 +801,12 @@ class V100Hw:
     draft_ms: float = 6.6             # DSpark draft less its router syncs: Q8_0 trunk, device Markov chain (measured 14.5-15.9 whole)
     draft_route_ms: float = 8.4       # the draft's per-layer host syncs for routing (0 with DSPARK_GPU_ROUTE)
     lane_gbps_per_core: float = 5.0   # the IQ2_XXS CPU kernel's codebook ceiling (measured 3.9 in decode): the lane cannot
-                                      # be asked to go below 9 MB x experts / (36 cores x this)
+                                      # be asked to go below lane_mb x experts / (36 cores x this)
+    lane_mb: float = 9.0              # the lane's bytes per expert evaluation (IQ2_XXSE4; other packs scale it and cpu_expert_ms
+                                      # by their bytes-weighted expert size over 9.95 MB, less a per-format kernel efficiency)
+    prefill_ms_token: float = 2.05    # a streamed prompt pass: MMQ + dense per token (fit to IQ2_XXSE4 4K 389 / 8K 412 tok/s with
+    h2d_gbps: float = 24.0            # the RAM experts uploaded once per pass over both GPUs' links, half of it overlapped)
+    upload_overlap: float = 0.5
     inject_ms: float = 0.4            # the drafter's keys of the accepted positions
     host_ms: float = 1.5              # per pass: logits download, argmax (+ 0.7 ms per token, in token_ms)
     engram_iops: float = 800.0        # effective random 4 KiB Lustre reads/s for Engram misses (raw buffered: ~1,550;
@@ -817,10 +822,48 @@ class V100Hw:
     topk_gelem_s: float = 10.0        # long context: top-k selection, elements per second
 
 
-V100_PACKS = {   # Engram tables (GiB) per pack; the experts are the same IQ2_XXS / Q2_K in all three
-    "IQ2_XXSE4": (51.5, 51.5),
-    "IQ2_XXSE43": (51.5, 39.3),
-    "IQ2_XXSE3": (39.3, 39.3),
+@dataclasses.dataclass(frozen=True)
+class V100Pack:
+    """A pack on the V100 runner: its Engram tables and routed experts in bytes (the per-layer formats from a census)."""
+    name: str
+    table_gib: tuple                  # the two Engram tables (GiB)
+    expert_gib: float = 142.4         # all routed experts
+    expert_mb: float = 9.95           # bytes-weighted mean expert (MB; IQ2_XXS gate/up + Q2_K down)
+    layers: tuple = ()                # per layer (gate_fmt, down_fmt, expert_bytes)
+    description: str = ""
+
+    def lane_mb_eff(self, lane_eff=None):
+        """The mean expert's bytes at the IQ2_XXS kernel's rate: a layer's bytes over its formats' efficiency (a dict
+        format -> rate relative to IQ2_XXS; 1.0 where unknown), gate/up and down weighted by their bytes."""
+        if not self.layers:
+            return self.expert_mb
+        eff = lane_eff or {}
+        tot = 0.0
+        for gate, down, nbytes in self.layers:
+            gu = 2 * tensor_bytes(GEOMETRY.hidden * GEOMETRY.expert_ff, gate)
+            d = nbytes - gu
+            tot += gu / eff.get(gate, 1.0) + d / eff.get(down, 1.0)
+        return tot / len(self.layers) / 1e6
+
+
+def v100_pack_from_census(path, name, table_gib, description=""):
+    """A V100Pack from tools/sim/data/ds41f-census-*.json (per layer gate/up/down formats and bytes; see tools/gguf_reader.py)."""
+    import json
+    d = json.loads(pathlib.Path(path).read_text())
+    layers = []
+    for l in sorted(d["layers"], key=int):
+        t = d["layers"][l]
+        layers.append((t["gate"]["format"], t["down"]["format"], (t["gate"]["bytes"] + t["up"]["bytes"] + t["down"]["bytes"]) / 384))
+    total = sum(b for _, _, b in layers) * 384
+    return V100Pack(name, table_gib, total / GIB, total / len(layers) / 384 / 1e6, tuple(layers), description)
+
+
+V100_PACKS = {   # the experts are the same IQ2_XXS / Q2_K in the first three; GSQ-RCO's differ per layer (IQ1_M / IQ2_XXS / IQ2_XS)
+    "IQ2_XXSE4": V100Pack("IQ2_XXSE4", (51.5, 51.5), description="Engram Q4_K, KL 0.289"),
+    "IQ2_XXSE43": V100Pack("IQ2_XXSE43", (51.5, 39.3), description="layer-14 table Q3_K, KL 0.307"),
+    "IQ2_XXSE3": V100Pack("IQ2_XXSE3", (39.3, 39.3), description="Engram Q3_K, KL 0.314"),
+    "GSQ-IQ2_XXS": v100_pack_from_census(DATA / "ds41f-census-gsq-iq2xxs.json", "GSQ-IQ2_XXS", (51.5, 51.5),
+                                         "ISTA-DASLab GSQ-RCO 2.00 bpw, Engram IQ4_NL"),
 }
 KV_BYTES = dict(fp32=6400, fp16=3200, q8=1700)   # per token: 640-float rows, layers 2/8/14 one per 2 positions, 20 one each
 
@@ -840,10 +883,14 @@ class V100Plan:
     index_tc: bool = False            # FP16 tensor-core index scoring
     engram_hit1: float = -1.0         # table 1's RAM hit fraction (-1: its leading-rows share; a frequency-ranked row
                                       # cache, STRATA_DS41_ENGRAM_ROWS, reaches more at the same bytes)
+    lane_eff: dict = dataclasses.field(default_factory=dict)   # CPU lane rate per expert format relative to IQ2_XXS
     set: dict = dataclasses.field(default_factory=dict)   # V100Hw overrides
 
     def hw(self):
-        h = dataclasses.replace(V100Hw(), table_gib=V100_PACKS[self.pack])
+        pk = V100_PACKS[self.pack]
+        scale = pk.lane_mb_eff(self.lane_eff) / 9.95   # the fit's IQ2_XXSE4 expert
+        h = dataclasses.replace(V100Hw(), table_gib=pk.table_gib, expert_gib=pk.expert_gib, lane_mb=9.0 * scale,
+                                cpu_expert_ms=0.06 * scale)
         for k, v in self.set.items():
             setattr(h, k, v)
         return h
@@ -862,7 +909,7 @@ def v100_decode(vp):
     per = 1 + vp.drafted if vp.spec else 1.0          # tokens of one session in a pass
     T = per * vp.sessions
     cpu = 40 * T * 6 * (1 - hit)
-    lane_floor = cpu * 9e-3 / (36 * h.lane_gbps_per_core) * 1e3 * 0.5   # GB over the cores' ceiling, half overlapped as the fit's
+    lane_floor = cpu * h.lane_mb * 1e-3 / (36 * h.lane_gbps_per_core) * 1e3 * 0.5   # GB over the cores' ceiling, half overlapped as the fit's
     dense = h.pass_ms + h.token_ms * T + max(h.cpu_expert_ms * cpu, lane_floor) + h.host_ms
     dense += h.peer_wait_ms + h.peer_wait_token_ms * (T - 1)
     # long context: every token's 8 index layers score 3 pos/2 + 5 pos rows of 128-dim keys, then a top-k over them
@@ -881,6 +928,33 @@ def v100_decode(vp):
     tokens = (1 + vp.acceptance * vp.drafted if vp.spec else 1.0) * vp.sessions
     return dict(tok_s=tokens / step * 1e3, step_ms=step, draft_ms=draft, dense_ms=dense, engram_ms=engram, index_ms=index_ms,
                 cpu_experts=cpu, hit=hit, tokens_per_step=tokens, kv_gib=kv_gib, per_session_tok_s=tokens / step * 1e3 / vp.sessions)
+
+
+def v100_prefill(vp, prompt):
+    """tok/s of a streamed prompt pass (STRATA_DS41_RAM_PINNED + PEER_STREAM): the RAM experts uploaded once over both
+    links, partly under the per-token MMQ and dense work; a crude two-point fit, see V100Hw."""
+    h = vp.hw()
+    resident = h.gpu_expert_gib + (0.0 if vp.spec or vp.drafter_on_gpu else 7.9) + vp.extra_gpu_gib
+    upload_s = max(0.0, h.expert_gib - resident) * GIB / (h.h2d_gbps * 1e9)
+    pass_s = upload_s * (1 - h.upload_overlap) + prompt * h.prefill_ms_token * 1e-3
+    return dict(tok_s=prompt / pass_s, pass_s=pass_s, upload_s=upload_s)
+
+
+def v100_packs_compare(packs=("IQ2_XXSE4", "GSQ-IQ2_XXS"), lane_effs=({}, {"IQ1_M": 0.6})):
+    """(label, decode wiki600, decode code600, decode 106K q8, prefill 4K, prefill 8K) per pack and lane-rate hypothesis,
+    with Engram RAM at 76 GiB and at the RAM the smaller experts free (+ expert GiB saved vs IQ2_XXSE4)."""
+    out = []
+    e4 = V100_PACKS["IQ2_XXSE4"].expert_gib
+    for name in packs:
+        pk = V100_PACKS[name]
+        for eff in (lane_effs if pk.layers else ({},)):
+            for egib in sorted({76.0, min(103.0, 76.0 + (e4 - pk.expert_gib))}):
+                r = lambda **kw: V100Plan(**dict(V100_BASE, pack=name, engram_gib=egib, lane_eff=eff, **kw))   # noqa: E731
+                label = f"{name} Engram {egib:.0f} GiB" + (f" lane {eff}" if eff else "")
+                out.append((label, v100_decode(r())["tok_s"], v100_decode(r(drafted=4.2, acceptance=0.65))["tok_s"],
+                            v100_decode(r(context=106000, kv="q8", index_tc=True, drafted=1.7, acceptance=0.6))["tok_s"],
+                            v100_prefill(r(), 4096)["tok_s"], v100_prefill(r(), 8192)["tok_s"]))
+    return out
 
 
 V100_BASE = dict(pack="IQ2_XXSE4", engram_gib=76.0, spec=True, drafted=2.6, acceptance=0.68)

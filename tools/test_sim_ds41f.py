@@ -191,6 +191,26 @@ class V100Test(unittest.TestCase):
         plain = ds41f.v100_decode(ds41f.V100Plan(spec=False, drafter_on_gpu=False))
         self.assertGreater(plain["hit"], base["hit"])                     # the drafter's VRAM costs resident experts
 
+    def test_gsq_pack(self):
+        pk = ds41f.V100_PACKS["GSQ-IQ2_XXS"]
+        self.assertEqual(len(pk.layers), 40)
+        self.assertAlmostEqual(pk.expert_gib, 123.0, delta=0.2)            # 132.07 GB of IQ1_M / IQ2_XXS / IQ2_XS experts
+        self.assertAlmostEqual(pk.expert_mb, 8.60, delta=0.02)
+        self.assertGreater(pk.lane_mb_eff({"IQ1_M": 0.6}), pk.lane_mb_eff())
+        e4 = ds41f.V100_PACKS["IQ2_XXSE4"]
+        self.assertAlmostEqual(e4.lane_mb_eff(), 9.95)                      # the fit's reference expert: no scaling
+        base = ds41f.v100_decode(ds41f.V100Plan())
+        gsq = ds41f.v100_decode(ds41f.V100Plan(pack="GSQ-IQ2_XXS"))
+        self.assertGreater(gsq["hit"], base["hit"])                        # fewer expert bytes: more of them resident
+        self.assertGreater(gsq["tok_s"], base["tok_s"])
+        slow = ds41f.v100_decode(ds41f.V100Plan(pack="GSQ-IQ2_XXS", lane_eff={"IQ1_M": 0.3}))
+        self.assertLess(slow["tok_s"], gsq["tok_s"])
+        p4 = ds41f.v100_prefill(ds41f.V100Plan(), 4096)["tok_s"]
+        p8 = ds41f.v100_prefill(ds41f.V100Plan(), 8192)["tok_s"]
+        self.assertAlmostEqual(p4, 389, delta=20)                           # the two measured IQ2_XXSE4 points
+        self.assertAlmostEqual(p8, 412, delta=25)
+        self.assertEqual(len(ds41f.v100_packs_compare()), 5)
+
     def test_sessions_and_context(self):
         one = ds41f.v100_decode(ds41f.V100Plan(spec=False))
         four = ds41f.v100_decode(ds41f.V100Plan(spec=False, sessions=4))

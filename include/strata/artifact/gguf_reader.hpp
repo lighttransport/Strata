@@ -217,6 +217,19 @@ inline bool block_geometry(uint32_t t, int& elems, int& bytes) {
         elems = 1;
         bytes = 1;
         return true;
+    case 25:   // I16
+        elems = 1;
+        bytes = 2;
+        return true;
+    case 26:   // I32 (DeepSeek-V4.1's Engram token map)
+        elems = 1;
+        bytes = 4;
+        return true;
+    case 27:   // I64 (its Engram hash multipliers, primes, offsets)
+    case 28:   // F64
+        elems = 1;
+        bytes = 8;
+        return true;
     case 40:   // NVFP4: 64 values = 4 UE4M3 sub-block scales + 32 bytes of E2M1 codes
         elems = 64;
         bytes = 36;

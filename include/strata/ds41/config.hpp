@@ -8,6 +8,10 @@
 // Also reads PR #28696's files (llama.cpp ds41 branch; same architecture name): no kv/index source keys - the source
 // layers are those that carry the compressor / indexer tensors - and `engram.*` keys with one table per Engram layer
 // (blk.L.engram_embd) and a pad id already through the token map.
+// And the GSQ-RCO files (ISTA-DASLab, llama.cpp of 2026-10): `engram.layer_ids` with the hash tables as tensors
+// (engram_multipliers / engram_primes / engram_offsets / engram_token_map .weight), `engram_*` scalar keys, the tables
+// in a separate Engram GGUF (`engram.file`, merged by ModelArtifact), and the candidate-block keys as
+// `attention.candidate_*`.
 #pragma once
 
 #include "strata/artifact/gguf_reader.hpp"
@@ -15,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <functional>
 #include <stdexcept>
@@ -55,8 +60,10 @@ struct Config {
     }
     const Rope& rope(int layer) const { return ratio[size_t(layer)] ? rope_compressed : rope_plain; }
 
-    /// has(name): whether the artifact holds a tensor (#28696 files: the source layers are found by their tensors).
-    static Config read(const GgufFile& file, const core::ModelDescriptor& m, const std::function<bool(const std::string&)>& has = {}) {
+    /// has(name): whether the artifact holds a tensor (#28696 files: the source layers are found by their tensors);
+    /// ints(name): an integer tensor's values (the GSQ-RCO files' Engram hash tables).
+    static Config read(const GgufFile& file, const core::ModelDescriptor& m, const std::function<bool(const std::string&)>& has = {},
+                       const std::function<std::vector<int64_t>(const std::string&)>& ints = {}) {
         const std::string p = "deepseek41.";
         auto get = [&](const std::string& k) -> const MetaValue& {
             const auto* v = file.get(p + k);
@@ -126,10 +133,19 @@ struct Config {
             c.kv_src[size_t(l)] = last_kv;
             c.topk_src[size_t(l)] = last_idx;
         }
-        if (const auto* v = file.get(p + "attention.indexer.candidate_source_layer")) {
+        // STRATA_DS41_NO_CANDIDATES=1: ignore the candidate-block keys (every row stays a top-k candidate), for A/B runs
+        const bool no_cand = std::getenv("STRATA_DS41_NO_CANDIDATES") && std::string(std::getenv("STRATA_DS41_NO_CANDIDATES")) == "1";
+        if (no_cand) {
+        } else if (const auto* v = file.get(p + "attention.indexer.candidate_source_layer")) {
             c.candidate_source = int(int64_t(v->u));
             c.candidate_blocks = int(integer("attention.indexer.candidate_top_k_blocks"));
             c.candidate_block = int(integer("attention.indexer.candidate_block_size"));
+        } else if (const auto* v2 = file.get(p + "attention.candidate_source_layer_id")) {
+            c.candidate_source = int(int64_t(v2->u));
+            c.candidate_blocks = int(integer("attention.candidate_topk_blocks"));
+            c.candidate_block = int(integer("attention.candidate_block_size"));
+        }
+        if (c.candidate_source >= 0) {
             if (c.candidate_source < 0 || c.candidate_source >= c.layers || c.topk_src[size_t(c.candidate_source)] != c.candidate_source ||
                 c.candidate_blocks < 1 || c.candidate_block < 1)
                 throw std::runtime_error("ds41: invalid candidate selection");
@@ -162,6 +178,30 @@ struct Config {
             const size_t n = c.engram_layers.size(), cols = size_t(c.engram_cols());
             if (c.ngram < 2 || c.engram_heads < 1 || c.engram_dim < 1 || c.multipliers.size() != n * size_t(c.ngram) ||
                 c.primes.size() != n * cols || c.offsets.size() != n * cols || size_t(c.engram_pad) >= c.token_map.size())
+                throw std::runtime_error("ds41: inconsistent Engram metadata");
+            for (size_t i = 0; i < n * cols; ++i)
+                if (c.primes[i] < 2 || c.offsets[i] + c.primes[i] > uint64_t(INT32_MAX))
+                    throw std::runtime_error("ds41: Engram bucket range out of range");
+        } else if (file.get(p + "engram.layer_ids") && file.get(p + "engram_max_ngram_size")) {   // GSQ-RCO
+            for (uint64_t l : array("engram.layer_ids")) c.engram_layers.push_back(int(l));
+            c.ngram = int(integer("engram_max_ngram_size"));
+            c.engram_heads = int(integer("engram_n_heads"));
+            c.engram_dim = int(integer("engram_head_dim"));
+            c.engram_pad = integer("engram_pad_token_id");   // a vocabulary id (through the token map)
+            c.engram_per_layer = true;
+            if (!ints) throw std::runtime_error("ds41: the Engram hash tables are tensors, and no tensor reader was given");
+            auto u64 = [&](const char* n) {
+                std::vector<uint64_t> out;
+                for (int64_t x : ints(n)) out.push_back(uint64_t(x));
+                return out;
+            };
+            c.multipliers = u64("engram_multipliers.weight");
+            c.primes = u64("engram_primes.weight");
+            c.offsets = u64("engram_offsets.weight");
+            c.token_map = ints("engram_token_map.weight");
+            const size_t n = c.engram_layers.size(), cols = size_t(c.engram_cols());
+            if (c.ngram < 2 || c.engram_heads < 1 || c.engram_dim < 1 || c.multipliers.size() != n * size_t(c.ngram) ||
+                c.primes.size() != n * cols || c.offsets.size() != n * cols || c.engram_pad < 0 || size_t(c.engram_pad) >= c.token_map.size())
                 throw std::runtime_error("ds41: inconsistent Engram metadata");
             for (size_t i = 0; i < n * cols; ++i)
                 if (c.primes[i] < 2 || c.offsets[i] + c.primes[i] > uint64_t(INT32_MAX))

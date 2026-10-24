@@ -296,24 +296,8 @@ class ModelArtifact {
         } else
             paths.push_back(shard);
         uint64_t declared_tensors = 0;
-        for (size_t i = 0; i < paths.size(); ++i) {
-            auto file = std::make_unique<GgufFile>(paths[i].string());
-            if (i == 0) {
-                descriptor_ = ModelDescriptor::read(*file);
-                if (const auto *v = file->get("split.tensors.count"))
-                    declared_tensors = v->u;
-            }
-            if (paths.size() > 1) {
-                const auto *count = file->get("split.count");
-                const auto *number = file->get("split.no");
-                const auto *total = file->get("split.tensors.count");
-                if (!count || !number || !total || count->u != paths.size() || number->u != i ||
-                    total->u != declared_tensors)
-                    throw std::runtime_error("model: inconsistent split metadata in " + paths[i].string());
-            }
-            if (const auto *a = file->get("general.architecture"))
-                if ((a->s == "glm5-next" ? std::string("glm5next") : a->s) != descriptor_.architecture)
-                    throw std::runtime_error("model: shard architecture mismatch");
+        // every tensor of a file into the lookup, its geometry and payload bounds checked
+        auto add_file = [&](std::unique_ptr<GgufFile> file) {
             std::map<uint64_t, uint64_t> spans;
             for (const auto &t : file->tensors()) {
                 int block = 0, bytes = 0;
@@ -345,9 +329,41 @@ class ModelArtifact {
                 end = offset + length;
             }
             files_.push_back(std::move(file));
+        };
+        for (size_t i = 0; i < paths.size(); ++i) {
+            auto file = std::make_unique<GgufFile>(paths[i].string());
+            if (i == 0) {
+                descriptor_ = ModelDescriptor::read(*file);
+                if (const auto *v = file->get("split.tensors.count"))
+                    declared_tensors = v->u;
+            }
+            if (paths.size() > 1) {
+                const auto *count = file->get("split.count");
+                const auto *number = file->get("split.no");
+                const auto *total = file->get("split.tensors.count");
+                if (!count || !number || !total || count->u != paths.size() || number->u != i ||
+                    total->u != declared_tensors)
+                    throw std::runtime_error("model: inconsistent split metadata in " + paths[i].string());
+            }
+            if (const auto *a = file->get("general.architecture"))
+                if ((a->s == "glm5-next" ? std::string("glm5next") : a->s) != descriptor_.architecture)
+                    throw std::runtime_error("model: shard architecture mismatch");
+            add_file(std::move(file));
         }
         if (declared_tensors && tensors_.size() != declared_tensors)
             throw std::runtime_error("model: split tensor count mismatch");
+        // DeepSeek-V4.1 GSQ-RCO GGUFs keep the Engram tables in one shared file next to the backbone
+        // (`<arch>.engram.file`, architecture `<arch>-engram`): its tensors join the lookup
+        if (const auto *ef = files_.front()->get(descriptor_.architecture + ".engram.file")) {
+            const auto path = shard.parent_path() / ef->s;
+            if (!std::filesystem::exists(path))
+                throw std::runtime_error("model: the Engram file is not next to the backbone: " + path.string());
+            auto file = std::make_unique<GgufFile>(path.string());
+            const auto *a = file->get("general.architecture");
+            if (!a || a->s != descriptor_.architecture + "-engram")
+                throw std::runtime_error("model: the Engram file's architecture is not " + descriptor_.architecture + "-engram");
+            add_file(std::move(file));
+        }
         // A compact assembly contains the exact overlay bytes plus the base's
         // other tensors. Keep the same expert execution path without requiring
         // the large original GGUF on the deployment machine.

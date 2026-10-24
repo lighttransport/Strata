@@ -226,6 +226,7 @@ bool supported(int t) {
         case GGML_TYPE_IQ3_XXS: case GGML_TYPE_IQ3_S: case GGML_TYPE_IQ4_NL: case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_Q8_0:   // the draft layer's dense matrices (E-9)
         case GGML_TYPE_IQ1_S:  // DeepSeek-V4.1's UD-IQ1_S experts
+        case GGML_TYPE_IQ1_M:  // the GSQ-RCO DeepSeek-V4.1 experts (Q6_K's tile; third_party/ggml/patches/apply_mmq_iq1m.py)
             return true;
 #ifdef STRATA_MMQ_KQUANTS
         // Unsloth's UD-Q4/Q5/Q6_K_XL experts; on HIP also the dense GGUF projections (STRATA_DENSE_MMQ)
@@ -402,6 +403,7 @@ void Context::run(const Product& p, void* stream) {
 #endif
         case GGML_TYPE_IQ2_XXS: mul_mat_q_case<GGML_TYPE_IQ2_XXS>(ctx, a, s); break;
         case GGML_TYPE_IQ1_S: mul_mat_q_case<GGML_TYPE_IQ1_S>(ctx, a, s); break;
+        case GGML_TYPE_IQ1_M: mul_mat_q_case<GGML_TYPE_IQ1_M>(ctx, a, s); break;
         case GGML_TYPE_IQ2_XS: mul_mat_q_case<GGML_TYPE_IQ2_XS>(ctx, a, s); break;
         case GGML_TYPE_IQ2_S: mul_mat_q_case<GGML_TYPE_IQ2_S>(ctx, a, s); break;
         case GGML_TYPE_IQ3_XXS: mul_mat_q_case<GGML_TYPE_IQ3_XXS>(ctx, a, s); break;

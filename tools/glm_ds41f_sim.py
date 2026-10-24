@@ -227,6 +227,14 @@ def cmd_v100(args):
             d = ds41f.v100_decode(plan)
             print(f"{name:<56}{d['tok_s']:>7.1f}{d['step_ms']:>8.1f}{d['draft_ms']:>7.1f}{d['dense_ms']:>7.1f}{d['engram_ms']:>8.1f}{d['hit']:>7.3f}")
         print()
+    print("packs: decode (DSpark; wiki600 2.6 drafted / 0.68, code600 4.2 / 0.65, 106K Q8 KV) and streamed prefill (4K, 8K) tok/s")
+    print(f"{'pack':<52}{'wiki600':>8}{'code600':>8}{'106K':>7}{'pf 4K':>7}{'pf 8K':>7}")
+    for label, w, c, l, p4, p8 in ds41f.v100_packs_compare():
+        print(f"{label:<52}{w:>8.1f}{c:>8.1f}{l:>7.1f}{p4:>7.0f}{p8:>7.0f}")
+    for name in ("IQ2_XXSE4", "GSQ-IQ2_XXS"):
+        pk = ds41f.V100_PACKS[name]
+        print(f"  {name}: experts {pk.expert_gib:.1f} GiB, mean expert {pk.expert_mb:.2f} MB, lane-effective {pk.lane_mb_eff({'IQ1_M': 0.6}):.2f} MB at IQ1_M 0.6")
+    print()
     print("batched sessions, IQ2_XXSE4 (aggregate / per session tok/s)")
     for s, spec, d in ds41f.v100_sessions():
         print(f"  S={s:<3}{'DSpark' if spec else 'plain':<8}{d['tok_s']:>7.1f}{d['per_session_tok_s']:>7.1f}   step {d['step_ms']:.1f} ms")

@@ -157,6 +157,21 @@ std::vector<int> top_k(const float* v, int n, int k) {
     return idx;
 }
 
+// an I32 / I64 tensor's values (the GSQ-RCO files' Engram hash tables)
+std::vector<int64_t> tensor_ints(const core::ArtifactTensor& t) {
+    const size_t n = static_cast<size_t>(t.tensor->elements());
+    std::vector<int64_t> out(n);
+    if (t.tensor->type == 26) {
+        std::vector<int32_t> v(n);
+        std::memcpy(v.data(), t.data(), n * 4);
+        for (size_t i = 0; i < n; ++i) out[i] = v[i];
+    } else if (t.tensor->type == 27) {
+        std::memcpy(out.data(), t.data(), n * 8);
+    } else
+        throw std::runtime_error("ds41: " + t.tensor->name + " is not an integer tensor");
+    return out;
+}
+
 std::vector<float> to_float(int type, const uint8_t* src, int64_t n) {
     std::vector<float> out(static_cast<size_t>(n));
     if (type == GGML_TYPE_F32) std::memcpy(out.data(), src, size_t(n) * 4);
@@ -651,6 +666,12 @@ struct PeerGpu {
     Dev tab;   // idx | w | bounds of a call, one upload
     bool prefill(int l, int nt, int K, const int* ids, const float* wts, const float* z) {
         namespace mq = strata::prefill::mmq;
+        // a layer whose expert types MMQ lacks (IQ1_M without third_party/ggml/patches/apply_mmq_iq1m.py): GEMV chains
+        if (!mq::supported(gu_type[size_t(l)]) || !mq::supported(d_type[size_t(l)])) {
+            if (active && !spos.empty() && scount[size_t(l)] > 0)
+                throw std::runtime_error("ds41: the peer's streamed experts need MMQ for layer " + std::to_string(l) + "'s types");
+            return decode(l, nt, K, ids, wts, z);
+        }
         Guard g(dev);
         ensure(nt);
         const int E = int(pos[size_t(l)].size());
@@ -927,7 +948,7 @@ public:
     Decoder(const std::string& path, int context, int threads, int chunk = 0)
         : art_(path), cfg_(Config::read(*art_.metadata(), art_.descriptor(), [this](const std::string& n) {
               try { art_.at(n); return true; } catch (...) { return false; }
-          })), context_(context) {
+          }, [this](const std::string& n) { return tensor_ints(art_.at(n)); })), context_(context) {
         if (chunk > 0) chunk_ = chunk;
         const auto& c = cfg_;
         if (context_ < 1) throw std::invalid_argument("ds41: context must be positive");
@@ -5929,7 +5950,8 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
 
 int engram_profile_run(const std::string& model, const std::string& streams, const std::string& out) {
     core::ModelArtifact art(model);
-    const Config c = Config::read(*art.metadata(), art.descriptor(), [&](const std::string& n) { try { art.at(n); return true; } catch (...) { return false; } });
+    const Config c = Config::read(*art.metadata(), art.descriptor(), [&](const std::string& n) { try { art.at(n); return true; } catch (...) { return false; } },
+                                  [&](const std::string& n) { return tensor_ints(art.at(n)); });
     if (c.engram_layers.empty()) throw std::runtime_error("ds41: no Engram layers");
     // the distinct tables in Engram-layer order
     std::vector<std::string> names;
@@ -6018,8 +6040,16 @@ int run(int argc, char** argv) {
     // --engram-profile=OUT: no model weights; the Engram rows every position of the token streams (argv[2]: @file, or
     // several @file separated by ';') would read, counted per table and written ranked (STRATA_DS41_ENGRAM_ROWS)
     if (!engram_profile.empty()) return engram_profile_run(argv[1], argv[2], engram_profile);
-    const auto prompt = parse_ids(argv[2]);
-    if (prompt.empty()) throw std::invalid_argument("ds41: empty prompt");
+    // several prompts separated by ';' (each @file or text) run one after another from an empty sequence (their
+    // logits appended to --save-all-logits in turn); the generation continues the last one
+    std::vector<std::vector<int>> prompts;
+    {
+        std::stringstream pss(argv[2]);
+        for (std::string item; std::getline(pss, item, ';');)
+            if (!item.empty()) prompts.push_back(parse_ids(item));
+    }
+    if (prompts.empty() || prompts.back().empty()) throw std::invalid_argument("ds41: empty prompt");
+    const auto& prompt = prompts.back();
     // STRATA_DS41_SESSIONS=S: S sessions decoded together, session s's prompt the STRATA_DS41_SESSION_LEN (prompt / S)
     // tokens from s x that length (wrapping inside the prompt)
     const int sessions = std::getenv("STRATA_DS41_SESSIONS") ? std::max(0, std::atoi(std::getenv("STRATA_DS41_SESSIONS"))) : 0;
@@ -6123,12 +6153,15 @@ int run(int argc, char** argv) {
     // the prompt in chunks (one token at a time under --check, whose hooks compare single-token passes)
     const int pass = check_dir.empty() ? d.chunk() : 1;
     const size_t V = size_t(d.config().vocab);
-    for (size_t i = 0; i < prompt.size(); i += size_t(pass)) {
+    for (size_t pi = 0; pi < prompts.size(); ++pi) {
+    const auto& pr = prompts[pi];
+    if (pi) { d.reset_sequence(); std::cerr << "DS41 prompt " << pi + 1 << " of " << prompts.size() << " tokens=" << pr.size() << "\n"; }
+    for (size_t i = 0; i < pr.size(); i += size_t(pass)) {
         position = int(i);
-        const int n = int(std::min(prompt.size() - i, size_t(pass)));
+        const int n = int(std::min(pr.size() - i, size_t(pass)));
         const double copy0 = d.prof_[7];
         const auto c0 = std::chrono::steady_clock::now();
-        const auto& out = d.forward(prompt.data() + i, n, int(i), all_logits.is_open());
+        const auto& out = d.forward(pr.data() + i, n, int(i), all_logits.is_open());
         if (std::getenv("STRATA_DS41_CHUNK_LOG"))
             std::cerr << "DS41 chunk pos=" << i << " tokens=" << n << " s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - c0).count()
                       << " stage_copy_s=" << d.prof_[7] - copy0 << " gpu_to_router_s=" << d.prof_[1] << " experts_s=" << d.prof_[2]
@@ -6138,6 +6171,7 @@ int run(int argc, char** argv) {
                       << " ffn_host_s=" << d.ffn_host_s_ << " before_layers_s=" << d.before_loop_s_ << " layers_s=" << d.loop_s_ << "\n";
         if (all_logits) all_logits.write(reinterpret_cast<const char*>(out.data()), std::streamsize(out.size() * 4));
         last.assign(out.end() - std::ptrdiff_t(V), out.end());
+    }
     }
     const auto t2 = std::chrono::steady_clock::now();
     // the prompt's own profile, then the counters restart so the final profile is decode alone
