@@ -449,9 +449,12 @@ RTX 5060 Ti (CUDA build, sm_120). It reports `TpReady.ok = 2`.
   - TR16 computes only its gate/up rows, as two MMQ products, with h zero-padded to the full down rows, so its down
     tensors stay whole and pinned. It no longer fetches rows.
   - The producer uploads only the staged parts: uploading whole slots had pushed 121 GB per 4K pass over PCIe.
-- **Share 3/9.** 35.8 GB, held in the worker's anonymous memory, because `/dev/shm` is capped at 32 GB.
+- **Share 3/9.** 35.8 GB, held in the worker's anonymous memory, because `/dev/shm` was capped at 32 GB (52 GB since).
   - The rows are sent again on every run, in 67 s.
-  - 4/9 (47 GB) was OOM-killed at 42 GB of rows on the 62 GB B550, so the worker now keeps a 16 GiB reserve.
+  - 4/9 (47 GB) was killed at 42 GB of rows on the 62 GB B550 (by systemd-oomd, not the kernel), so the worker now
+    keeps a 16 GiB reserve.
+  - Share 5/9 (59.6 GiB) fits with `--rows=hugetlb` on a 2 MiB hugetlb pool, `kho=off`, swap off and systemd-oomd
+    masked: docs/MULTINODE_WORKER_MEMORY.md (measured 2026-10-25 with a probe, not yet with a decoder).
 
 | measured, GPU worker at 3/9 (TR16 load average 2-5) | TR16 + B550 |
 |---|---|
