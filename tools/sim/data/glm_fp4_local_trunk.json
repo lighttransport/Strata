@@ -1,0 +1,479 @@
+{
+ "schema": "strata.glm.fp4_local_trunk.v1",
+ "model": "nvidia/GLM-5.3-Flash-FP4-Local",
+ "index_sha256": "1981941b2fabb9271ae3a3cb76be6ea41927f730b6633471d3c147106703aeea",
+ "geometry": {
+  "layers": 45,
+  "hidden": 4096,
+  "heads": 64,
+  "experts": 288,
+  "top_k": 8,
+  "expert_ff": 2048,
+  "dense_ff": 12288,
+  "vocab": 154880,
+  "mla_layers": [
+   3,
+   7,
+   11,
+   15,
+   19,
+   23,
+   27,
+   31,
+   35,
+   39,
+   43
+  ],
+  "dense_layers": 3
+ },
+ "kinds": {
+  "dense": {
+   "layers": [
+    0,
+    1,
+    2
+   ],
+   "sublayers": {
+    "q_proj": {
+     "format": "MXFP8",
+     "rows": 8192,
+     "cols": 4096,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "k_proj": {
+     "format": "MXFP8",
+     "rows": 8192,
+     "cols": 4096,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "v_proj": {
+     "format": "MXFP8",
+     "rows": 8192,
+     "cols": 4096,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "o_proj": {
+     "format": "MXFP8",
+     "rows": 4096,
+     "cols": 8192,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "f_a_proj": {
+     "format": "BF16",
+     "rows": 128,
+     "cols": 4096,
+     "bytes": 1048576,
+     "split": "replicated"
+    },
+    "g_a_proj": {
+     "format": "BF16",
+     "rows": 128,
+     "cols": 4096,
+     "bytes": 1048576,
+     "split": "replicated"
+    },
+    "f_b_proj": {
+     "format": "BF16",
+     "rows": 8192,
+     "cols": 128,
+     "bytes": 2097152,
+     "split": "heads"
+    },
+    "g_b_proj": {
+     "format": "BF16",
+     "rows": 8192,
+     "cols": 128,
+     "bytes": 2097152,
+     "split": "heads"
+    },
+    "b_proj": {
+     "format": "BF16",
+     "rows": 64,
+     "cols": 4096,
+     "bytes": 524288,
+     "split": "heads"
+    },
+    "ffn_gate": {
+     "format": "MXFP8",
+     "rows": 12288,
+     "cols": 4096,
+     "bytes": 51904512,
+     "split": "rows"
+    },
+    "ffn_up": {
+     "format": "MXFP8",
+     "rows": 12288,
+     "cols": 4096,
+     "bytes": 51904512,
+     "split": "rows"
+    },
+    "ffn_down": {
+     "format": "MXFP8",
+     "rows": 4096,
+     "cols": 12288,
+     "bytes": 51904512,
+     "split": "cols"
+    },
+    "hc_attn_fn": {
+     "format": "BF16",
+     "rows": 24,
+     "cols": 16384,
+     "bytes": 786432,
+     "split": "replicated"
+    },
+    "hc_ffn_fn": {
+     "format": "BF16",
+     "rows": 24,
+     "cols": 16384,
+     "bytes": 786432,
+     "split": "replicated"
+    }
+   }
+  },
+  "kda": {
+   "layers": [
+    4,
+    5,
+    6,
+    8,
+    9,
+    10,
+    12,
+    13,
+    14,
+    16,
+    17,
+    18,
+    20,
+    21,
+    22,
+    24,
+    25,
+    26,
+    28,
+    29,
+    30,
+    32,
+    33,
+    34,
+    36,
+    37,
+    38,
+    40,
+    41,
+    42,
+    44
+   ],
+   "sublayers": {
+    "q_proj": {
+     "format": "MXFP8",
+     "rows": 8192,
+     "cols": 4096,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "k_proj": {
+     "format": "MXFP8",
+     "rows": 8192,
+     "cols": 4096,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "v_proj": {
+     "format": "MXFP8",
+     "rows": 8192,
+     "cols": 4096,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "o_proj": {
+     "format": "MXFP8",
+     "rows": 4096,
+     "cols": 8192,
+     "bytes": 34603008,
+     "split": "heads"
+    },
+    "f_a_proj": {
+     "format": "BF16",
+     "rows": 128,
+     "cols": 4096,
+     "bytes": 1048576,
+     "split": "replicated"
+    },
+    "g_a_proj": {
+     "format": "BF16",
+     "rows": 128,
+     "cols": 4096,
+     "bytes": 1048576,
+     "split": "replicated"
+    },
+    "f_b_proj": {
+     "format": "BF16",
+     "rows": 8192,
+     "cols": 128,
+     "bytes": 2097152,
+     "split": "heads"
+    },
+    "g_b_proj": {
+     "format": "BF16",
+     "rows": 8192,
+     "cols": 128,
+     "bytes": 2097152,
+     "split": "heads"
+    },
+    "b_proj": {
+     "format": "BF16",
+     "rows": 64,
+     "cols": 4096,
+     "bytes": 524288,
+     "split": "heads"
+    },
+    "router": {
+     "format": "BF16",
+     "rows": 288,
+     "cols": 4096,
+     "bytes": 2359296,
+     "split": "replicated"
+    },
+    "shared_gate": {
+     "format": "block_FP8",
+     "rows": 2048,
+     "cols": 4096,
+     "bytes": 8390656,
+     "split": "rows"
+    },
+    "shared_up": {
+     "format": "block_FP8",
+     "rows": 2048,
+     "cols": 4096,
+     "bytes": 8390656,
+     "split": "rows"
+    },
+    "shared_down": {
+     "format": "block_FP8",
+     "rows": 4096,
+     "cols": 2048,
+     "bytes": 8390656,
+     "split": "cols"
+    },
+    "hc_attn_fn": {
+     "format": "BF16",
+     "rows": 24,
+     "cols": 16384,
+     "bytes": 786432,
+     "split": "replicated"
+    },
+    "hc_ffn_fn": {
+     "format": "BF16",
+     "rows": 24,
+     "cols": 16384,
+     "bytes": 786432,
+     "split": "replicated"
+    }
+   }
+  },
+  "mla": {
+   "layers": [
+    3,
+    7,
+    11,
+    15,
+    19,
+    23,
+    27,
+    31,
+    35,
+    39,
+    43
+   ],
+   "sublayers": {
+    "q_a_proj": {
+     "format": "block_FP8",
+     "rows": 1536,
+     "cols": 4096,
+     "bytes": 6292992,
+     "split": "replicated"
+    },
+    "kv_a_proj": {
+     "format": "block_FP8",
+     "rows": 512,
+     "cols": 4096,
+     "bytes": 2097664,
+     "split": "replicated"
+    },
+    "q_b_proj": {
+     "format": "block_FP8",
+     "rows": 16384,
+     "cols": 1536,
+     "bytes": 25171968,
+     "split": "heads"
+    },
+    "kv_b_proj": {
+     "format": "BF16",
+     "rows": 32768,
+     "cols": 512,
+     "bytes": 33554432,
+     "split": "heads"
+    },
+    "o_proj": {
+     "format": "block_FP8",
+     "rows": 4096,
+     "cols": 16384,
+     "bytes": 67125248,
+     "split": "heads"
+    },
+    "indexer_wq_b": {
+     "format": "BF16",
+     "rows": 4096,
+     "cols": 1536,
+     "bytes": 12582912,
+     "split": "replicated"
+    },
+    "indexer_wk": {
+     "format": "BF16",
+     "rows": 128,
+     "cols": 4096,
+     "bytes": 1048576,
+     "split": "replicated"
+    },
+    "indexer_weights_proj": {
+     "format": "BF16",
+     "rows": 32,
+     "cols": 4096,
+     "bytes": 262144,
+     "split": "replicated"
+    },
+    "router": {
+     "format": "BF16",
+     "rows": 288,
+     "cols": 4096,
+     "bytes": 2359296,
+     "split": "replicated"
+    },
+    "shared_gate": {
+     "format": "block_FP8",
+     "rows": 2048,
+     "cols": 4096,
+     "bytes": 8390656,
+     "split": "rows"
+    },
+    "shared_up": {
+     "format": "block_FP8",
+     "rows": 2048,
+     "cols": 4096,
+     "bytes": 8390656,
+     "split": "rows"
+    },
+    "shared_down": {
+     "format": "block_FP8",
+     "rows": 4096,
+     "cols": 2048,
+     "bytes": 8390656,
+     "split": "cols"
+    },
+    "hc_attn_fn": {
+     "format": "BF16",
+     "rows": 24,
+     "cols": 16384,
+     "bytes": 786432,
+     "split": "replicated"
+    },
+    "hc_ffn_fn": {
+     "format": "BF16",
+     "rows": 24,
+     "cols": 16384,
+     "bytes": 786432,
+     "split": "replicated"
+    }
+   }
+  }
+ },
+ "extras_per_layer": {
+  "dense": {
+   "hc_attn_base": 96,
+   "hc_attn_scale": 12,
+   "hc_ffn_base": 96,
+   "hc_ffn_scale": 12,
+   "input_layernorm.weight": 8192,
+   "post_attention_layernorm.weight": 16384,
+   "self_attn.A_log": 256,
+   "self_attn.dt_bias": 32768,
+   "self_attn.k_conv1d.weight": 65536,
+   "self_attn.o_norm.weight": 256,
+   "self_attn.q_conv1d.weight": 65536,
+   "self_attn.v_conv1d.weight": 65536
+  },
+  "kda": {
+   "hc_attn_base": 96,
+   "hc_attn_scale": 12,
+   "hc_ffn_base": 96,
+   "hc_ffn_scale": 12,
+   "input_layernorm.weight": 8192,
+   "mlp.gate.e_score_correction_bias": 1152,
+   "post_attention_layernorm.weight": 16384,
+   "self_attn.A_log": 256,
+   "self_attn.dt_bias": 32768,
+   "self_attn.k_conv1d.weight": 65536,
+   "self_attn.o_norm.weight": 256,
+   "self_attn.q_conv1d.weight": 65536,
+   "self_attn.v_conv1d.weight": 65536
+  },
+  "mla": {
+   "hc_attn_base": 96,
+   "hc_attn_scale": 12,
+   "hc_ffn_base": 96,
+   "hc_ffn_scale": 12,
+   "input_layernorm.weight": 8192,
+   "mlp.gate.e_score_correction_bias": 1152,
+   "post_attention_layernorm.weight": 16384,
+   "self_attn.indexer.index_kpool_compress_ape": 1024,
+   "self_attn.indexer.index_kpool_compress_gate": 1048576,
+   "self_attn.indexer.k_norm.bias": 256,
+   "self_attn.indexer.k_norm.weight": 256,
+   "self_attn.kv_a_layernorm.weight": 1024,
+   "self_attn.q_a_layernorm.weight": 3072
+  }
+ },
+ "head": {
+  "format": "MXFP8",
+  "rows": 154880,
+  "cols": 4096,
+  "bytes": 654213120,
+  "split": "rows"
+ },
+ "embedding": {
+  "format": "BF16",
+  "rows": 154880,
+  "cols": 4096,
+  "bytes": 1268776960,
+  "split": "replicated"
+ },
+ "experts": {
+  "main": {
+   "experts": 12096,
+   "code_bytes": 152202903552,
+   "csf_bytes": 10321055136,
+   "plain_scale_bytes": 0,
+   "global_scale_bytes": 145152,
+   "checkpoint_bytes": 162524103840,
+   "expanded_bytes": 171228266496,
+   "expanded_bytes_per_expert": 14155776
+  },
+  "draft": {
+   "experts": 288,
+   "code_bytes": 3623878656,
+   "csf_bytes": 0,
+   "plain_scale_bytes": 452984832,
+   "global_scale_bytes": 3456,
+   "checkpoint_bytes": 4076866944,
+   "expanded_bytes": 4076863488,
+   "expanded_bytes_per_expert": 14155776
+  }
+ },
+ "draft_fixed_bytes": 224791168,
+ "main_fixed_matrix_bytes": 8261472256
+}
