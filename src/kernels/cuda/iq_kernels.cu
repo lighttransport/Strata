@@ -2586,12 +2586,14 @@ __global__ void __launch_bounds__(256) s26_down_l_kernel(const unsigned long lon
 // S26: swiglu_entries_kernel + quantize_q8_1_kernel in one launch (the same h expression, then the same block quantizer,
 // contraction off so the product cannot fuse into the first sum); h is still written (it is the scratch the old pair used)
 __global__ void s26_swiglu_q8_1_kernel(const float* __restrict__ gate, const float* __restrict__ up, float* __restrict__ h,
-                                       block_q8_1* __restrict__ y, long long n) {
+                                       block_q8_1* __restrict__ y, long long n, float lim = 0.0f) {
 #pragma clang fp contract(off)
     const long long i = (long long) blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;   // n is a multiple of 32: whole warps only
-    const float g = gate[i];
-    const float xi = (g / (1.0f + __expf(-g))) * up[i];
+    // lim > 0: DeepSeek-V4.1's SwiGLU clamp, as the other grouped paths (gate <= lim, |up| <= lim)
+    const float g = lim > 0 ? fminf(gate[i], lim) : gate[i];
+    const float uu = lim > 0 ? fmaxf(-lim, fminf(up[i], lim)) : up[i];
+    const float xi = (g / (1.0f + __expf(-g))) * uu;
     h[i] = xi;
     float amax = fabsf(xi), sum = xi;
 #pragma unroll
@@ -2747,7 +2749,46 @@ template<> struct S27<8> {   // Q8_0
     }
 };
 
-template<int TG, bool LX, int RPW, bool TS>
+// DeepSeek-V4.1's IQ2_XXSE4 experts (STRATA_EXPERT_V3=1): IQ2_XXS gate/up through its decode-once Split, and Q2_K
+// down as llama.cpp's vec_dot_q2_K_q8_1 per 32 weights (dp4a; the scale and min sums in floats - not bitwise equal to
+// Fmt<10>'s scalar loop, the same value to float rounding)
+template<> struct S27<16> {
+    using W = Split<16>::W;
+    __device__ static W load(const void* __restrict__ v, int kbx, int iqs) { return Split<16>::load(v, kbx, iqs); }
+    __device__ static float apply(const W& r, const block_q8_1* __restrict__ y, int iqs) { return Split<16>::apply(r, y, iqs); }
+};
+template<> struct S27<10> {   // Q2_K, one 32-weight sub-block (iqs 0..7)
+    struct W { int q[8]; int sc0, sc1, m0, m1; float d, dmin; };
+    __device__ static W load(const void* __restrict__ v, int kbx, int sub) {
+        const block_q2_K* b = (const block_q2_K*) v + kbx;
+        const int shift = 2 * (sub % 4);
+        const uint8_t* qs = b->qs + (sub / 4) * 32;
+        W r;
+#pragma unroll
+        for (int k = 0; k < 8; ++k) r.q[k] = (get_int_b4(qs, k) >> shift) & 0x03030303;
+        const int s0 = b->scales[2 * sub], s1 = b->scales[2 * sub + 1];
+        r.sc0 = s0 & 15; r.m0 = s0 >> 4;
+        r.sc1 = s1 & 15; r.m1 = s1 >> 4;
+        r.d = __low2float(b->dm);
+        r.dmin = __high2float(b->dm);
+        return r;
+    }
+    __device__ static float apply(const W& r, const block_q8_1* __restrict__ y, int sub) {
+        int s0 = 0, s1 = 0, y0 = 0, y1 = 0;
+#pragma unroll
+        for (int k = 0; k < 4; ++k) {
+            const int u0 = get_int_b4(y[sub].qs, k), u1 = get_int_b4(y[sub].qs, k + 4);
+            s0 = ggml_cuda_dp4a(r.q[k], u0, s0);
+            s1 = ggml_cuda_dp4a(r.q[k + 4], u1, s1);
+            y0 = ggml_cuda_dp4a(0x01010101, u0, y0);
+            y1 = ggml_cuda_dp4a(0x01010101, u1, y1);
+        }
+        return __low2float(y[sub].ds) * (r.d * float(r.sc0 * s0 + r.sc1 * s1) - r.dmin * float(r.m0 * y0 + r.m1 * y1));
+    }
+};
+
+// XM / HM: q8_1 blocks of one staged activation / SwiGLU row (UD-Q4_K_XL: 2560 / 640; DeepSeek-V4.1: 5120 / 2304)
+template<int TG, bool LX, int RPW, bool TS, int XM = S26_XMAX>
 __global__ void __launch_bounds__(256) s27_gu_kernel(const unsigned long long* __restrict__ grp_ptr,
                                                      const int32_t* __restrict__ grp_start,
                                                      const int32_t* __restrict__ n_groups,
@@ -2756,7 +2797,7 @@ __global__ void __launch_bounds__(256) s27_gu_kernel(const unsigned long long* _
                                                      float* __restrict__ gate, float* __restrict__ up) {
     using F = Fmt<TG>;
     using S = S27<TG>;
-    __shared__ block_q8_1 s_x[LX ? GRP_NC * S26_XMAX : 1];
+    __shared__ block_q8_1 s_x[LX ? GRP_NC * XM : 1];
     const int g = blockIdx.y;
     if (g >= *n_groups) return;
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
@@ -2783,10 +2824,10 @@ __global__ void __launch_bounds__(256) s27_gu_kernel(const unsigned long long* _
             __syncthreads();   // the previous chunk is done with s_x
             for (int i = threadIdx.x; i < n * xb; i += 256) {
                 const int c = i / xb, j = i - c * xb;
-                memcpy(&s_x[c * S26_XMAX + j], &xq[(size_t) ent_tok[e + c] * xb + j], sizeof(s_x[0]));
+                memcpy(&s_x[c * XM + j], &xq[(size_t) ent_tok[e + c] * xb + j], sizeof(s_x[0]));
             }
 #pragma unroll
-            for (int c = 0; c < GRP_NC; ++c) off[c] = min(c, n - 1) * S26_XMAX;
+            for (int c = 0; c < GRP_NC; ++c) off[c] = min(c, n - 1) * XM;
             xbase = s_x;
             __syncthreads();
         } else {
@@ -2838,7 +2879,7 @@ __global__ void __launch_bounds__(256) s27_gu_kernel(const unsigned long long* _
     }
 }
 
-template<int TD, bool LX, int RPW, bool TS>
+template<int TD, bool LX, int RPW, bool TS, int HM = S26_HMAX>
 __global__ void __launch_bounds__(256) s27_down_kernel(const unsigned long long* __restrict__ grp_ptr,
                                                        const int32_t* __restrict__ grp_start,
                                                        const int32_t* __restrict__ n_groups,
@@ -2847,7 +2888,7 @@ __global__ void __launch_bounds__(256) s27_down_kernel(const unsigned long long*
                                                        float* __restrict__ out) {
     using F = Fmt<TD>;
     using S = S27<TD>;
-    __shared__ block_q8_1 s_h[LX ? GRP_NC * S26_HMAX : 1];
+    __shared__ block_q8_1 s_h[LX ? GRP_NC * HM : 1];
     const int g = blockIdx.y;
     if (g >= *n_groups) return;
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
@@ -2867,11 +2908,11 @@ __global__ void __launch_bounds__(256) s27_down_kernel(const unsigned long long*
             __syncthreads();
             for (int i = threadIdx.x; i < n * hb; i += 256) {
                 const int c = i / hb, j = i - c * hb;
-                memcpy(&s_h[c * S26_HMAX + j], &hq[(size_t) (e + c) * hb + j], sizeof(s_h[0]));
+                memcpy(&s_h[c * HM + j], &hq[(size_t) (e + c) * hb + j], sizeof(s_h[0]));
             }
             __syncthreads();
 #pragma unroll
-            for (int c = 0; c < GRP_NC; ++c) off[c] = min(c, n - 1) * S26_HMAX;
+            for (int c = 0; c < GRP_NC; ++c) off[c] = min(c, n - 1) * HM;
             hbase = s_h;
         } else {
 #pragma unroll
@@ -2919,15 +2960,15 @@ __global__ void __launch_bounds__(256) s27_down_kernel(const unsigned long long*
     }
 }
 
-template<int TG, int TD, bool LX, int RG, int RD, bool TS>
+template<int TG, int TD, bool LX, int RG, int RD, bool TS, int XM = S26_XMAX, int HM = S26_HMAX>
 void s27_launch(const NativeExpertLayout& L, int64_t cap_groups, cudaStream_t s, const unsigned long long* grp_ptr,
                 const int32_t* grp_start, const int32_t* n_groups, const int32_t* ent_dst, const int32_t* ent_tok,
                 const block_q8_1* X, float* gate, float* up, float* h, block_q8_1* hq, float* out, long long nh) {
     const dim3 ggu((unsigned) (2 * L.n_ff / (GU_ROWS * RG)), (unsigned) cap_groups);
-    s27_gu_kernel<TG, LX, RG, TS><<<ggu, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up);
-    s26_swiglu_q8_1_kernel<<<(unsigned) ((nh + 255) / 256), 256, 0, s>>>(gate, up, h, hq, nh);
+    s27_gu_kernel<TG, LX, RG, TS, XM><<<ggu, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up);
+    s26_swiglu_q8_1_kernel<<<(unsigned) ((nh + 255) / 256), 256, 0, s>>>(gate, up, h, hq, nh, L.swiglu_limit);
     const dim3 gd((unsigned) (L.n_embd / (8 * RD)), (unsigned) cap_groups);
-    s27_down_kernel<TD, LX, RD, TS><<<gd, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_dst, hq, L, out);
+    s27_down_kernel<TD, LX, RD, TS, HM><<<gd, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_dst, hq, L, out);
 }
 template<int TG, int TD>
 void s27_launch_ts(bool ts, const NativeExpertLayout& L, int64_t cap_groups, cudaStream_t s,
@@ -3769,6 +3810,17 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
         else s26_launch_l<true, true, 4, 4, true, true>(L, cap_groups, s, grp_ptr, grp_start, n_groups, ent_dst, ent_tok, X, gate, up, h,
                                                         hq, out, (long long) cap_entries * L.n_ff);
         check("native_expert_grouped (v2)");
+        return;
+    }
+    // STRATA_EXPERT_V3=1 (opt-in): DeepSeek-V4.1 IQ2_XXSE4's IQ2_XXS gate/up + Q2_K down through the S27 kernels (4 rows
+    // per warp, the entries' activations in LDS); STRATA_EXPERT_V3_LX=0 reads them from global memory instead
+    static const bool v3 = [] { const char* v = std::getenv("STRATA_EXPERT_V3"); return v && v[0] == '1'; }();
+    if (v3 && L.gu_type == 16 && L.d_type == 10 && L.n_embd == 5120 && L.n_ff == 2304) {
+        static const bool lx = [] { const char* v = std::getenv("STRATA_EXPERT_V3_LX"); return !(v && v[0] == '0'); }();
+        const long long nh = (long long) cap_entries * L.n_ff;
+        if (lx) s27_launch<16, 10, true, 4, 4, false, 5120 / 32, 2304 / 32>(L, cap_groups, s, grp_ptr, grp_start, n_groups, ent_dst, ent_tok, X, gate, up, h, hq, out, nh);
+        else s27_launch<16, 10, false, 4, 4, false, 1, 1>(L, cap_groups, s, grp_ptr, grp_start, n_groups, ent_dst, ent_tok, X, gate, up, h, hq, out, nh);
+        check("native_expert_grouped (v3)");
         return;
     }
     // stream B: UD-Q4_K_XL's Q4_K / Q5_K gate/up and Q5_1 / Q8_0 down (see S27 above)

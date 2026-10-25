@@ -2000,6 +2000,39 @@ public:
                         grouped0_.run(L.f.gu_type, L.f.d_type, c.hidden, c.ff, c.clamp[size_t(l)], groups, xn_.f(), T, g_sum_.f(), stream_);
                     });
                     std::cerr << " gpu0_grouped_ms=" << gg;
+                    // correctness on random activations: the GEMV chain is the reference; MMQ and grouped against it
+                    {
+                        std::vector<float> xr(size_t(T) * c.hidden);
+                        uint32_t rs = 12345u;
+                        for (auto& v : xr) { rs = rs * 1664525u + 1013904223u; v = (float(rs >> 8) / 16777216.0f - 0.5f) * 4.0f; }
+                        ck(cudaMemcpy(xn_.p, xr.data(), xr.size() * 4, cudaMemcpyHostToDevice), "bench x");
+                        const size_t nsum = size_t(T) * c.hidden;
+                        auto result = [&](const std::function<void()>& fn) {
+                            ck(cudaMemsetAsync(g_sum_.p, 0, nsum * 4, stream_), "bench sum");
+                            fn();
+                            std::vector<float> o(nsum);
+                            ck(cudaMemcpyAsync(o.data(), g_sum_.p, nsum * 4, cudaMemcpyDeviceToHost, stream_), "bench sum");
+                            ck(cudaStreamSynchronize(stream_), "bench sum");
+                            return o;
+                        };
+                        const auto ref = result([&] {
+                            for (int i = 0; i < T; ++i) {
+                                int ii[16], n = 0;
+                                float ww[16];
+                                for (int k2 = 0; k2 < K; ++k2) if (ids[size_t(i) * K + k2] >= 0) { ii[n] = ids[size_t(i) * K + k2]; ww[n] = 0.1f; ++n; }
+                                if (n) gpu_experts(l, i, ii, ww, n);
+                            }
+                        });
+                        auto rel = [&](const std::vector<float>& o) {
+                            double num = 0, den = 0;
+                            for (size_t i = 0; i < nsum; ++i) { num += double(o[i] - ref[i]) * (o[i] - ref[i]); den += double(ref[i]) * ref[i]; }
+                            return den > 0 ? std::sqrt(num / den) : 0.0;
+                        };
+                        const auto mm = result([&] { resident_mmq(l, T, K, ids.data(), wts.data()); });
+                        const auto gr = result([&] { grouped0_.run(L.f.gu_type, L.f.d_type, c.hidden, c.ff, c.clamp[size_t(l)], groups, xn_.f(), T, g_sum_.f(), stream_); });
+                        std::cerr << " rel_err_mmq=" << rel(mm) << " rel_err_grouped=" << rel(gr);
+                        ck(cudaMemsetAsync(xn_.p, 0, nsum * 4, stream_), "bench x");
+                    }
                 }
             }
             if (peer_ && !e1.empty()) {
