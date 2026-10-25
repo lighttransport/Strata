@@ -353,16 +353,24 @@ class ModelArtifact {
         if (declared_tensors && tensors_.size() != declared_tensors)
             throw std::runtime_error("model: split tensor count mismatch");
         // DeepSeek-V4.1 GSQ-RCO GGUFs keep the Engram tables in one shared file next to the backbone
-        // (`<arch>.engram.file`, architecture `<arch>-engram`): its tensors join the lookup
+        // (`<arch>.engram.file`, architecture `<arch>-engram`): its tensors join the lookup. A comma-separated list
+        // names several (one table each, tools/ds41f_split_engram.py), paths relative to the backbone's directory.
         if (const auto *ef = files_.front()->get(descriptor_.architecture + ".engram.file")) {
-            const auto path = shard.parent_path() / ef->s;
-            if (!std::filesystem::exists(path))
-                throw std::runtime_error("model: the Engram file is not next to the backbone: " + path.string());
-            auto file = std::make_unique<GgufFile>(path.string());
-            const auto *a = file->get("general.architecture");
-            if (!a || a->s != descriptor_.architecture + "-engram")
-                throw std::runtime_error("model: the Engram file's architecture is not " + descriptor_.architecture + "-engram");
-            add_file(std::move(file));
+            std::string list = ef->s;
+            for (size_t start = 0; start <= list.size();) {
+                const size_t comma = std::min(list.find(',', start), list.size());
+                const std::string name = list.substr(start, comma - start);
+                start = comma + 1;
+                if (name.empty()) continue;
+                const auto path = shard.parent_path() / name;
+                if (!std::filesystem::exists(path))
+                    throw std::runtime_error("model: the Engram file is not where the backbone says: " + path.string());
+                auto file = std::make_unique<GgufFile>(path.string());
+                const auto *a = file->get("general.architecture");
+                if (!a || a->s != descriptor_.architecture + "-engram")
+                    throw std::runtime_error("model: the Engram file's architecture is not " + descriptor_.architecture + "-engram");
+                add_file(std::move(file));
+            }
         }
         // A compact assembly contains the exact overlay bytes plus the base's
         // other tensors. Keep the same expert execution path without requiring
