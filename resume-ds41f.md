@@ -38,8 +38,63 @@ full (6 nodes). Split packs (backbone + shared Engram files) in `~/models/ds41f-
    assumes Engram 76); test counts in `tools/test_sim_ds41f.py`.
 8. Saved logits `ds41data/ref/{gsq,e4}_kl_wiki2.f32` (17 GB each) can be deleted.
 
+## TR16 (RX 9070 XT 16 GB + 128 GB RAM), state as of 2026-10-27
+
+Commit 371687ae (docs/DS41F_PLAN.md 8k). Model: Unsloth UD-IQ1_S, `/mnt/nvme02/models/ds41f-oct/iq1s/`; build
+`build-hip-rocm101-tr16` (`LD_LIBRARY_PATH=/opt/rocm/core-10.1/lib`). Run scripts and logs:
+`/home/syoyo/.claude/jobs/c6566765/tmp/tr16/` (run5-run21.sh; `routes_ref1008.i32` is the tier profile, `cmp_f32` the
+numpy-free KL tool, `kl_off.f32` an old exact reference - regenerate it with the current flags before new KL runs).
+
+Best so far (code600):
+- Exact decode: ~13-14 tok/s (estimated: no defer, all lossless levers on; not measured as one run).
+  Lossless levers: `STRATA_DS41_DECODE_GROUPED=1 STRATA_DS41_GPU_RESERVE_MIB=1536 STRATA_DS41_EXPERT_PROFILE=<routes>
+  STRATA_DS41_FUSE=1 STRATA_DS41_SHARE_Q8=1 STRATA_IQ1S_FAST=1 STRATA_Q6_V2=1 STRATA_DS41_GPU_ROUTE=1` (GROW off),
+  plus `numactl --interleave=all`, `--threads=15`.
+- With `STRATA_DS41_DEFER_RANK=3` (KL 0.078): 15.9-16.0 tok/s.
+- `DEFER_ALL=1 CPU_TOPK=4`: 18.7 tok/s (lossy, KL ~0.2).
+- Prefill with `STRATA_DS41_PIN_GB=100 STRATA_DS41_STREAM_MIN=256 STRATA_DS41_PREFILL_HYBRID=0 STRATA_DS41_KV=f16
+  STRATA_DS41_INDEX_GEMM_MIN=64`: 600 tokens 52-62, 4K 249, 8K ~330 tok/s warm.
+
+Safety: run every decoder in its own `systemd-run --user --scope` (systemd-oomd killed this session's whole tmux scope
+once: RAM_COPY, 86.6 GB anonymous). Never RAM_COPY on TR16. `STRATA_DS41_PREFILL_HYBRID>=1` froze the machine (a
+reboot); do not run it until the cause is found. The machine is a shared desktop: noise about +-1 tok/s, check `top`
+first.
+
+### TR16 remaining items
+
+1. Measure the exact (no defer) decode with every lossless lever on, 128 tokens x2, code600 and t600; record it in 8k.
+2. The CPU lane in decode runs ~12 GB/s against 20-26 GB/s in the lane bench (`STRATA_DS41_LANE_BENCH=map`). Find
+   the gap: per-job phase times on the deferred lane (gate/up, quant, down), the main thread / HIP runtime threads on
+   the lane cores' SMT siblings, the futex wake per job. The lane is the decode limit (~50 ms a token).
+3. Lossy budget for 25-30 tok/s: KL of the combinations (DEFER_ALL + CPU_TOPK=4/5, GPU_SUBST=0.8 with rank 4-5)
+   against a fresh exact reference; pick the best tok/s within an agreed KL (ask the user for the gate).
+4. Remaining GPU bubbles: the "experts" phase still ~10 ms a token with GPU_ROUTE (the host's route sync and lane
+   setup). Next: let the host enqueue layer l+1's attention before it waits for layer l's ids when every CPU route is
+   deferred (DEFER_ALL), and a deferral depth of 2 layers.
+5. Q6_V2 as the default on HIP after a per-shape check (q_b / kv / out_b win; out_a whole-matrix slower in the bench,
+   per-group 1024 rows in decode); dense Q6_K -> Q4_K requant as a lossy pack variant (-2 GB VRAM, -35 % dense bytes).
+6. PREFILL_HYBRID>=1 freeze: reproduce on a 2-layer-equivalent small prompt with a watchdog (or under a remote
+   session with a hardware reset path), suspects: the lane's begin() during a streamed pass with 100 GB of pinned
+   page cache under concurrent DMA.
+7. Prefill: the 8K second chunk is attention/indexer bound (GEMM scoring helps); PROMPT_BATCH 8192 does not fit 16 GB.
+   Pin the experts at load (first streamed prompt pays ~5 s), and a GPU_BENCH run of MMQ vs dequant-F16 + hipBLASLt
+   for IQ1_S at M 16-256 on gfx1201.
+8. Upstream Strata v0.2.6 `strata-dsv41` on TR16 for reference: 4.5-5.6 tok/s on the GSQ 2.00 set
+   (`/mnt/nvme01/models/ds41f-gsq/IQ2_XXS/maya-ds4`, worktree `/mnt/nvme02/work/Strata-upstream`).
+9. TR16 records in `tools/sim/ds41f.py` (lane 12 GB/s in decode, GPU ~25 ms, prefill stream ~8.7 GB/s) and its tests.
+
+V100 note: the research-levers run (s80, 2026-10-27) measured DSPARK_SCHED code600 35.7 -> 39.9 tok/s (wiki
+neutral), deferral KL off 0.121 / R5 0.130 / R4 0.124 / R3 0.132, LANE_NUMA neutral, DECODE_STREAM slower, F16 GEMM
+ahead of MMQ at M >= 128 (gate/up) and M >= 32 (down) - not yet in docs/DS41F_PLAN.md.
+
 ## Resuming prompt
 
 > Resume the DS4.1-Flash V100 work from resume-ds41f.md. Start the keeper (`slurm-gpu/ds41/keep2.sh 4`). Use
 > IQ2_XXSE3 + S27 at Engram RAM 56 GiB with the memory guard. Run item 1 and item 2, report decode / prefill tok/s
 > and peak RSS, and update docs/DS41F_PLAN.md. Commit only when I ask; do not push.
+
+TR16:
+
+> Resume the DS4.1-Flash TR16 work from resume-ds41f.md (TR16 section). Run every decoder in its own
+> `systemd-run --user --scope`, never RAM_COPY or PREFILL_HYBRID>=1. Do items 1 and 2, report decode tok/s and the
+> lane's GB/s, and update docs/DS41F_PLAN.md 8k. Commit only when I ask; do not push.
