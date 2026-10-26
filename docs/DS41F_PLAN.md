@@ -857,6 +857,34 @@ Speed (IQ2_XXS build): load 261 s; plain decode wiki600 21.3 tok/s; DSpark code6
 step) at Engram 64 GiB (IQ2_XXSE4: 30.1). At Engram 80 GiB the DSpark run did not complete. 2048-token prompt
 passes need `STRATA_DS41_STREAM_MIN=1000000` (the streaming buffers otherwise exceed VRAM after residency).
 
+## 8j. IQ2_XXSE4 decode at a node-safe memory budget (measured 2026-10-25/26)
+
+Memory: the decoder holds about 104 GiB plus the Engram RAM (RAM expert copy 94.8 GiB, the rest ~9 GiB). Engram
+76 GiB peaked at 180.5 GiB and several runs took the node down (Slurm NODE_FAIL during the load), so the runs here
+use Engram RAM 56 GiB (peak RSS 158-167 GiB, 13-21 GiB free on the node). The Engram stall (rows read from Lustre)
+then varies by run: the same baseline gave 18.8 and 26.7 tok/s.
+
+Expert kernels (STRATA_EXPERT_V3=1, 69ea6521): IQ2_XXS gate/up and Q2_K down on the S27 multi-row grouped kernels.
+Layer 20, per layer: GPU 0 8 routes 0.305 ms (MMQ 0.649), 36 routes 0.547 (0.794); GPU 1 likewise. Per decode pass:
+GPU 0 experts 34 -> 25 ms, GPU 1 busy 30 -> 16 ms; verify time per step without the Engram stall 97 -> 86 ms (code600,
+two runs each). The CPU lane (26-29 ms) is then the limit. Quality, 1008-token reference in 5-token passes vs
+llama.cpp IQ2_XXSE4: MMQ KL 0.0229, S27 grouped 0.0259, GEMV chains 0.0198 (all equivalent). On code4k its outputs
+lowered draft acceptance (3.0 vs 3.7 tokens per step), so it is not the default.
+
+Engram table types at the same 56 GiB (ranked rows from one wiki + code profile; the profile is row ids and counts,
+so it serves every table type), baseline config (GROW, DECODE_MMQ, DSpark), decode tok/s:
+
+| Pack | Engram tables | KL vs Q8_0 | code600 (128 tok) | wiki600 | code4k |
+|---|---|---|---|---|---|
+| IQ2_XXSE4 | Q4_K, Q4_K | 0.289 | 24.2 | 26.0 | 24.7 |
+| IQ2_XXSE43 | Q4_K, Q3_K | 0.307 | 29.8 | 27.4 | 23.9 |
+| IQ2_XXSE3 | Q3_K, Q3_K | 0.314 | 31.0 | 30.0 | 26.1 |
+
+E3 is +28 % on code600 (Engram stall 1.69 -> 0.78 s per 128 tokens), +15 % on wiki600, +6 % on code4k, for +0.025
+KL. On code4k E43 / E3 generate different text and accept fewer drafts (3.15-3.2 vs 3.71 tokens per step).
+Engram read options on E3 code600 changed nothing beyond noise: 256 read threads 31.0, prefetch threads 128 / 32
+29.8 / 31.7 (default 64: 31.0).
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;
