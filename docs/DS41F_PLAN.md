@@ -885,6 +885,19 @@ KL. On code4k E43 / E3 generate different text and accept fewer drafts (3.15-3.2
 Engram read options on E3 code600 changed nothing beyond noise: 256 read threads 31.0, prefetch threads 128 / 32
 29.8 / 31.7 (default 64: 31.0).
 
+The S27 expert kernels on IQ2_XXSE3 (same session, Engram RAM 56 GiB, peak RSS 155 GiB):
+
+| Run | Baseline (MMQ) tok/s | S27 tok/s | Tokens per step (base / S27) | Verify ms per step without Engram (base / S27) |
+|---|---|---|---|---|
+| wiki600, run 1 | 29.96 | 32.89 | 2.56 / 2.63 | 69.2 / 64.3 |
+| wiki600, run 2 | 29.89 | 31.91 | 2.56 / 2.63 | 69.2 / 66.8 |
+| code600, 128 tokens | 33.22 | 34.86 | 4.27 / 4.00 | 94.6 / 83.6 |
+
+wiki600 +8 % (both repeats), code600 +5 %: the per-step compute falls 4-12 %, but on code S27's slightly different
+rounding changes the text and lowers draft acceptance, as on E4 code4k. Best configuration at a node-safe memory
+budget so far: IQ2_XXSE3 + S27 (STRATA_EXPERT_V3=1 STRATA_DS41_DECODE_GROUPED=1 STRATA_DS41_GROWN_GROUPED=1) with
+GROW and DSpark: wiki600 32-33, code600 34.9 tok/s.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;
