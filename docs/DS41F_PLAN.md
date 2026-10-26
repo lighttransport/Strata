@@ -898,6 +898,17 @@ rounding changes the text and lowers draft acceptance, as on E4 code4k. Best con
 budget so far: IQ2_XXSE3 + S27 (STRATA_EXPERT_V3=1 STRATA_DS41_DECODE_GROUPED=1 STRATA_DS41_GROWN_GROUPED=1) with
 GROW and DSpark: wiki600 32-33, code600 34.9 tok/s.
 
+Code acceptance with S27, a second session (E3, 128 tokens; greedy, so a repeat gives the same tokens):
+
+| Prompt | Baseline tok/s | S27 tok/s | Tokens per step (base / S27) |
+|---|---|---|---|
+| code600 | 34.92 | 35.98 | 4.27 / 4.00 |
+| code4k | 31.08 | 33.22 | 3.66 / 3.53 |
+
+The lower acceptance with S27 is systematic (code600 4.27 -> 4.00 in both sessions; code4k -3.5 %), smaller than its
+per-step saving: S27 is ahead on every prompt measured (code600 +3 %, code4k +7 %, wiki600 +8 %). Best at Engram RAM
+56 GiB: IQ2_XXSE3 + S27, wiki600 32-33, code600 36.0, code4k 33.2 tok/s.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;
