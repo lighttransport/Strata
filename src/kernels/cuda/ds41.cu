@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <stdexcept>
 #include <cuda_runtime.h>
 #if defined(__CUDACC__) && !defined(__HIP_PLATFORM_AMD__)
 #include <cuda_fp16.h>
@@ -214,6 +215,96 @@ __global__ void hc_post_kernel(const float* x, const float* res, const float* po
 // STRATA_DS41_DEFER_RANK: a layer's deferred expert sum y added to the streams one sublayer late, as if it had been
 // in that layer's output: through its post-mix (post, 4 per token) and then the next attention's stream mix (comb,
 // 4x4 per token; null after the last layer): h[d] += y * sum_s post[s] comb[d + 4 s]
+// STRATA_DS41_GPU_ROUTE: the router's top-k on the GPU and the table of the GPU-held routes for the grouped expert
+// kernels (ds41_decode.cpp GroupedRunner layout, capacity cap = T * K: ptr u64[cap], start[cap + 1], n, dst[cap],
+// tok[cap], w[cap]), so the GPU's experts start without the host. One block: per token, probs = sqrt(softplus(logit)),
+// top-k of probs + bias (ties to the lower index, as the host's top_k), weights from probs (normalised over the
+// picks kept, times scale). cpu_topk >= 0: picks of rank >= cpu_topk not held on the GPU are dropped (weight 0).
+__global__ void route_table_kernel(const float* __restrict__ logits, const float* __restrict__ bias,
+                                   const unsigned long long* __restrict__ slots, int T, int E, int K, int normalize,
+                                   float scale, int cpu_topk, int cap, int* __restrict__ ids, float* __restrict__ wts,
+                                   unsigned char* __restrict__ table) {
+    __shared__ float sel[1024], prob[1024];
+    __shared__ float bv[256];
+    __shared__ int bi[256];
+    __shared__ int pick[16];
+    __shared__ int count;
+    unsigned long long* ptr = reinterpret_cast<unsigned long long*>(table);
+    int* start = reinterpret_cast<int*>(table + size_t(cap) * 8);
+    int* ng = start + cap + 1;
+    int* dst = ng + 1;
+    int* tok = dst + cap;
+    float* w = reinterpret_cast<float*>(tok + cap);
+    if (threadIdx.x == 0) count = 0;
+    for (int t = 0; t < T; ++t) {
+        for (int e = threadIdx.x; e < E; e += blockDim.x) {
+            const float x = logits[size_t(t) * E + e];
+            const float p = sqrtf(x > 20.0f ? x : log1pf(expf(x)));
+            prob[e] = p;
+            sel[e] = p + bias[e];
+        }
+        __syncthreads();
+        for (int k = 0; k < K; ++k) {
+            float best = -INFINITY;
+            int at = E;
+            for (int e = threadIdx.x; e < E; e += blockDim.x)
+                if (sel[e] > best || (sel[e] == best && e < at)) { best = sel[e]; at = e; }
+            bv[threadIdx.x] = best;
+            bi[threadIdx.x] = at;
+            __syncthreads();
+            for (int o = blockDim.x / 2; o > 0; o >>= 1) {
+                if (threadIdx.x < o) {
+                    const float b2 = bv[threadIdx.x + o];
+                    const int i2 = bi[threadIdx.x + o];
+                    if (b2 > bv[threadIdx.x] || (b2 == bv[threadIdx.x] && i2 < bi[threadIdx.x])) { bv[threadIdx.x] = b2; bi[threadIdx.x] = i2; }
+                }
+                __syncthreads();
+            }
+            if (threadIdx.x == 0) { pick[k] = bi[0]; sel[bi[0]] = -INFINITY; }
+            __syncthreads();
+        }
+        if (threadIdx.x == 0) {
+            float sum = 0.0f;
+            bool cut[16];
+            for (int k = 0; k < K; ++k) {
+                cut[k] = cpu_topk >= 0 && k >= cpu_topk && slots[pick[k]] == 0ull;
+                if (!cut[k]) sum += prob[pick[k]];
+            }
+            for (int k = 0; k < K; ++k) {
+                float v = prob[pick[k]];
+                if (cut[k]) v = 0.0f;
+                else {
+                    if (normalize && K > 1) v /= sum + 1e-20f;
+                    v *= scale;
+                }
+                ids[t * K + k] = pick[k];
+                wts[t * K + k] = v;
+                if (!cut[k] && slots[pick[k]]) {
+                    const int g = count++;
+                    ptr[g] = slots[pick[k]];
+                    start[g] = g;
+                    dst[g] = g;
+                    tok[g] = t;
+                    w[g] = v;
+                }
+            }
+        }
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) { start[count] = count; *ng = count; }
+}
+
+// scatter_axpy_kernel with the row count on the device (the GPU-routed table's n)
+__global__ void scatter_axpy_dev_kernel(const float* src, const int* idx, const float* w, const int* m, int n, float* dst) {
+    const int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n) return;
+    const int rows = *m;
+    for (int i = 0; i < rows; ++i) {
+        float* d = dst + size_t(idx[i]) * n + j;
+        *d = __fadd_rn(*d, __fmul_rn(w[i], src[size_t(i) * n + j]));
+    }
+}
+
 __global__ void defer_add_kernel(const float* y, float* h, const float* post, const float* comb, int n) {
     const int j = blockIdx.x * blockDim.x + threadIdx.x;
     if (j >= n) return;
@@ -1770,6 +1861,17 @@ void ds41_hc_post(const float* x, const float* res, const float* post, const flo
                   int tokens) {
     hc_post_kernel<<<dim3(blocks(n, 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(x, res, post, comb, out, n);
     check("hc_post");
+}
+
+void ds41_route_table(const float* logits, const float* bias, const unsigned long long* slots, int T, int E, int K, bool normalize,
+                      float scale, int cpu_topk, int cap, int* ids, float* wts, void* table, void* stream) {
+    if (E > 1024 || K > 16) throw std::invalid_argument("ds41_route_table: experts <= 1024, top_k <= 16");
+    route_table_kernel<<<1, 256, 0, (cudaStream_t)stream>>>(logits, bias, slots, T, E, K, normalize ? 1 : 0, scale, cpu_topk, cap, ids,
+                                                           wts, static_cast<unsigned char*>(table));
+}
+
+void ds41_scatter_axpy_dev(const float* src, const int* idx, const float* w, const int* m, int n, float* dst, void* stream) {
+    scatter_axpy_dev_kernel<<<blocks(n, 256), 256, 0, (cudaStream_t)stream>>>(src, idx, w, m, n, dst);
 }
 
 void ds41_defer_add(const float* y, float* h, const float* post, const float* comb, int n, void* stream, int tokens) {

@@ -909,6 +909,53 @@ The lower acceptance with S27 is systematic (code600 4.27 -> 4.00 in both sessio
 per-step saving: S27 is ahead on every prompt measured (code600 +3 %, code4k +7 %, wiki600 +8 %). Best at Engram RAM
 56 GiB: IQ2_XXSE3 + S27, wiki600 32-33, code600 36.0, code4k 33.2 tok/s.
 
+## 8k. TR16 (RX 9070 XT 16 GB, 128 GB RAM): UD-IQ1_S decode and prefill levers (measured 2026-10-27)
+
+Unsloth UD-IQ1_S, Engram on the local NVMe (O_DIRECT), 15 lane threads, `numactl --interleave=all`, code600 prompt,
+64-128 generated tokens. Run-to-run noise on the shared desktop is about +-1 tok/s. All switches below are opt-in.
+
+**Decode** (tok/s; "same tokens" = identical greedy output to the row above it):
+
+| Configuration | Decode | Notes |
+|---|---|---|
+| defer3 (previous best) | 10.9-11.7 | lossy, KL 0.078 vs the exact run |
+| + DECODE_GROUPED, GPU_RESERVE_MIB=1536, EXPERT_PROFILE | 13.2-13.5 | same tokens |
+| + FUSE=1 SHARE_Q8=1 | +6-8 % | same tokens |
+| + IQ1S_FAST=1 (lean IQ1_S lane rows) | +5-7 % | lane bench +12 % |
+| + GPU_ROUTE=1 (top-k and GPU-held experts on the GPU), GROW off | 15.9-16.0 | same tokens, KL unchanged |
+| defer-all + GPU_ROUTE | 16.3 | lossy, KL ~0.2 |
+| defer-all + CPU_TOPK=4 + GPU_ROUTE | 18.7 | lossy |
+
+- Q6_V2=1 (warp-per-row Q6_K GEMV): attention-output phase 10.1 -> 6.6 ms per token, same tokens.
+- No gain on TR16 (kept opt-in): LANE_BANDS (NUMA band layout in place by move_pages, PR #4016's idea: 12.8 vs 13.2;
+  prompt 21 -> 14 tok/s), threads 16/24/31, LANE_ASYNC, SYNC_SPIN, huge pages for the lane (a huge-page copy of the
+  experts reads at the same 15-17 GB/s as the 4 KiB page-cache pages).
+- MISS_READ=N (queued expert reads): with 30 % of the experts paged out, 7.2 -> 7.7 tok/s at the drive's 1.6 GB/s;
+  no effect when every expert is cached.
+- Lossy KL (1008 tokens in 5-token passes, against the exact run): DEFER_RANK=3 0.078, =1 0.146, DEFER_ALL 0.200,
+  CPU_TOPK=4 0.145, =3 0.240, GPU_SUBST=0.8 0.076, =0.6 0.118.
+- The limit: the CPU lane, ~50 ms a token for ~0.59 GB of IQ1_S experts (12 GB/s in decode against 20-26 GB/s in the
+  lane bench), plus ~25 ms of GPU work. An exact run tops out near 18 tok/s; 30 needs deferral (lossy) and a faster lane.
+- RAM_COPY on TR16 triggered systemd-oomd (86.6 GB of anonymous copies plus reclaim): it killed the session's scope.
+  Runs go in their own `systemd-run --user --scope`.
+
+**Prefill** (tok/s):
+
+| Prompt | Default | PIN_GB=100 STREAM_MIN=256 PREFILL_HYBRID=0 KV=f16 INDEX_GEMM_MIN=64 |
+|---|---|---|
+| 600 | 16.8 (chunked, CPU experts) | 52-62 |
+| 4K | 201 | 249 |
+| 8K | 148 | ~330 warm (4K chunks ~12.4 s each) |
+
+- A streamed pass streams every expert over PCIe 3.0 x16. PIN_GB=100 pins 37 of 40 layers in place for direct DMA
+  (no extra RAM).
+- PREFILL_HYBRID=0 skips the experts a prompt does not route to (600 tokens: 44 GB of 108; 4K: 21 GB).
+- PREFILL_HYBRID>=1 (low-count experts on the CPU lane during the stream) froze the machine once (no kernel message):
+  do not use until understood.
+- After a streamed prompt the GPU tier now also takes the prompt's routing (TIER_PROMPT_WEIGHT, default 10): tier hit
+  0.10 -> 0.59, decode after a 600-token prompt 6.1 -> 10.3 tok/s (as after a chunked prompt).
+- PROMPT_BATCH=8192 does not fit 16 GB.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;

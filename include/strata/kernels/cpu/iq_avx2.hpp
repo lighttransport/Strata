@@ -31,6 +31,8 @@ inline constexpr int kIq256Gather = 1;
 inline constexpr int kIq256Vnni = 2;
 /// The variant iq256_gu_rows / iq256_rows take on the calling thread.
 int iq256_variant() noexcept;
+/// IQ1_S rows through the lean kernel (STRATA_IQ1S_FAST) or not, for every thread from now on
+void iq1s_fast_set(int on) noexcept;
 /// Every variant bit this build and this CPU can run (tests and benches).
 int iq256_variants() noexcept;
 /// iq256_gu_rows / iq256_rows in a given variant (tests and benches; only bits of iq256_variants()).

@@ -21,6 +21,7 @@
 //
 // This file is compiled for AVX2 and must not run anything before the engine's cpu_avx2_ok() check: no runtime
 // initializer at namespace scope (#391, 016ea2e), the switches are read on first use.
+#include <atomic>
 #include <string>
 #include <stdexcept>
 #include "strata/kernels/cpu/iq_avx2.hpp"
@@ -139,6 +140,17 @@ struct HiSpread {
     }
 };
 static constexpr HiSpread hi_spread{};
+
+// STRATA_IQ1S_FAST=1: IQ1_S rows through row_dot_iq1s (iq_avx2_rows.inl); iq1s_fast_set() overrides (a bench's A/B)
+std::atomic<int> g_iq1s_fast{-1};
+inline bool iq1s_fast() {
+    int v = g_iq1s_fast.load(std::memory_order_relaxed);
+    if (v < 0) {
+        v = std::getenv("STRATA_IQ1S_FAST") && std::getenv("STRATA_IQ1S_FAST")[0] == '1' ? 1 : 0;
+        g_iq1s_fast.store(v, std::memory_order_relaxed);
+    }
+    return v == 1;
+}
 static_assert(hi_spread.iq3s[0x81] == 0x0100000000000001ull && hi_spread.iq2s[0xE4] == 0x0000000003020100ull,
               "hi_spread: one high-bit group per index byte");
 
@@ -488,6 +500,8 @@ int iq256_variant() noexcept {
     const int s = iq256_gather_setting();
     return ((s >= 0 ? s == 1 : cpu_gather_fast_here()) ? kIq256Gather : 0) | (vnni_on() ? kIq256Vnni : 0);
 }
+
+void iq1s_fast_set(int on) noexcept { g_iq1s_fast.store(on ? 1 : 0, std::memory_order_relaxed); }
 
 int iq256_variants() noexcept { return kIq256Gather | (vnni_on() ? kIq256Vnni : 0); }
 

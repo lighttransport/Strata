@@ -3,7 +3,14 @@
 #include "strata/kernels/cpu/pool.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <deque>
+#include <mutex>
+#include <random>
+#include <sys/mman.h>
+#include <unordered_map>
 #include <fstream>
 #include <map>
 #include <pthread.h>
@@ -51,6 +58,12 @@ std::vector<int> siblings(int cpu) {
     }
     return out;
 }
+// the NUMA node of a logical CPU (its cpuN/nodeK link; 0 when there is none)
+int cpu_node(int cpu) {
+    for (int n = 0; n < 64; ++n)
+        if (access(("/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/node" + std::to_string(n)).c_str(), F_OK) == 0) return n;
+    return 0;
+}
 // the package of the memory node holding the page at p (-1: unknown)
 int page_package(const void* p) {
     int node = -1;
@@ -66,6 +79,200 @@ int page_package(const void* p) {
     return pkg;
 }
 }  // namespace
+
+#ifndef MADV_POPULATE_READ
+#define MADV_POPULATE_READ 22
+#endif
+#ifndef MADV_PAGEOUT
+#define MADV_PAGEOUT 21
+#endif
+
+// STRATA_DS41_MISS_READ: the reader pool. A job is one piece (<= 1 MiB) of a cold expert's rows; its group's ready
+// counter falls to 0 when every piece is in the page cache.
+struct ExpertLane::MissReader {
+    struct Job { const uint8_t* p; size_t len; std::atomic<int>* ready; };
+    uint64_t gap = 1376, calls = 0, base = 0;   // base: calls before the last reset
+    std::unordered_map<const void*, uint64_t> last;            // gate rows -> last call that used the expert
+    std::vector<std::unique_ptr<std::atomic<int>>> flags;      // per call, reused (all 0 when a call ends)
+    size_t used = 0;
+    std::mutex m;
+    std::condition_variable cv;
+    std::deque<Job> q;
+    bool stop = false;
+    std::vector<std::thread> pool;
+    std::atomic<uint64_t> pieces{0}, bytes{0}, read_ns{0}, wait_ns{0};
+    uint64_t cold = 0;
+    explicit MissReader(int n) {
+        if (const char* v = std::getenv("STRATA_DS41_MISS_GAP")) gap = uint64_t(std::max(1, std::atoi(v)));
+        for (int i = 0; i < n; ++i) pool.emplace_back([this] { loop(); });
+    }
+    ~MissReader() {
+        { std::lock_guard<std::mutex> g(m); stop = true; }
+        cv.notify_all();
+        for (auto& t : pool) t.join();
+    }
+    std::atomic<int>* flag() {
+        if (used == flags.size()) flags.push_back(std::make_unique<std::atomic<int>>(0));
+        return flags[used++].get();
+    }
+    void push(const uint8_t* p, size_t len, std::atomic<int>* ready, std::vector<Job>& out) {
+        const size_t piece = size_t(1) << 20;
+        for (size_t o = 0; o < len; o += piece) {
+            out.push_back({p + o, std::min(piece, len - o), ready});
+            ready->fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+    void submit(std::vector<Job>& jobs) {
+        if (jobs.empty()) return;
+        { std::lock_guard<std::mutex> g(m); for (auto& j : jobs) q.push_back(j); }
+        cv.notify_all();
+    }
+    void loop() {
+        static const size_t page = size_t(sysconf(_SC_PAGESIZE));
+        std::vector<unsigned char> vec;
+        for (;;) {
+            Job j;
+            {
+                std::unique_lock<std::mutex> g(m);
+                cv.wait(g, [&] { return stop || !q.empty(); });
+                if (stop && q.empty()) return;
+                j = q.front();
+                q.pop_front();
+            }
+            const auto t0 = std::chrono::steady_clock::now();
+            const uintptr_t a = uintptr_t(j.p) & ~uintptr_t(page - 1), b = uintptr_t(j.p) + j.len;
+            const size_t len = b - a, np = (len + page - 1) / page;
+            vec.resize(np);
+            bool missing = mincore(reinterpret_cast<void*>(a), len, vec.data()) != 0;   // unknown: read it
+            for (size_t i = 0; i < np && !missing; ++i) missing = !(vec[i] & 1);
+            if (missing) {
+                madvise(reinterpret_cast<void*>(a), len, MADV_POPULATE_READ);
+                pieces.fetch_add(1, std::memory_order_relaxed);
+                bytes.fetch_add(len, std::memory_order_relaxed);
+            }
+            read_ns.fetch_add(uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count()), std::memory_order_relaxed);
+            j.ready->fetch_sub(1, std::memory_order_acq_rel);
+        }
+    }
+};
+
+ExpertLane::MissStats ExpertLane::miss_stats() const {
+    MissStats s;
+    if (!miss_) return s;
+    s.calls = miss_->calls - miss_->base;
+    s.cold = miss_->cold;
+    s.read_pieces = miss_->pieces.load();
+    s.read_bytes = miss_->bytes.load();
+    s.read_s = double(miss_->read_ns.load()) * 1e-9;
+    s.wait_s = double(miss_->wait_ns.load()) * 1e-9;
+    return s;
+}
+
+void ExpertLane::miss_reset() {
+    if (!miss_) return;
+    miss_->base = miss_->calls;   // (calls itself keeps counting: the last-use marks are call numbers)
+    miss_->cold = 0;
+    miss_->pieces = miss_->bytes = miss_->read_ns = miss_->wait_ns = 0;
+}
+
+size_t ExpertLane::page_out(const LaneLayer& layer, int experts, int hidden, int ff, double fraction, unsigned seed) {
+    static const size_t page = size_t(sysconf(_SC_PAGESIZE));
+    const size_t gate_bytes = layer.gate_stride ? layer.gate_stride : layer.f.gu_row * size_t(ff);
+    const size_t down_bytes = layer.down_stride ? layer.down_stride : layer.f.d_row * size_t(hidden);
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    size_t asked = 0;
+    auto out = [&](const uint8_t* p, size_t len) {   // whole pages inside the range only
+        const uintptr_t a = (uintptr_t(p) + page - 1) & ~uintptr_t(page - 1), b = (uintptr_t(p) + len) & ~uintptr_t(page - 1);
+        if (b > a && madvise(reinterpret_cast<void*>(a), b - a, MADV_PAGEOUT) == 0) asked += b - a;
+    };
+    for (int e = 0; e < experts; ++e) {
+        if (u(rng) >= fraction) continue;
+        out(layer.gate + size_t(e) * gate_bytes, gate_bytes);
+        out(layer.up + size_t(e) * gate_bytes, gate_bytes);
+        out(layer.down + size_t(e) * down_bytes, down_bytes);
+    }
+    return asked;
+}
+
+// MISS_READ: mark this call's groups warm or cold, queue the cold ones' pieces, run the cold groups last
+void ExpertLane::miss_mark(const LaneLayer& layer) {
+    MissReader& r = *miss_;
+    ++r.calls;
+    r.used = 0;
+    const size_t gate_bytes = layer.gate_stride ? layer.gate_stride : layer.f.gu_row * size_t(ff_);
+    const size_t down_bytes = layer.down_stride ? layer.down_stride : layer.f.d_row * size_t(hidden_);
+    std::vector<MissReader::Job> jobs;
+    std::unordered_map<int, std::atomic<int>*> this_call;   // VERIFY_EXACT: one expert in several groups
+    for (Group& g : groups_) {
+        g.ready = nullptr;
+        auto seen = this_call.find(g.expert);
+        if (seen != this_call.end()) { g.ready = seen->second; continue; }
+        const uint8_t* gate = layer.gate + size_t(g.expert) * gate_bytes;
+        auto it = r.last.find(gate);
+        const bool cold = it == r.last.end() || r.calls - it->second > r.gap;
+        r.last[gate] = r.calls;
+        if (!cold) { this_call[g.expert] = nullptr; continue; }
+        ++r.cold;
+        g.ready = r.flag();
+        r.push(gate, gate_bytes, g.ready, jobs);
+        r.push(layer.up + size_t(g.expert) * gate_bytes, gate_bytes, g.ready, jobs);
+        r.push(layer.down + size_t(g.expert) * down_bytes, down_bytes, g.ready, jobs);
+        this_call[g.expert] = g.ready;
+    }
+    r.submit(jobs);
+    std::stable_partition(groups_.begin(), groups_.end(), [](const Group& g) { return g.ready == nullptr; });
+}
+
+void ExpertLane::miss_wait(const Group& g) {
+    if (!g.ready || g.ready->load(std::memory_order_acquire) == 0) return;
+    const auto t0 = std::chrono::steady_clock::now();
+    while (g.ready->load(std::memory_order_acquire) > 0) pause();
+    miss_->wait_ns.fetch_add(uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count()), std::memory_order_relaxed);
+}
+
+size_t ExpertLane::place_bands(const LaneLayer& layer, int experts, int hidden, int ff, int nodes) {
+    static const size_t page = size_t(sysconf(_SC_PAGESIZE));
+    const size_t gate_bytes = layer.gate_stride ? layer.gate_stride : layer.f.gu_row * size_t(ff);
+    const size_t down_bytes = layer.down_stride ? layer.down_stride : layer.f.d_row * size_t(hidden);
+    std::vector<void*> pages;
+    std::vector<int> to, status;
+    size_t asked = 0;
+    auto flush = [&] {
+        if (pages.empty()) return;
+        status.assign(pages.size(), 0);
+        // move_pages(0, count, pages, nodes, status, MPOL_MF_MOVE)
+        syscall(SYS_move_pages, 0, (unsigned long)pages.size(), pages.data(), to.data(), status.data(), 2);
+        pages.clear();
+        to.clear();
+    };
+    // the pages of rows [0, rows) of row_bytes each at base: a page goes with the band holding its first byte
+    auto matrix = [&](const uint8_t* base, size_t row_bytes, int rows, int e) {
+        const uintptr_t lo = uintptr_t(base), hi = lo + row_bytes * size_t(rows);
+        for (uintptr_t a = (lo + page - 1) & ~uintptr_t(page - 1); a + page <= hi; a += page) {
+            const int band = int((a - lo) / row_bytes / 128);
+            pages.push_back(reinterpret_cast<void*>(a));
+            to.push_back((band + e) % nodes);
+            asked += page;
+            if (pages.size() >= 65536) flush();
+        }
+    };
+    for (int e = 0; e < experts; ++e) {
+        matrix(layer.gate + size_t(e) * gate_bytes, layer.f.gu_row, ff, e);
+        matrix(layer.up + size_t(e) * gate_bytes, layer.f.gu_row, ff, e);
+        matrix(layer.down + size_t(e) * down_bytes, layer.f.d_row, hidden, e);
+    }
+    flush();
+    return asked;
+}
+
+// LANE_BANDS: each node's threads (threads 1.. in begin()) numbered within their node
+void ExpertLane::band_teams() {
+    const int first = async_ ? 1 : 0;
+    band_size_.assign(size_t(nodes_), 0);
+    band_index_.assign(size_t(threads_), 0);
+    for (int t = first; t < threads_; ++t) band_index_[size_t(t)] = band_size_[size_t(node_of_[size_t(t)])]++;
+}
 
 ExpertLane::ExpertLane(int hidden, int ff, int threads, bool pin_threads)
     : hidden_(hidden), ff_(ff), threads_(std::max(1, threads)) {
@@ -87,6 +294,19 @@ ExpertLane::ExpertLane(int hidden, int ff, int threads, bool pin_threads)
     for (int t = 0; t < threads_; ++t) pkg_of_[size_t(t)] = cpu_of_[size_t(t)] >= 0 ? cpu_package(cpu_of_[size_t(t)]) : 0;
     packages_ = 1 + *std::max_element(pkg_of_.begin(), pkg_of_.end());
     if (packages_ < 2) numa_ = false;
+    // STRATA_DS41_LANE_BANDS=1 (pinned threads, 2+ NUMA nodes): node teams over the bands placed in their memory
+    node_of_.assign(size_t(threads_), 0);
+    for (int t = 0; t < threads_; ++t) node_of_[size_t(t)] = cpu_of_[size_t(t)] >= 0 ? cpu_node(cpu_of_[size_t(t)]) : 0;
+    nodes_ = 1 + *std::max_element(node_of_.begin(), node_of_.end());
+    bands_ = pin_threads && nodes_ > 1 && std::getenv("STRATA_DS41_LANE_BANDS") && std::string(std::getenv("STRATA_DS41_LANE_BANDS")) == "1";
+    if (bands_) {   // every node needs threads, with and without the caller (begin() leaves thread 0 out)
+        for (int first = 0; first < 2 && bands_; ++first)
+            for (int n = 0; n < nodes_ && bands_; ++n)
+                bands_ = std::any_of(node_of_.begin() + first, node_of_.end(), [n](int x) { return x == n; });
+        if (!bands_) std::fprintf(stderr, "ds41 expert lane: LANE_BANDS off (a NUMA node has no lane thread)\n");
+    }
+    if (bands_) numa_ = false;
+    if (const char* v = std::getenv("STRATA_DS41_MISS_READ"); v && std::atoi(v) > 0) miss_ = std::make_unique<MissReader>(std::atoi(v));
     for (int i = 1; i < threads_; ++i) pool_.emplace_back([this, i] { pin(i); worker(i); });
     pin(0);
 }
@@ -132,7 +352,11 @@ void ExpertLane::worker(int thread) {
         if (stop_.load(std::memory_order_acquire)) return;
         seen = start_.load(std::memory_order_acquire);
         phase_work(thread);
-        if (async_) done_.fetch_add(1, std::memory_order_acq_rel);
+        if (async_) {
+            const int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+            for (int64_t seen = end_ns_.load(std::memory_order_relaxed); seen < now && !end_ns_.compare_exchange_weak(seen, now);) {}
+            done_.fetch_add(1, std::memory_order_acq_rel);
+        }
     }
 }
 
@@ -144,8 +368,64 @@ void ExpertLane::phase_work(int t) {
     const size_t act_bytes = f.act_bytes, h_bytes = f.h_bytes;
     const size_t gate_bytes = layer_->gate_stride ? layer_->gate_stride : f.gu_row * size_t(ff_);
     const size_t down_bytes = layer_->down_stride ? layer_->down_stride : f.d_row * size_t(hidden_);
-    // with teams (LANE_NUMA): this thread's share of its team's groups only
     const int abs_t = async_ ? t + 1 : t;
+    if (bands_) {   // LANE_BANDS: this node's bands of every group, its team's share of them
+        const int node = node_of_[size_t(abs_t)], tn = band_size_[size_t(node)], ti = band_index_[size_t(abs_t)];
+        // the (group, band) items of this node, in order; this thread takes items [n * ti / tn, n * (ti + 1) / tn)
+        auto items = [&](int rows, auto&& fn) {
+            const int nb = (rows + 127) / 128;
+            int n = 0;
+            for (const Group& g : groups_)
+                for (int b = 0; b < nb; ++b) n += (b + g.expert) % nodes_ == node;
+            const int i0 = int(int64_t(n) * ti / tn), i1 = int(int64_t(n) * (ti + 1) / tn);
+            int i = 0;
+            for (const Group& g : groups_) {
+                for (int b = 0; b < nb && i < i1; ++b) {
+                    if ((b + g.expert) % nodes_ != node) continue;
+                    if (i++ < i0) continue;
+                    fn(g, b * 128, std::min(rows, (b + 1) * 128));
+                }
+                if (i >= i1) break;
+            }
+        };
+        items(ff_, [&](const Group& g, int r0, int r1) {
+            if (g.ready) miss_wait(g);
+            const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
+            const uint8_t* up = layer_->up + size_t(g.expert) * gate_bytes;
+            for (size_t j0 = 0; j0 < g.entries.size(); j0 += cpu::MAXT) {
+                const size_t ng = std::min<size_t>(cpu::MAXT, g.entries.size() - j0);
+                const void* acts[cpu::MAXT];
+                float* ffs[cpu::MAXT];
+                for (size_t j = 0; j < ng; ++j) {
+                    acts[j] = act_.data() + size_t(g.entries[j0 + j] / top_k_) * act_bytes;
+                    ffs[j] = hidden_buf_.data() + size_t(g.entries[j0 + j]) * size_t(ff_);
+                }
+                cpu::native_gu_rows(f, gate, acts, int(ng), ffs, r0, r1, up);
+            }
+        });
+        barrier();
+        const int entries = nt_ * top_k_;
+        for (int e = entries * t / T; e < entries * (t + 1) / T; ++e)
+            cpu::native_quant_h(f, hidden_buf_.data() + size_t(e) * size_t(ff_), hq_.data() + size_t(e) * h_bytes);
+        barrier();
+        items(hidden_, [&](const Group& g, int r0, int r1) {
+            const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
+            const uint8_t* down = layer_->down + size_t(g.expert) * down_bytes;
+            for (size_t j0 = 0; j0 < g.entries.size(); j0 += cpu::MAXT) {
+                const size_t ng = std::min<size_t>(cpu::MAXT, g.entries.size() - j0);
+                const void* hqs[cpu::MAXT];
+                float* outs[cpu::MAXT];
+                for (size_t j = 0; j < ng; ++j) {
+                    hqs[j] = hq_.data() + size_t(g.entries[j0 + j]) * h_bytes;
+                    outs[j] = out_.data() + size_t(g.entries[j0 + j]) * size_t(hidden_);
+                }
+                cpu::native_down_rows(f, gate, hqs, int(ng), outs, r0, r1, down);
+            }
+        });
+        barrier();
+        return;
+    }
+    // with teams (LANE_NUMA): this thread's share of its team's groups only
     const int team = numa_ ? pkg_of_[size_t(abs_t)] : -1;
     const int tn = numa_ ? team_size_[size_t(team)] : T, ti = numa_ ? team_index_[size_t(abs_t)] : t;
     // 1. gate/up: this thread's rows of every selected expert (all of its tokens at once)
@@ -154,6 +434,7 @@ void ExpertLane::phase_work(int t) {
         for (const Group& g : groups_) {
             if (r0 == r1) break;
             if (numa_ && g.team != team) continue;
+            if (g.ready) miss_wait(g);   // MISS_READ: a cold expert's pieces are in
             const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
             const uint8_t* up = layer_->up + size_t(g.expert) * gate_bytes;
             for (size_t j0 = 0; j0 < g.entries.size(); j0 += cpu::MAXT) {   // the row kernels take up to MAXT tokens
@@ -217,7 +498,9 @@ void ExpertLane::prepare(const LaneLayer& layer, const float* z, int nt, const i
             if (ids[e] >= 0) by_expert[ids[e]].push_back(e);   // negative: handled elsewhere (the GPU tier)
         for (auto& [expert, entries] : by_expert) groups_.push_back({expert, std::move(entries)});
     }
+    if (miss_) miss_mark(layer);
     if (numa_) assign_teams(layer);
+    if (bands_) band_teams();
     act_.resize(size_t(nt) * layer.f.act_bytes);
     hidden_buf_.resize(size_t(nt) * size_t(top_k) * size_t(ff_));
     out_.resize(size_t(nt) * size_t(top_k) * size_t(hidden_));
@@ -307,6 +590,8 @@ void ExpertLane::begin(const LaneLayer& layer, const float* z, int nt, const int
     if (threads_ < 2) { async_ = false; prepare(layer, z, nt, ids, top_k); phase_work(0); return; }
     async_ = true;
     done_.store(0, std::memory_order_relaxed);
+    begin_t_ = std::chrono::steady_clock::now();
+    end_ns_.store(0, std::memory_order_relaxed);
     prepare(layer, z, nt, ids, top_k);
     start_.fetch_add(1, std::memory_order_acq_rel);
     start_.notify_all();
@@ -317,6 +602,9 @@ void ExpertLane::finish() {
     if (async_) {
         while (done_.load(std::memory_order_acquire) < threads_ - 1) pause();
         async_ = false;
+        const int64_t e = end_ns_.load(std::memory_order_relaxed), b = std::chrono::duration_cast<std::chrono::nanoseconds>(begin_t_.time_since_epoch()).count();
+        if (e > b) async_busy_s_ += double(e - b) * 1e-9;
+        ++async_jobs_;
     }
     collect(ids_, w_, y_);
 }

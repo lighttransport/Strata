@@ -706,6 +706,26 @@ __global__ void native_q6_k_mmvq_kernel(const Q6KBlock* __restrict__ w,
     }
 }
 
+// STRATA_Q6_V2=1 (opt-in): one-token Q6_K GEMV with a warp per row and four rows per workgroup, each thread two words
+// of a block (16 threads a block, a warp two blocks per step): no shared-memory reduction, twice the loads in flight
+// per thread. The same per-word dot; the sums run in another order (not bitwise the default kernel's).
+__launch_bounds__(WARPS * WARP, 1)
+__global__ void native_q6_k_mmvq_v2_kernel(const Q6KBlock* __restrict__ w, const Q81Block* __restrict__ x,
+                                           float* __restrict__ y, int n_in, int n_out) {
+    const int row = WARPS * int(blockIdx.x) + int(threadIdx.y);
+    if (row >= n_out) return;
+    const int blocks_per_row = n_in / 256;
+    const Q6KBlock* wr = w + std::size_t(row) * blocks_per_row;
+    const int sub = int(threadIdx.x) / 16, iqs = 2 * (int(threadIdx.x) % 16);
+    float tmp = 0.0f;
+    for (int kbx = sub; kbx < blocks_per_row; kbx += 2) {
+        tmp += q6_q8_dot(wr + kbx, x + kbx * 8, iqs);
+        tmp += q6_q8_dot(wr + kbx, x + kbx * 8, iqs + 1);
+    }
+    tmp = warp_sum(tmp);
+    if (threadIdx.x == 0) y[row] = tmp;
+}
+
 // The four 32-element formats use native two-byte loads and VDR=2. The affine
 // Q4_0/Q5_0 correction consumes the original-input sum stored in Q8_1, exactly
 // as the pinned CUDA dot does; a signed-integer code substitution would differ.
@@ -2517,7 +2537,10 @@ void native_q6_k_mmvq(const void* weights, const void* x_q8_1, float* y,
     const auto* x = static_cast<const Q81Block*>(x_q8_1);
     const auto s = static_cast<cudaStream_t>(stream);
     const dim3 threads(WARP, WARPS);
-    if (n_in / 256 < WARPS * WARP / 32) {
+    static const bool v2 = std::getenv("STRATA_Q6_V2") && std::string(std::getenv("STRATA_Q6_V2")) == "1";
+    if (v2) {
+        native_q6_k_mmvq_v2_kernel<<<unsigned((std::size_t(n_out) + WARPS - 1) / WARPS), threads, 0, s>>>(w, x, y, n_in, n_out);
+    } else if (n_in / 256 < WARPS * WARP / 32) {
         const unsigned blocks = unsigned((std::size_t(n_out) + WARPS - 1) / WARPS);
         native_q6_k_mmvq_kernel<true><<<blocks, threads, 0, s>>>(w, x, y, n_in, n_out);
     } else {

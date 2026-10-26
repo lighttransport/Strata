@@ -30,6 +30,13 @@ void ds41_hc_post(const float* x, const float* res, const float* post, const flo
                   int tokens = 1);
 /// STRATA_DS41_DEFER_RANK: h[d] += y * sum_s post[s] comb[d + 4 s] (comb null: h[d] += y * post[d]); post / comb at the
 /// coefficient arrays' offsets 4 / 8, 24 floats per token.
+/// STRATA_DS41_GPU_ROUTE: the router's top-k on the GPU (ids / wts [T][K]) and the grouped kernels' table of the routes
+/// held in VRAM (slots[e]: the expert's tier blob, 0 when not resident); cpu_topk >= 0 drops non-resident picks of
+/// rank >= cpu_topk (weight 0). table: GroupedRunner's layout at capacity cap = T * K.
+void ds41_route_table(const float* logits, const float* bias, const unsigned long long* slots, int T, int E, int K, bool normalize,
+                      float scale, int cpu_topk, int cap, int* ids, float* wts, void* table, void* stream);
+/// ds41_scatter_axpy with the row count m on the device
+void ds41_scatter_axpy_dev(const float* src, const int* idx, const float* w, const int* m, int n, float* dst, void* stream);
 void ds41_defer_add(const float* y, float* h, const float* post, const float* comb, int n, void* stream, int tokens = 1);
 /// ds41_add(moe, peer), ds41_add(., gsum), ds41_add(., y) -> y, then ds41_hc_post(y, ...) in one launch (peer, gsum optional).
 void ds41_hc_post_sum(const float* moe, const float* peer, const float* gsum, float* y, const float* res, const float* post, const float* comb,

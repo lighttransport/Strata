@@ -145,9 +145,51 @@ inline void row_dot_iq2xs(const uint8_t* row, int nblocks, const block_q8_K* con
     for (int t = 0; t < NT; ++t) res[t] = hsum8(accf[t]);
 }
 
+// ---- IQ1_S (19), STRATA_IQ1S_FAST=1 (opt-in): the grid values g in {-1, 0, 1} multiply the activation by a sign
+// (vpsignb gives g * y, zero where g is), one maddubs against ones and one madd by 8 (2s+1); the delta term
+// +-(2s+1) * sum(y) of a 32-value half comes from the activation's bsums as a scalar.  The block's integer total is
+// Fmt32<19>'s; it reaches the float accumulator through other lanes, so the float additions round differently.
+template <int NT> STRATA_ROWS_FN
+inline void row_dot_iq1s(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
+    const int pf = prefetch_distance();
+    const __m256i ones = _mm256_set1_epi8(1);
+    __m256 accf[NT];
+    for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
+    for (int i = 0; i < nblocks; ++i) {
+        const uint8_t* blk = row + (size_t) i * 50;
+        rows_ahead(blk, pf);
+        __m256i acci[NT];
+        int dl[NT];
+        for (int t = 0; t < NT; ++t) { acci[t] = _mm256_setzero_si256(); dl[t] = 0; }
+        for (int ib = 0; ib < 8; ++ib) {
+            const uint8_t* q = blk + 2 + 4 * ib;
+            const uint32_t h = u16(blk + 34 + 2 * ib);
+            const __m256i v = _mm256_set_epi64x((long long) iq1s_grid[q[3] | ((h >> 1) & 0x700)],
+                                                (long long) iq1s_grid[q[2] | ((h << 2) & 0x700)],
+                                                (long long) iq1s_grid[q[1] | ((h << 5) & 0x700)],
+                                                (long long) iq1s_grid[q[0] | ((h << 8) & 0x700)]);
+            const int sc = 2 * (int) ((h >> 12) & 7) + 1;
+            const __m256i sc8 = _mm256_set1_epi16((short) (8 * sc));
+            const int ds = (h & 0x8000) ? -sc : sc;
+            for (int t = 0; t < NT; ++t) {
+                const __m256i yv = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + 32 * ib));
+                acci[t] = madd_add(acci[t], _mm256_maddubs_epi16(ones, _mm256_sign_epi8(yv, v)), sc8);
+                dl[t] += ds * (y[t][i].bsums[2 * ib] + y[t][i].bsums[2 * ib + 1]);
+            }
+        }
+        const float dx = h2f(u16(blk)) * 0.125f;
+        for (int t = 0; t < NT; ++t)
+            accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * y[t][i].d),
+                                      _mm256_cvtepi32_ps(_mm256_add_epi32(acci[t], _mm256_setr_epi32(dl[t], 0, 0, 0, 0, 0, 0, 0))), accf[t]);
+    }
+    for (int t = 0; t < NT; ++t) res[t] = hsum8(accf[t]);
+}
+
+
 template <int TY, int NT> STRATA_ROWS_FN
 inline void row_dot_any(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
     if constexpr (TY == 17) row_dot_iq2xs<NT>(row, nblocks, y, res);
+    else if constexpr (TY == 19) { if (iq1s_fast()) row_dot_iq1s<NT>(row, nblocks, y, res); else row_dot<TY, NT>(row, nblocks, y, res); }
     else                    row_dot<TY, NT>(row, nblocks, y, res);
 }
 

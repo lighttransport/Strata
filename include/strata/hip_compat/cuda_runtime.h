@@ -48,6 +48,8 @@
 #define cudaEventRecordExternal hipEventRecordExternal
 #define cudaEventWaitExternal hipEventWaitExternal
 #define cudaEventSynchronize hipEventSynchronize
+#define cudaSetDeviceFlags hipSetDeviceFlags
+#define cudaDeviceScheduleSpin hipDeviceScheduleSpin
 #define cudaEvent_t hipEvent_t
 #define cudaFree hipFree
 #if HIP_VERSION_MAJOR < 7

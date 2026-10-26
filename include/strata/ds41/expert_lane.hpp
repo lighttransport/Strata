@@ -13,7 +13,9 @@
 #include "strata/kernels/cpu/native_expert.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <map>
+#include <memory>
 #include <cstdint>
 #include <string>
 #include <thread>
@@ -48,8 +50,31 @@ public:
     void finish();
     int threads() const { return threads_; }
 
+    /// STRATA_DS41_MISS_READ=N (opt-in): queued parallel reads for experts that may have left the page cache. An
+    /// expert not used for STRATA_DS41_MISS_GAP calls (default 1376, about 32 tokens of 43 layers) is "cold": its
+    /// groups run last, and N reader threads check its pages (mincore) and read the missing ones in 1 MiB pieces
+    /// (MADV_POPULATE_READ), N reads in flight instead of one fault at a time on a lane thread. A lane thread waits
+    /// for a cold group's reads before its rows. Values are unchanged (the same rows, the same order of sums).
+    struct MissStats { uint64_t calls = 0, cold = 0, read_pieces = 0, read_bytes = 0; double wait_s = 0, read_s = 0; };
+    MissStats miss_stats() const;
+    void miss_reset();   // the counters restart (decode's own)
+    /// begin()/finish() jobs: their count and the seconds from begin() to the last thread's end (the lane's own time)
+    double async_busy_s() const { return async_busy_s_; }
+    long async_jobs() const { return async_jobs_; }
+    void async_reset() { async_busy_s_ = 0; async_jobs_ = 0; }
+    /// STRATA_DS41_LANE_BANDS=1 (opt-in; Strata PR #4016's band layout, in place): every 128-row band of every expert
+    /// matrix lives on NUMA node (band + expert) % nodes, and each node's pinned lane threads compute only the bands in
+    /// their own memory. place_bands() moves a layer's mapped pages there (move_pages); returns the bytes asked.
+    /// Rows are computed by the same kernels whichever thread runs them: results are bit-identical.
+    bool bands() const { return bands_; }
+    int nodes() const { return nodes_; }
+    static size_t place_bands(const LaneLayer& layer, int experts, int hidden, int ff, int nodes);
+    /// MADV_PAGEOUT on a fraction of a layer's experts (a test: STRATA_DS41_MISS_TEST_DROP); returns the bytes asked
+    static size_t page_out(const LaneLayer& layer, int experts, int hidden, int ff, double fraction, unsigned seed);
+
 private:
-    struct Group { int expert; std::vector<int> entries; int team = 0; };   // entries: t * top_k + k routed to this expert
+    // entries: t * top_k + k routed to this expert; ready: a cold group's reads (MISS_READ), null when warm
+    struct Group { int expert; std::vector<int> entries; int team = 0; std::atomic<int>* ready = nullptr; };
     void phase_work(int thread);
     void barrier();
     void worker(int thread);
@@ -74,6 +99,10 @@ private:
     // begin()/finish(): threads 1.. do the work; the caller collects
     bool async_ = false, idle_ = false;
     std::atomic<int> done_{0};
+    std::chrono::steady_clock::time_point begin_t_;
+    std::atomic<int64_t> end_ns_{0};   // the last thread's end, steady_clock ns
+    double async_busy_s_ = 0;
+    long async_jobs_ = 0;
     const int32_t* ids_ = nullptr;
     const float* w_ = nullptr;
     float* y_ = nullptr;
@@ -85,7 +114,17 @@ private:
     int packages_ = 1;
     std::vector<int> pkg_of_, team_size_, team_index_;
     std::map<const void*, int> page_pkg_;
+    // LANE_BANDS: thread -> NUMA node; per call: threads per node, a thread's index in its node's team
+    bool bands_ = false;
+    int nodes_ = 1;
+    std::vector<int> node_of_, band_size_, band_index_;
+    void band_teams();
     void collect(const int32_t* ids, const float* w, float* y);
+    // MISS_READ: last call that used an expert (keyed by its gate rows), the reader pool and its queue
+    struct MissReader;
+    std::unique_ptr<MissReader> miss_;
+    void miss_mark(const LaneLayer& layer);
+    void miss_wait(const Group& g);
 };
 
 }  // namespace strata::ds41
