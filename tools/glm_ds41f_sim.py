@@ -244,6 +244,29 @@ def cmd_v100(args):
             print(f"  {ctx:>8} {kv:<5}{' FP16 TC' if tc else '':<9}{d['tok_s']:>7.1f} tok/s   index {d['index_ms']:5.1f} ms   KV {d['kv_gib']:5.2f} GiB   hit {d['hit']:.3f}")
 
 
+def cmd_levers(args):
+    """The 2026-10-26 research levers (docs/DS41F_PLAN.md 8k): V100 decode and prefill, TR16."""
+    print("V100 node, Engram RAM 56 GiB, DSpark (5 draft positions): decode tok/s by lever (phase model, calibrated to 8j)")
+    print(f"{'configuration':<52}{'tok/s':>7}{'tok/step':>9}{'k':>5}{'step':>7}{'KL':>7}")
+    for label, lp in ds41f.lever_table():
+        r = ds41f.lever_decode(lp)
+        print(f"{label:<52}{r['tok_s']:>7.1f}{r['tokens_per_step']:>9.2f}{r['k']:>5.1f}{r['step_ms']:>7.0f}{r['kl']:>7.3f}")
+    print("\nV100 node, streamed prefill tok/s (IQ2_XXSE4 / E3 experts; f16 = FP16 tensor-core expert GEMM gain)")
+    print(f"{'configuration':<40}{'4K':>7}{'8K':>7}{'32K':>7}{'106K':>7}")
+    for label, kw in (("batch 2048", dict(batch=2048)),
+                      ("batch 4096 (measured 389 / 412 / - / 377)", dict(batch=4096)), ("batch 8192", dict(batch=8192)),
+                      ("batch 4096 + f16 x1.5", dict(batch=4096, f16_gain=1.5)), ("batch 4096 + f16 x2", dict(batch=4096, f16_gain=2.0)),
+                      ("batch 8192 + f16 x2", dict(batch=8192, f16_gain=2.0))):
+        vals = [ds41f.lever_prefill(n, **kw)["tok_s"] for n in (4096, 8192, 32768, 106000)]
+        print(f"{label:<40}" + "".join(f"{v:>7.0f}" for v in vals))
+    for prof in ("now", "target"):
+        rows, info = ds41f.tr16_levers(prof)
+        print(f"\nTR16 (128 GB + RX 9070 XT 16 GB), UD-IQ1_S, Engram on NVMe, runner profile '{prof}' (plain {info['base_tok_s']:.1f} tok/s, hit {info['hit']:.2f})")
+        for label, tok_s, step in rows:
+            print(f"  {label:<58}{tok_s:>7.1f} tok/s  step {step:6.1f} ms")
+        print(f"  VRAM left for the expert tier + drafter: {info['vram_for_experts_and_drafter_gib']:.1f} GiB (DSpark drafter {info['drafter_gib']} GiB)")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -256,6 +279,8 @@ def main(argv=None):
         p.set_defaults(func=fn)
     p = sub.add_parser("v100", help="the Strata runner on 2x Tesla V100: decode levers, sessions, long context")
     p.set_defaults(func=cmd_v100)
+    p = sub.add_parser("levers", help="research levers: V100 decode / prefill and TR16 estimates")
+    p.set_defaults(func=cmd_levers)
     p = sub.add_parser("a64fx", help="A64FX node counts, both profiles")
     add_args(p)
     p.add_argument("--nodes", type=int, nargs="+", default=[6, 8, 12])

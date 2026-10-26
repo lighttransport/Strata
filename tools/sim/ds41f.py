@@ -1011,6 +1011,172 @@ def v100_context(contexts=(600, 131072, 262144, 524288, 1048576), kvs=("fp32", "
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Levers from the 2026-10-26 research (docs/DS41F_PLAN.md 8k) on a phase model of the V100 runner, calibrated to the
+# 2026-10-25/26 runs at the node-safe Engram RAM 56 GiB (8j). A DSpark step = draft + verify pass of T = 1 + k tokens +
+# Engram stall; the verify pass = dense(T) + FFN(T) + host. FFN(T) per pass = GPU-0 experts (G) + its wait for the
+# CPU lane and GPU 1 (W): MMQ G 36.4 / W 23.2 ms, S27 G 26.0 / W 21.5 ms at T ~ 5 (s72: experts= and lane_wait=),
+# scaled sub-linearly in T (more tokens, more distinct experts, not proportionally). Draft acceptance as conditional
+# probabilities per draft position, fitted to the measured tokens per step (code600 4.0-4.27, wiki600 2.56-2.63).
+@dataclasses.dataclass
+class LeverHw:
+    draft_ms: float = 14.0             # DSpark draft per step (5 positions; 8.4 of it router syncs)
+    dense0_ms: float = 24.0            # dense phases per pass (pre, q, kv/index, attention, out, ffn_pre, router, tail)
+    dense_tok_ms: float = 1.94         #   + per token (33.7 ms at T = 5)
+    host_ms: float = 4.0               # per pass: logits, argmax, rewind, injection
+    ffn_g: dict = dataclasses.field(default_factory=lambda: {"mmq": 36.4, "s27": 26.0})   # GPU-0 experts per pass at T = 5
+    ffn_w: dict = dataclasses.field(default_factory=lambda: {"mmq": 23.2, "s27": 21.5})   # its wait for the lane / GPU 1
+    lane_ms: float = 27.5              # the CPU lane per pass at T = 5 (lane= in decode_gpu)
+    ffn_a: float = 0.118               # FFN(T) = FFN(T=5) x (a + b T): fitted to E3 MMQ code600 (T ~ 5.3, verify 94 ms
+    ffn_b: float = 0.154               #   without Engram) and wiki600 (T ~ 3, 68.5 ms); S27 then within 4 ms of both
+    attn_share: float = 0.80           # share of the dense phases a deferred lane job can run under (the next layer's attention)
+    link_gbps: float = 11.0            # one GPU's PCIe link for DECODE_STREAM copies
+    expert_mb: float = 9.95            # IQ2_XXS gate/up + Q2_K down
+    lane_route_ms: float = 0.065       # lane time per route per layer (27.5 ms / 40 layers / ~10.6 CPU routes)
+    peer_layer_ms: float = 0.39        # GPU 1 busy per layer with S27 (15.5 ms / 40)
+    # Engram stall per step at Engram RAM 56 GiB (host engram seconds / steps; it varies 2-3x between runs - Lustre)
+    engram_ms: dict = dataclasses.field(default_factory=lambda: {
+        ("IQ2_XXSE4", "code"): 54.6, ("IQ2_XXSE4", "wiki"): 17.5,
+        ("IQ2_XXSE43", "code"): 24.8, ("IQ2_XXSE43", "wiki"): 16.4,
+        ("IQ2_XXSE3", "code"): 15.0, ("IQ2_XXSE3", "wiki"): 3.0})
+    accept: dict = dataclasses.field(default_factory=lambda: {   # P(draft position j accepted | earlier accepted)
+        "code": (0.94, 0.88, 0.82, 0.77, 0.70), "wiki": (0.85, 0.75, 0.55, 0.45, 0.40)})
+    drafted: dict = dataclasses.field(default_factory=lambda: {"code": 4.3, "wiki": 2.0})   # mean drafted per step (PMIN 0.4)
+    # per-pack verify-pass scale on top of the E3 calibration (E4: same experts, the Engram stall carries the difference)
+    pack_scale: dict = dataclasses.field(default_factory=lambda: {"IQ2_XXSE4": 1.0, "IQ2_XXSE43": 1.0, "IQ2_XXSE3": 1.0})
+    kl: dict = dataclasses.field(default_factory=lambda: {"IQ2_XXSE4": 0.290, "IQ2_XXSE43": 0.307, "IQ2_XXSE3": 0.314})
+
+
+@dataclasses.dataclass
+class LeverPlan:
+    pack: str = "IQ2_XXSE3"
+    workload: str = "code"            # code / wiki
+    kernel: str = "s27"               # mmq / s27
+    draft_n: int = 5                  # drafted positions per step (the drafter's block is 5)
+    sched: bool = False               # DSPARK_SCHED: the verified prefix by expected tokens per ms
+    defer_rank: int = 6               # DEFER_RANK (6 = off): lane routes of rank >= R overlap the next layer
+    decode_stream: int = 0            # DECODE_STREAM 0,b: experts per layer from the lane to GPU 1 over its link
+    lane_speedup: float = 1.0         # LANE_NUMA or other lane gains (upstream: 1.10 on a dual Xeon)
+    set: dict = dataclasses.field(default_factory=dict)
+
+    def hw(self):
+        h = LeverHw()
+        for k, v in self.set.items():
+            setattr(h, k, v)
+        return h
+
+
+def lever_verify_ms(lp, T, h=None):
+    """One verify pass of T tokens (ms) and its parts."""
+    h = h or lp.hw()
+    scale = h.ffn_a + h.ffn_b * T
+    dense = h.dense0_ms + h.dense_tok_ms * T
+    g = h.ffn_g[lp.kernel] * scale
+    lane = h.lane_ms * scale / lp.lane_speedup
+    w = h.ffn_w[lp.kernel] * scale * (h.lane_ms * scale / lane) ** -1 if lp.lane_speedup != 1.0 else h.ffn_w[lp.kernel] * scale
+    if lp.lane_speedup != 1.0:   # the wait shrinks by what the lane saves
+        w = max(0.0, h.ffn_w[lp.kernel] * scale - (h.lane_ms * scale - lane))
+    # DECODE_STREAM: b experts per layer leave the lane (b x ~1.1 routes) and cross GPU 1's link (copy + compute)
+    if lp.decode_stream:
+        saved = 40 * lp.decode_stream * 1.1 * h.lane_route_ms * scale
+        peer = 40 * (h.peer_layer_ms + lp.decode_stream * h.expert_mb / h.link_gbps)
+        w = max(0.0, w - saved, peer - g)
+    # deferral: the share of lane routes with rank >= R finishes under the next layer's attention
+    hidden = 0.0
+    if lp.defer_rank < 6:
+        share = (6 - lp.defer_rank) / 6.0
+        hidden = min(share * lane, h.attn_share * dense)
+        w = max(0.0, w - hidden)
+    v = (dense + g + w + h.host_ms) * h.pack_scale[lp.pack]
+    return v, dict(dense=dense, g=g, w=w, hidden=hidden)
+
+
+def lever_decode(lp):
+    """tok/s of a DSpark step: the expected tokens of the verified prefix over draft + verify + Engram stall; with
+    sched, the prefix length k <= draft_n that maximizes that ratio (per step it would use the drafter's confidences;
+    in expectation the best fixed k is the bound computed here)."""
+    h = lp.hw()
+    p = h.accept[lp.workload]
+    eng = h.engram_ms[(lp.pack, lp.workload)]
+    def rate(k):
+        exp_tok, run = 1.0, 1.0
+        for j in range(int(math.ceil(k))):
+            run *= p[j]
+            exp_tok += run * min(1.0, k - j)
+        step = h.draft_ms + lever_verify_ms(lp, k + 1, h)[0] + eng
+        return exp_tok / step * 1e3, exp_tok, step
+    # without sched: today's PMIN cut (the measured mean drafted); with it, the best prefix length
+    ks = range(0, min(lp.draft_n, len(p)) + 1) if lp.sched else [min(float(lp.draft_n), h.drafted[lp.workload])]
+    best = max(ks, key=lambda k: rate(k)[0])
+    r, tok, step = rate(best)
+    kl = h.kl[lp.pack] + {6: 0.0, 5: 0.008, 4: 0.018, 3: 0.029}.get(lp.defer_rank, 0.05)   # dsx: +0.029 at R=3 (T16)
+    return dict(tok_s=r, tokens_per_step=tok, step_ms=step, k=best, engram_ms=eng, kl=kl)
+
+
+V100_PREFILL = dict(upload_gib=94.8, link_gbps=24.0, overlap=0.5, mmq_ms_token=2.05, f16_gain=1.0)
+
+
+def lever_prefill(prompt, batch=2048, f16_gain=1.0, peer_split=True, set=None):
+    """Streamed prompt passes on the V100 node: each pass uploads every RAM expert once (both links when the GPU-1
+    split is on), partly under the per-token work (MMQ experts + dense). f16_gain: the expert compute's speed-up from
+    an FP16 tensor-core GEMM path (C2; set from the C1 bench)."""
+    c = dict(V100_PREFILL, **(set or {}))
+    passes = math.ceil(prompt / batch)
+    link = c["link_gbps"] if peer_split else c["link_gbps"] / 2
+    upload_s = c["upload_gib"] * GIB / (link * 1e9)
+    expert_share = 0.6                 # of the per-token work, the experts' (the rest: dense, attention, indexer)
+    per_tok = c["mmq_ms_token"] * ((1 - expert_share) + expert_share / f16_gain)
+    total = 0.0
+    for i in range(passes):
+        n = min(batch, prompt - i * batch)
+        ctx = i * batch + n / 2
+        grow = 1.0 + 0.004 * max(0.0, ctx / 8192 - 1)      # attention / indexer growth (INDEX_FAST, 2-stage top-k: 377 at 106K)
+        total += upload_s * (1 - c["overlap"]) + n * per_tok * grow * 1e-3
+    return dict(tok_s=prompt / total, seconds=total, passes=passes)
+
+
+def lever_table():
+    """Rows (label, plan) for the V100 node: the measured baseline, each lever alone, and the stacks."""
+    rows = []
+    for pack in ("IQ2_XXSE4", "IQ2_XXSE3"):
+        for wl in ("code", "wiki"):
+            b = dict(pack=pack, workload=wl)
+            rows += [
+                (f"{pack} {wl}: MMQ (measured base)", LeverPlan(kernel="mmq", **b)),
+                (f"{pack} {wl}: S27", LeverPlan(**b)),
+                (f"{pack} {wl}: S27 + sched", LeverPlan(sched=True, **b)),
+                (f"{pack} {wl}: S27 + defer 4", LeverPlan(defer_rank=4, **b)),
+                (f"{pack} {wl}: S27 + defer 3", LeverPlan(defer_rank=3, **b)),
+                (f"{pack} {wl}: S27 + DECODE_STREAM 1", LeverPlan(decode_stream=1, **b)),
+                (f"{pack} {wl}: S27 + lane NUMA 1.10", LeverPlan(lane_speedup=1.10, **b)),
+                (f"{pack} {wl}: S27 + sched + defer 3 + NUMA", LeverPlan(sched=True, defer_rank=3, lane_speedup=1.10, **b)),
+            ]
+    return rows
+
+
+# TR16 (Threadripper 1950X, 128 GB DDR4, RX 9070 XT 16 GB), Unsloth UD-IQ1_S with the Engram tables on the local NVMe.
+# The runner model above (RunnerHw `now`: 12.5 tok/s measured 2026-10-21) plus the same levers: deferral hides part of
+# the CPU lane under the next layer's attention; DSpark needs its 7.7 GB of drafter weights on the GPU, which with the
+# 6.3 GB trunk and the 3 GiB desktop reserve leaves no expert tier on 16 GB, so speculation there is the history-lookup
+# drafter (no weights) or a drafter with its experts on the CPU.
+def tr16_levers(profile="now"):
+    out = []
+    base = runner_decode(RunnerPlan(profile=profile))
+    h = RUNNER_PROFILES[profile]
+    trunk = base["trunk_ms"]
+    for label, defer_share, spec_tokens, spec_cost in (
+            ("plain", 0.0, 1.0, 0.0),
+            ("defer 3 (lossy, ~+0.03 KL)", 0.5, 1.0, 0.0),
+            ("lookup drafter on code (~1.6 tokens/step, verify ~1.35x)", 0.0, 1.6, 0.35),
+            ("defer 3 + lookup drafter", 0.5, 1.6, 0.35)):
+        hidden = min(defer_share * base["experts_ms"], 0.8 * (trunk - h.small_ms))
+        step = base["step_ms"] - hidden
+        step = step * (1 + spec_cost)
+        out.append((label, spec_tokens / step * 1e3, step))
+    vram_gib = 16 - 3 - h.trunk_gb * 1e9 / GIB
+    return out, dict(base_tok_s=base["tok_s"], hit=base["hit"], vram_for_experts_and_drafter_gib=vram_gib, drafter_gib=7.7)
+
+
+# ---------------------------------------------------------------------------------------------------------------
 def load_records(path=None):
     import json
     return json.loads(pathlib.Path(path or DATA / "measured_ds41f.json").read_text())

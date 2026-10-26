@@ -28,6 +28,9 @@ void ds41_hc_pre(const float* h, const float* w, float* y, int n, void* stream, 
 /// Per token t: x + t n, res/out + t 4n, post/comb + t 24.
 void ds41_hc_post(const float* x, const float* res, const float* post, const float* comb, float* out, int n, void* stream,
                   int tokens = 1);
+/// STRATA_DS41_DEFER_RANK: h[d] += y * sum_s post[s] comb[d + 4 s] (comb null: h[d] += y * post[d]); post / comb at the
+/// coefficient arrays' offsets 4 / 8, 24 floats per token.
+void ds41_defer_add(const float* y, float* h, const float* post, const float* comb, int n, void* stream, int tokens = 1);
 /// ds41_add(moe, peer), ds41_add(., gsum), ds41_add(., y) -> y, then ds41_hc_post(y, ...) in one launch (peer, gsum optional).
 void ds41_hc_post_sum(const float* moe, const float* peer, const float* gsum, float* y, const float* res, const float* post, const float* comb,
                       float* out, int n, void* stream, int tokens);

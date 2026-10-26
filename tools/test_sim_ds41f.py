@@ -211,6 +211,22 @@ class V100Test(unittest.TestCase):
         self.assertAlmostEqual(p8, 412, delta=25)
         self.assertEqual(len(ds41f.v100_packs_compare()), 5)
 
+    def test_research_levers(self):
+        # the phase model against the 8j measurements (Engram RAM 56 GiB), within 10 %
+        for kw, meas in ((dict(kernel="mmq"), 34.9), (dict(), 36.0), (dict(kernel="mmq", workload="wiki"), 29.9),
+                         (dict(workload="wiki"), 32.4), (dict(kernel="mmq", pack="IQ2_XXSE4"), 24.2)):
+            r = ds41f.lever_decode(ds41f.LeverPlan(**kw))
+            self.assertLess(abs(r["tok_s"] / meas - 1), 0.10, kw)
+        base = ds41f.lever_decode(ds41f.LeverPlan())
+        self.assertGreater(ds41f.lever_decode(ds41f.LeverPlan(defer_rank=3))["tok_s"], base["tok_s"])
+        self.assertGreaterEqual(ds41f.lever_decode(ds41f.LeverPlan(sched=True))["tok_s"], base["tok_s"] - 1e-9)
+        self.assertLess(ds41f.lever_decode(ds41f.LeverPlan(decode_stream=2))["tok_s"], base["tok_s"])   # the link is too slow
+        self.assertAlmostEqual(ds41f.lever_prefill(4096, batch=4096)["tok_s"], 389, delta=25)
+        self.assertAlmostEqual(ds41f.lever_prefill(106000, batch=4096)["tok_s"], 377, delta=30)
+        rows, info = ds41f.tr16_levers()
+        self.assertAlmostEqual(rows[0][1], 12.5, delta=1.0)          # the measured TR16 decode
+        self.assertLess(info["vram_for_experts_and_drafter_gib"], info["drafter_gib"])
+
     def test_sessions_and_context(self):
         one = ds41f.v100_decode(ds41f.V100Plan(spec=False))
         four = ds41f.v100_decode(ds41f.V100Plan(spec=False, sessions=4))

@@ -211,6 +211,25 @@ __global__ void hc_post_kernel(const float* x, const float* res, const float* po
     }
 }
 
+// STRATA_DS41_DEFER_RANK: a layer's deferred expert sum y added to the streams one sublayer late, as if it had been
+// in that layer's output: through its post-mix (post, 4 per token) and then the next attention's stream mix (comb,
+// 4x4 per token; null after the last layer): h[d] += y * sum_s post[s] comb[d + 4 s]
+__global__ void defer_add_kernel(const float* y, float* h, const float* post, const float* comb, int n) {
+    const int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n) return;
+    y += size_t(blockIdx.y) * n;
+    h += size_t(blockIdx.y) * 4 * n;
+    post += size_t(blockIdx.y) * 24;
+    if (comb) comb += size_t(blockIdx.y) * 24;
+    const float yj = y[j];
+    for (int d = 0; d < 4; ++d) {
+        float v = 0.0f;
+        if (comb) for (int s2 = 0; s2 < 4; ++s2) v += post[s2] * comb[d + 4 * s2];
+        else v = post[d];
+        h[size_t(d) * n + j] += v * yj;
+    }
+}
+
 // the FFN tail in one launch: x = ((moe + peer) + gsum) + y (each add as ds41_add, in that order; peer / gsum may be
 // null), y = x, then hc_post
 __global__ void hc_post_sum_kernel(const float* moe, const float* peer, const float* gsum, float* y, const float* res, const float* post,
@@ -1751,6 +1770,11 @@ void ds41_hc_post(const float* x, const float* res, const float* post, const flo
                   int tokens) {
     hc_post_kernel<<<dim3(blocks(n, 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(x, res, post, comb, out, n);
     check("hc_post");
+}
+
+void ds41_defer_add(const float* y, float* h, const float* post, const float* comb, int n, void* stream, int tokens) {
+    defer_add_kernel<<<dim3(blocks(n, 256), unsigned(tokens)), 256, 0, (cudaStream_t)stream>>>(y, h, post, comb, n);
+    check("defer_add");
 }
 
 void ds41_hc_post_sum(const float* moe, const float* peer, const float* gsum, float* y, const float* res, const float* post, const float* comb,

@@ -573,6 +573,26 @@ struct PeerGpu {
             ck(cudaMemsetAsync(out.p, 0, size_t(nt) * hidden * 4, stream), "peer sum");
         }
         const size_t gb = ggml_row_size(ggml_type(gu_type[size_t(l)]), hidden) * size_t(ff);
+        // STRATA_DS41_EXTRAS_GROUPED=1: the copied experts' routes in one grouped launch (S27 with STRATA_EXPERT_V3)
+        // instead of a GEMV chain per route
+        static const bool grouped_on = std::getenv("STRATA_DS41_EXTRAS_GROUPED") && std::string(std::getenv("STRATA_DS41_EXTRAS_GROUPED")) == "1";
+        if (grouped_on && k::native_expert_supported(gu_type[size_t(l)], d_type[size_t(l)], hidden, ff)) {
+            std::vector<std::pair<const uint8_t*, std::vector<std::pair<int, float>>>> groups;
+            const uint8_t* last = nullptr;
+            int slot = -1;
+            for (const Extra& e : extra) {
+                if (e.host != last) {
+                    last = e.host;
+                    if (++slot >= int(xslots.size())) xslots.emplace_back(stride[size_t(l)] > 0 ? *std::max_element(stride.begin(), stride.end()) : 0);
+                    ck(cudaMemcpyAsync(xslots[size_t(slot)].p, e.host, stride[size_t(l)], cudaMemcpyHostToDevice, stream), "peer streamed expert");
+                    groups.push_back({xslots[size_t(slot)].b(), {}});
+                }
+                groups.back().second.push_back({e.token, e.w});
+            }
+            extras_runner.run(gu_type[size_t(l)], d_type[size_t(l)], hidden, ff, clamp[size_t(l)], groups, x.f(), nt, out.f(), stream);
+            extra.clear();
+            return true;
+        }
         int slot = -1;
         const uint8_t* last = nullptr;
         for (const Extra& e : extra) {
@@ -593,7 +613,7 @@ struct PeerGpu {
         extra.clear();
         return true;
     }
-    GroupedRunner grouped_runner, grown_runner;
+    GroupedRunner grouped_runner, grown_runner, extras_runner;
     bool grouped(int l, int nt, int K, const int* ids, const float* wts, const float* z) {
         Guard g(dev);
         std::map<int, std::vector<std::pair<int, float>>> by;
@@ -2051,6 +2071,51 @@ public:
             std::cerr << "\n";
         }
         if (peer_) peer_->timing = timing0;
+        // prompt shapes: one GPU-0 resident expert of the layer, M tokens through its gate/up [2 ff x hidden] - MMQ (q8_1,
+        // dp4a on sm_70) against a dequantization to FP16 + a cuBLAS tensor-core GEMM (the down matrix likewise)
+        if (!e0.empty() && use_mmq_ && mmq_) {
+            namespace mq = strata::prefill::mmq;
+            const uint8_t* wexp = slots_[size_t(slot_[size_t(l)][size_t(e0[0])])].p;
+            const size_t g = slice_gate(l);
+            const int Mmax = 256;
+            Dev xf(size_t(Mmax) * c.hidden * 4), xq(mq::q8_bytes(Mmax, std::max(c.hidden, c.ff))), dst(size_t(Mmax) * 2 * c.ff * 4),
+                w16(size_t(2) * c.ff * c.hidden * 2), xh(size_t(Mmax) * std::max(c.hidden, c.ff) * 2), idsd((size_t(Mmax) + 128) * 4), bnd(64);
+            std::vector<float> xr(size_t(Mmax) * c.hidden);
+            std::vector<uint16_t> hr(size_t(Mmax) * std::max(c.hidden, c.ff));
+            uint32_t rs = 777u;
+            for (auto& v : xr) { rs = rs * 1664525u + 1013904223u; v = (float(rs >> 8) / 16777216.0f - 0.5f) * 2.0f; }
+            for (auto& v : hr) { rs = rs * 1664525u + 1013904223u; v = uint16_t(0x3400 + ((rs >> 16) & 0x3ff)) | uint16_t((rs >> 15) & 0x8000); }
+            ck(cudaMemcpy(xf.p, xr.data(), xr.size() * 4, cudaMemcpyHostToDevice), "bench x");
+            ck(cudaMemcpy(xh.p, hr.data(), hr.size() * 2, cudaMemcpyHostToDevice), "bench xh");
+            mq::iota(idsd.i(), Mmax + 128, stream_);
+            const float one = 1.0f, zero = 0.0f;
+            for (int part = 0; part < 2; ++part) {   // 0: gate/up, 1: down
+                const int ty = part ? L.f.d_type : L.f.gu_type;
+                const int rows = part ? c.hidden : 2 * c.ff, cols = part ? c.ff : c.hidden;
+                const uint8_t* wm = part ? wexp + 2 * g : wexp;
+                const double dq = gpu_ms(0, stream_, 20, [&] { k::iq_dequant_f16(ty, wm, int64_t(rows) * cols, w16.h(), stream_); });
+                std::cerr << "DS41 gpu_bench prefill " << (part ? "down" : "gate/up") << " type=" << ty << " [" << rows << " x " << cols
+                          << "] dequant_f16_ms=" << dq;
+                for (int M : {16, 32, 64, 128, 256}) {
+                    const int32_t b[2] = {0, M};
+                    ck(cudaMemcpy(bnd.p, b, sizeof b, cudaMemcpyHostToDevice), "bench bounds");
+                    const double mm = gpu_ms(0, stream_, 20, [&] {
+                        mq::quantize(xf.f(), nullptr, xq.p, ty, cols, cols, M, stream_);
+                        mq::Product pr;
+                        pr.w = wm; pr.type = ty; pr.w_rows = rows; pr.w_cols = cols; pr.expert_bytes = 0; pr.n = 1;
+                        pr.xq = xq.p; pr.bounds = bnd.i(); pr.ids = idsd.i(); pr.total_rows = M; pr.max_rows = M; pr.dst = dst.f(); pr.ld_dst = rows;
+                        mmq_->run(pr, stream_);
+                    });
+                    const double gm = gpu_ms(0, stream_, 20, [&] {
+                        if (cublasGemmEx(blas_, CUBLAS_OP_T, CUBLAS_OP_N, rows, M, cols, &one, w16.p, CUDA_R_16F, cols, xh.p, CUDA_R_16F, cols, &zero,
+                                         dst.p, CUDA_R_32F, rows, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT) != CUBLAS_STATUS_SUCCESS)
+                            throw std::runtime_error("ds41: bench GEMM");
+                    });
+                    std::cerr << " M" << M << ":mmq=" << mm << ",f16gemm=" << gm;
+                }
+                std::cerr << "\n";
+            }
+        }
     }
     int chunk() const { return chunk_; }
 
@@ -2315,6 +2380,7 @@ public:
             if (dtiming_ && T <= 64) dmark(5);
             k::ds41_hc_post(y_.f(), h_.f(), coeff_attn_.f(4), coeff_attn_.f(8), h2_.f(), c.hidden, stream_, T);
             std::swap(h_, h2_);
+            if (defer_pending_) defer_apply(false);   // the previous layer's deferred experts (STRATA_DS41_DEFER_RANK)
             if (hook && observe) observe("hc_attn_post", l, h_.f(), size_t(4) * c.hidden);
             // FFN sublayer: its input collapses with this layer's attention pre-mix; its own pre-mix is the next
             // layer's attention input
@@ -2343,6 +2409,7 @@ public:
             if (std::vector<float> r; hook && reference && reference("l_out", l, r) && r.size() == size_t(4) * c.hidden)
                 ck(cudaMemcpy(h_.p, r.data(), r.size() * 4, cudaMemcpyHostToDevice), "force l_out");
         }
+        if (defer_pending_) defer_apply(true);
         loop_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - loop0).count();
         if (dtiming_ && !dmarks_.empty()) {   // GPU ms from each mark to the next, by the earlier mark's phase
             ck(cudaStreamSynchronize(stream_), "timing");
@@ -3738,6 +3805,22 @@ private:
     std::vector<Dev> dstream_;   // STRATA_DS41_DECODE_STREAM: GPU 0's slots for the CPU's experts
     GroupedRunner grouped0_;     // STRATA_DS41_DECODE_GROUPED: GPU 0's
     GroupedRunner grown0_;       // STRATA_DS41_GROWN_GROUPED: GPU 0's grown experts
+    // STRATA_DS41_DEFER_RANK: the deferred routes (lane ids / weights), their input and output (pinned), on the device
+    std::vector<int> def_ids_;
+    std::vector<float> def_wts_;
+    float* def_in_ = nullptr;
+    float* def_out_ = nullptr;
+    Dev def_dev_, def_coeff_;
+    bool defer_pending_ = false;
+    int defer_tokens_ = 0;
+    // the pending deferred sum into the streams: after the next layer's attention post-mix (its comb), or after the
+    // last layer (last: no further mix)
+    void defer_apply(bool last) {
+        lane_->finish();
+        defer_pending_ = false;
+        ck(cudaMemcpyAsync(def_dev_.p, def_out_, size_t(defer_tokens_) * cfg_.hidden * 4, cudaMemcpyHostToDevice, stream_), "deferred experts");
+        k::ds41_defer_add(def_dev_.f(), h_.f(), def_coeff_.f(4), last ? nullptr : coeff_attn_.f(8), cfg_.hidden, stream_, defer_tokens_);
+    }
     size_t max_stride_ = 0;
     void gpu_experts(int l, int i, const int* ids, const float* wts, int n) {
         const auto& c = cfg_;
@@ -4853,6 +4936,18 @@ private:
                                   : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]);
             peer_done = true;
         }
+        // STRATA_DS41_DEFER_RANK=R (1..top_k-1; lossy, opt-in): the CPU lane's routes of router rank >= R (the token's picks
+        // are in score order) are computed after the others, while the GPU runs the next layer's attention, and added to
+        // the streams before that layer's FFN (defer_apply) - KTransformers' / dsx's expert deferral. Passes of up to 16
+        // tokens (decode, verify); prompts stay exact
+        static const int defer_rank = std::getenv("STRATA_DS41_DEFER_RANK") ? std::atoi(std::getenv("STRATA_DS41_DEFER_RANK")) : 0;
+        bool defer_now = false;
+        if (defer_rank > 0 && defer_rank < K && T <= 16 && !hook && !remote) {
+            def_ids_.assign(cpu_ids.size(), -1);
+            def_wts_ = wts;
+            for (size_t i = 0; i < cpu_ids.size(); ++i)
+                if (cpu_ids[i] >= 0 && int(i % size_t(K)) >= defer_rank) { def_ids_[i] = cpu_ids[i]; cpu_ids[i] = -1; defer_now = true; }
+        }
         if (lane_async) lane_->begin(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
         bool any_gpu = false;
         bool batched = false;
@@ -4919,6 +5014,19 @@ private:
         if (lane_async) lane_->finish();
         else lane_->run(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
         const auto x2 = std::chrono::steady_clock::now();
+        if (defer_now) {   // the deferred routes on the lane now; this layer's post coefficients kept for their add
+            if (!def_in_) {
+                def_in_ = static_cast<float*>(pinned_keep(size_t(16) * H * 4));
+                def_out_ = static_cast<float*>(pinned_keep(size_t(16) * H * 4));
+                def_dev_ = Dev(size_t(16) * H * 4);
+                def_coeff_ = Dev(size_t(16) * 24 * 4);
+            }
+            std::memcpy(def_in_, pinned_[0], size_t(T) * H * 4);
+            ck(cudaMemcpyAsync(def_coeff_.p, coeff_ffn_.p, size_t(T) * 24 * 4, cudaMemcpyDeviceToDevice, stream_), "defer coeff");
+            lane_->begin(experts_[size_t(l)], def_in_, T, def_ids_.data(), def_wts_.data(), K, def_out_);
+            defer_pending_ = true;
+            defer_tokens_ = T;
+        }
         if (remote) remote_->finish(host_y, T);
         if (peer) {
             peer_->collect();
@@ -5158,6 +5266,9 @@ public:
         bool on = false;
         long drafted = 0, accepted = 0, steps = 0;
         double draft_s = 0, verify_s = 0, inject_s = 0, draft_layers_s = 0, draft_route_s = 0, draft_head_s = 0, lookup_s = 0;
+        // STRATA_DS41_DSPARK_SCHED: verify ms per pass width T (running means, weight 0.2; 0 = not seen), the draft's ms
+        double verify_ms[16] = {}, draft_ms = 0;
+        long sched_cut = 0;   // tokens the schedule left unverified
         long lookup_steps = 0, lookup_drafted = 0, lookup_accepted = 0;
     } dsp_;
     std::vector<Dev> spec_v_, spec_s_;
@@ -5459,6 +5570,35 @@ public:
     }
 
     // drafts n tokens: [anchor, MASK x (n - 1)] at positions pos.., slot i predicting position pos + i + 1
+    // DSPARK_SCHED: of the k <= kmax drafted tokens, how many to verify. Expected tokens of verifying j of them:
+    // 1 + sum_{i<=j} prod_{t<=i} c_t (the bonus token always comes); cost: the draft's ms + the verify ms of a pass of
+    // j + 1 tokens - measured widths as measured, others from the line through the measured ones (until two widths are
+    // known: 15 % of the narrowest per extra token). The first steps verify everything, so the widths get measured.
+    int sched_prefix(const float* conf, int kmax) const {
+        const auto& d = dsp_;
+        if (kmax <= 0 || d.steps < 3) return kmax;
+        double sx = 0, sy = 0, sxx = 0, sxy = 0;
+        int n = 0, t0 = 0;
+        for (int t = 1; t < 16; ++t)
+            if (d.verify_ms[t] > 0) { sx += t; sy += d.verify_ms[t]; sxx += double(t) * t; sxy += t * d.verify_ms[t]; ++n; if (!t0) t0 = t; }
+        if (!n) return kmax;
+        double slope = 0.15 * d.verify_ms[t0], icpt = d.verify_ms[t0] - slope * t0;
+        if (n >= 2) {
+            slope = (n * sxy - sx * sy) / std::max(1e-9, n * sxx - sx * sx);
+            icpt = (sy - slope * sx) / n;
+        }
+        auto vms = [&](int t) { return t < 16 && d.verify_ms[t] > 0 ? d.verify_ms[t] : std::max(1e-3, icpt + slope * t); };
+        int best = 0;
+        double best_rate = 1.0 / (d.draft_ms + vms(1)), expect = 1.0, run = 1.0;
+        for (int j = 1; j <= kmax; ++j) {
+            run *= double(conf[j - 1]);
+            expect += run;
+            const double rate = expect / (d.draft_ms + vms(j + 1));
+            if (rate > best_rate) { best_rate = rate; best = j; }
+        }
+        return best;
+    }
+
     std::vector<int> dspark_draft(int anchor, int pos, int n) {
         const auto& c = cfg_;
         auto& d = dsp_;
@@ -5628,7 +5768,11 @@ public:
         mat("output.weight", d.xn.f(), d.logits.f(), B);
         // STRATA_DS41_DSPARK_PMIN (0): the draft stops at the first position whose confidence is below it
         static const float pmin = std::getenv("STRATA_DS41_DSPARK_PMIN") ? float(std::atof(std::getenv("STRATA_DS41_DSPARK_PMIN"))) : 0.0f;
-        const bool use_conf = pmin > 0 && !d.conf.empty();
+        // STRATA_DS41_DSPARK_SCHED=1 (device head): the drafted prefix verified is the one with the most expected tokens
+        // per ms - the confidences' running products as the expected accepted tokens (DSpark's schedule), the measured
+        // verify ms per pass width as the cost (on MoE offload a wider pass reads more experts: EVICT)
+        static const bool sched = std::getenv("STRATA_DS41_DSPARK_SCHED") && std::string(std::getenv("STRATA_DS41_DSPARK_SCHED")) == "1";
+        const bool use_conf = (pmin > 0 || sched) && !d.conf.empty();
         std::vector<int> out;
         if (d.w1_dev.p) {   // the chain on the device: one download of the tokens (and confidences) at the end
             d.htok[0] = anchor;
@@ -5644,8 +5788,11 @@ public:
             ck(cudaMemcpyAsync(d.htok + 1, d.dtok.i() + 1, size_t(B) * 4, cudaMemcpyDeviceToHost, stream_), "drafts");
             if (use_conf) ck(cudaMemcpyAsync(hconf, d.dconf.p, size_t(B) * 4, cudaMemcpyDeviceToHost, stream_), "confidences");
             ck(cudaStreamSynchronize(stream_), "draft");
-            for (int i = 0; i < B; ++i) {
-                if (use_conf && hconf[i] < pmin) break;
+            int keep = B;
+            for (int i = 0; i < B; ++i)
+                if (use_conf && pmin > 0 && hconf[i] < pmin) { keep = i; break; }
+            if (sched && use_conf) keep = sched_prefix(hconf, keep);
+            for (int i = 0; i < keep; ++i) {
                 out.push_back(d.htok[1 + i]);
                 engram_prefetch(pos, std::vector<int>(d.htok, d.htok + 2 + i), pos + 1 + i, pos + 2 + i);
             }
@@ -5746,7 +5893,13 @@ public:
                     engram_prefetch(pos, toks, pos + 1, pos + 1 + int(drafts.size()));
                 }
             }
-            if (!from_history) drafts = dspark_draft(tok, pos, cap);
+            if (!from_history) {
+                const double ds0 = d.draft_s;
+                drafts = dspark_draft(tok, pos, cap);
+                const double dms = (d.draft_s - ds0) * 1e3;
+                d.draft_ms = d.draft_ms > 0 ? 0.8 * d.draft_ms + 0.2 * dms : dms;
+                d.sched_cut += cap - int(drafts.size());
+            }
             const int n = int(drafts.size());   // the confidence cutoff may draft fewer
             std::vector<int> v{tok};
             v.insert(v.end(), drafts.begin(), drafts.end());
@@ -5764,7 +5917,9 @@ public:
                 log_margin(lg.data() + size_t(a) * V, V, int(out.size()));
             }
             rewind(pos + a + 1);
-            d.verify_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - v0).count();
+            const double vsec = std::chrono::duration<double>(std::chrono::steady_clock::now() - v0).count();
+            d.verify_s += vsec;
+            if (n + 1 < 16) d.verify_ms[n + 1] = d.verify_ms[n + 1] > 0 ? 0.8 * d.verify_ms[n + 1] + 0.2 * vsec * 1e3 : vsec * 1e3;
             dspark_inject(pos, a + 1);
             d.drafted += n;
             d.accepted += a;
@@ -5783,7 +5938,8 @@ public:
         std::cerr << "DS41 dspark steps=" << d.steps << " drafted=" << d.drafted << " accepted=" << d.accepted << " accept_rate="
                   << double(d.accepted) / std::max<long>(d.drafted, 1) << " tokens_per_step=" << double(d.accepted + d.steps) / std::max<long>(d.steps, 1)
                   << " draft_s=" << d.draft_s << " (layers " << d.draft_layers_s << " of which router waits " << d.draft_route_s << ", head "
-                  << d.draft_head_s << ") verify_s=" << d.verify_s << " inject_s=" << d.inject_s;
+                  << d.draft_head_s << ") verify_s=" << d.verify_s << " inject_s=" << d.inject_s << " cut=" << d.sched_cut << " verify_ms_by_width=";
+        for (int t = 1; t < 9; ++t) std::cerr << (t > 1 ? "," : "") << d.verify_ms[t];
         if (lookup)
             std::cerr << " lookup_steps=" << d.lookup_steps << " lookup_drafted=" << d.lookup_drafted << " lookup_accepted=" << d.lookup_accepted
                       << " lookup_s=" << d.lookup_s;
