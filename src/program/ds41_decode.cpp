@@ -5844,7 +5844,16 @@ public:
     std::vector<int> spec_generate(int tok, int pos, int steps) {
         auto& d = dsp_;
         const int m = std::min({pos, cfg_.window, kFeatRing});
-        dspark_inject(pos - m, m);
+        if (d.on) dspark_inject(pos - m, m);   // (lookup drafts alone: no drafter to feed)
+        if (spec_v_.empty()) {   // lookup drafts alone: the verify pass's ratio-2 stash for rewind (load_dspark's, 8 positions)
+            spec_v_.resize(size_t(cfg_.layers));
+            spec_s_.resize(size_t(cfg_.layers));
+            for (int l = 0; l < cfg_.layers; ++l)
+                if (cfg_.kv_src[size_t(l)] == l && cfg_.ratio[size_t(l)] > 1) {
+                    spec_v_[size_t(l)] = Dev(size_t(8) * cfg_.head_dim * 4);
+                    spec_s_[size_t(l)] = Dev(size_t(8) * cfg_.head_dim * 4);
+                }
+        }
         const char* nv = std::getenv("STRATA_DS41_DSPARK_N");
         const int nd = std::max(1, std::min(d.block, nv ? std::atoi(nv) : d.block));
         const int V = cfg_.vocab;
@@ -5881,7 +5890,11 @@ public:
             const int cap = std::min(nd, steps - int(out.size()));
             std::vector<int> drafts;
             bool from_history = false;
-            if (lookup && (!adapt || ema_lk + bonus >= ema_ds)) {
+            // without a DSpark drafter (STRATA_DS41_LOOKUP=1 alone, e.g. a GPU without room for it) a step tries the history
+            // while its running mean of accepted tokens is at least STRATA_DS41_LOOKUP_GATE (1.0) - a rejected draft still
+            // widens the pass, which the CPU lane pays for; otherwise a plain one-token pass (the mean recovers +0.25 each)
+            static const float lk_gate = std::getenv("STRATA_DS41_LOOKUP_GATE") ? float(std::atof(std::getenv("STRATA_DS41_LOOKUP_GATE"))) : 1.0f;
+            if (lookup && (d.on ? (!adapt || ema_lk + bonus >= ema_ds) : (!adapt || ema_lk >= lk_gate))) {
                 const auto l0 = std::chrono::steady_clock::now();
                 const int lcap = adapt ? std::max(1, std::min(lk_n, int(ema_lk + 2.0f))) : lk_n;
                 drafts = history_draft(std::min(lcap, steps - int(out.size())));
@@ -5893,7 +5906,7 @@ public:
                     engram_prefetch(pos, toks, pos + 1, pos + 1 + int(drafts.size()));
                 }
             }
-            if (!from_history) {
+            if (!from_history && d.on) {
                 const double ds0 = d.draft_s;
                 drafts = dspark_draft(tok, pos, cap);
                 const double dms = (d.draft_s - ds0) * 1e3;
@@ -5920,15 +5933,15 @@ public:
             const double vsec = std::chrono::duration<double>(std::chrono::steady_clock::now() - v0).count();
             d.verify_s += vsec;
             if (n + 1 < 16) d.verify_ms[n + 1] = d.verify_ms[n + 1] > 0 ? 0.8 * d.verify_ms[n + 1] + 0.2 * vsec * 1e3 : vsec * 1e3;
-            dspark_inject(pos, a + 1);
+            if (d.on) dspark_inject(pos, a + 1);
             d.drafted += n;
             d.accepted += a;
             d.steps += 1;
             decoded(a + 1);
             if (from_history) { d.lookup_steps += 1; d.lookup_drafted += n; d.lookup_accepted += a; ema_lk = 0.7f * ema_lk + 0.3f * float(a); }
             else {
-                ema_ds = 0.7f * ema_ds + 0.3f * float(a);
-                if (lookup && adapt) ema_lk = std::min(ema_lk + 0.25f, 4.0f);   // a lookup chance again after DSpark steps
+                if (d.on) ema_ds = 0.7f * ema_ds + 0.3f * float(a);
+                if (lookup && adapt) ema_lk = std::min(ema_lk + 0.25f, 4.0f);   // a lookup chance again after DSpark / plain steps
             }
             out.push_back(next);
             tok = next;
@@ -6384,7 +6397,8 @@ int run(int argc, char** argv) {
     std::fill(std::begin(d.xt_), std::end(d.xt_), 0.0);
     const double peer_gpu0 = d.peer_gpu_ms(), peer_late0 = d.peer_late_ms();
     // STRATA_DS41_DSPARK_OFF=1: the drafter loaded (the same residency) but plain decoding, to compare against
-    if (d.dsp_.on && steps > 0 && !std::getenv("STRATA_DS41_DSPARK_OFF")) out = d.spec_generate(int(std::max_element(last.begin(), last.end()) - last.begin()), pos, steps);
+    const bool lookup_only = std::getenv("STRATA_DS41_LOOKUP") && std::string(std::getenv("STRATA_DS41_LOOKUP")) == "1";
+    if ((d.dsp_.on || lookup_only) && steps > 0 && !std::getenv("STRATA_DS41_DSPARK_OFF")) out = d.spec_generate(int(std::max_element(last.begin(), last.end()) - last.begin()), pos, steps);
     else
     for (int s = 0; s < steps; ++s) {
         const int tok = int(std::max_element(last.begin(), last.end()) - last.begin());
