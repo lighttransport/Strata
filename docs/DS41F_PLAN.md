@@ -1057,8 +1057,12 @@ Mapping onto `attn_tiled_kernel`'s block (one token, 16 heads, 64-row tiles, 8 w
 which must be converted to FP16 as they are staged); PV needs P as [head][row] in LDS and V transposed to [dim][row],
 with the 16 heads x 512 dims output split over the 8 waves (64 dims each = 4 float8 = 32 floats per lane, the same
 register budget the current kernel keeps). The k = 512 reduction for QK has to be split over the waves too, with an LDS
-partial sum (8 x 1024 floats = 32 KB, or float LDS atomics into 4 KB) and one sync per 64-row tile. LDS budget: K tile
-64 rows x 512 dims FP16 64 KB (or 8 per-wave 64-dim slices, same total), Q 16 KB, P 2 KB, scores 4-32 KB.
+partial sum (8 x 1024 floats = 32 KB, or float LDS atomics into 4 KB) and one sync per tile. The LDS budget is the binding constraint: this card reports **64 KB of shared memory per block**
+(128 KB per CU, two blocks), so a whole 64-row x 512-dim FP16 K tile (64 KB) leaves no room for Q. Use **32-row
+tiles**: Q FP16 16 KB + K 32 rows x 512 dims FP16 32 KB (each wave reads its own 64-dim slice of the *same* tile, so the
+k split needs no extra LDS) + 8 waves of [16 heads x 32 rows] FP32 partials 16 KB (or 4 waves, 8 KB) + P 1 KB + scores
+2 KB = 59 KB. The same buffer becomes V transposed to [dim][row] for the PV phase after the QK of a tile, so 20 tiles
+per 640-row token.
 **Measured issue rate at these shapes** (`tools/hip/wmma_attn_probe.hip`, one block per token, 16 heads x 64-row tiles
 x 512 dims, 8 waves with a 64-dim k slice each and an LDS partial-sum reduction, QK + PV): **26-45 TF/s** (44.5 at
 steady state, 8192 blocks) against ~10 TFLOPS for the CUDA-core kernel - a 3-4x headroom on the attention. The probe
