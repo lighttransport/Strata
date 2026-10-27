@@ -1059,8 +1059,12 @@ with the 16 heads x 512 dims output split over the 8 waves (64 dims each = 4 flo
 register budget the current kernel keeps). The k = 512 reduction for QK has to be split over the waves too, with an LDS
 partial sum (8 x 1024 floats = 32 KB, or float LDS atomics into 4 KB) and one sync per 64-row tile. LDS budget: K tile
 64 rows x 512 dims FP16 64 KB (or 8 per-wave 64-dim slices, same total), Q 16 KB, P 2 KB, scores 4-32 KB.
-Expected: the attention is ~5.6 s of the 20.1 s pass; at 30 TF/s (vs ~10 today) it becomes ~2 s, i.e. 17-18 s and
-460-480 tok/s at 8K. It converts Q/K/V to FP16 (FP32 accumulate), so it needs its own opt-in switch and the KL gate
+**Measured issue rate at these shapes** (`tools/hip/wmma_attn_probe.hip`, one block per token, 16 heads x 64-row tiles
+x 512 dims, 8 waves with a 64-dim k slice each and an LDS partial-sum reduction, QK + PV): **26-45 TF/s** (44.5 at
+steady state, 8192 blocks) against ~10 TFLOPS for the CUDA-core kernel - a 3-4x headroom on the attention. The probe
+keeps its inputs in L1 and has no softmax/P conversion, so the real kernel will land below it.
+Expected: the attention is ~5.6 s of the 20.1 s pass; at that rate it becomes ~1.5-2 s, i.e. 16-16.5 s and
+500-510 tok/s at 8K. It converts Q/K/V to FP16 (FP32 accumulate), so it needs its own opt-in switch and the KL gate
 against the current logits.
 - Tiling the attention itself was tried and rejected: `q_`/`att_`/the output projection per 256-2048 tokens takes a
   4096 pass from 3.6 s to 6.1-6.3 s of attention+output (the Tensor-core GEMMs at M = 256-2048 run at a third of the
