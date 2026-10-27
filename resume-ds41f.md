@@ -97,7 +97,10 @@ first.
    page cache under concurrent DMA.
 7. Prefill is at 408 tok/s at 8K and 394 at 16K (PREFILL_HALVES, exact). The FP16 KV is now read directly by the
    attention kernel (comp_half), no per-launch float gather. 500 needs the attention kernel ported to gfx12 WMMA (the
-   WMMA attention is CUDA-only) and ~1.4x on the expert MMQ. Historical note: 400 at 8K was the ceiling of this
+   WMMA attention is CUDA-only) and ~1.4x on the expert MMQ. The port is designed in docs/DS41F_PLAN.md 8k from
+   ~/work/gemm/pixal3d/rdna4 (gfx12 f16 WMMA builtin, FA2 at 37 TF/s of a 190 peak, LDS XOR swizzle, k must stream in
+   64-dim chunks at d512, sync WMMA caps ~30-40 TF/s): expected ~3x on the attention (5.6 -> ~2 s), i.e. 460-480 at 8K.
+   Historical note: 400 at 8K was the ceiling of this
    configuration and 500 needs ~1.4x faster kernels, in order: (a) `ds41_attention_batched` (6.2 s per 8K pass,
    ~10 TFLOPS) and the IQ1_S expert MMQ (11.0 s, ~10 TOPS); (b) a smaller per-pass DMA (the transfers are 9.5 s of
    20.6 s, so overlapping them fully is worth at most ~1 s now); (c) the CPU lane for a share of the experts (still

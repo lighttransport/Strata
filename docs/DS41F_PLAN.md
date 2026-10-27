@@ -1042,7 +1042,26 @@ the pass width, and the trunk's tiles are swapped in and out of them (h, x, coef
   so the result is unchanged (KL 0.0008 both ways) and an 8K pass went 20.8 -> 20.1 s.
 - 500 tok/s at 8K needs ~1.4x faster attention and expert kernels (both run at ~10 TFLOPS of a ~50 TFLOP FP32 /
   ~97 TOPS INT8 card). The tensor-core attention kernel (`attn_wmma_kernel`, Volta+) is CUDA-only - it is not compiled
-  on HIP - so the HIP attention is the CUDA-core tiled kernel; porting it to gfx12's WMMA is the obvious next win.
+  on HIP - so the HIP attention is the CUDA-core tiled kernel. `STRATA_DS41_ATTN_V1=1` (the older batched kernel) is not
+  a path: with FP16 caches it faults.
+
+**The gfx12 WMMA attention port (designed, not written).** The reference is `~/work/gemm/pixal3d/rdna4` on this card:
+gfx12 has the WMMA builtin `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(A, B, C)` (wave32; lane l -> half = l/16,
+id = l%16; A[i] = A[id][half*8+i], B[i] = B[half*8+i][id], C[i] = C[half*8+i][id]), and its FA2 port measures
+**37 TF/s** for an f16 flash attention at head_dim 128 (19.5 % of the 190 TF/s microbench peak) with an LDS XOR swizzle
+(`d ^ ((row&7)<<4)`) as its main lever. Two findings bound the port: (a) 16-bit LDS runs out past head_dim 128 (`smK +
+smV + smP > 64 KB`), so a d512 kernel must stream the k dimension in 64-dim chunks; (b) synchronous WMMA on RDNA4 caps
+around 30-40 TF/s - the 80-90 % figures need async MMA and a 5090-sized register file - so plan for ~3x, not ~10x.
+Mapping onto `attn_tiled_kernel`'s block (one token, 16 heads, 64-row tiles, 8 waves): QK is the FA2 pattern exactly
+(m = the 16 heads, n = the 64 rows, k = dim; the row list is the window ring + the indexer's selected FP16 cache rows,
+which must be converted to FP16 as they are staged); PV needs P as [head][row] in LDS and V transposed to [dim][row],
+with the 16 heads x 512 dims output split over the 8 waves (64 dims each = 4 float8 = 32 floats per lane, the same
+register budget the current kernel keeps). The k = 512 reduction for QK has to be split over the waves too, with an LDS
+partial sum (8 x 1024 floats = 32 KB, or float LDS atomics into 4 KB) and one sync per 64-row tile. LDS budget: K tile
+64 rows x 512 dims FP16 64 KB (or 8 per-wave 64-dim slices, same total), Q 16 KB, P 2 KB, scores 4-32 KB.
+Expected: the attention is ~5.6 s of the 20.1 s pass; at 30 TF/s (vs ~10 today) it becomes ~2 s, i.e. 17-18 s and
+460-480 tok/s at 8K. It converts Q/K/V to FP16 (FP32 accumulate), so it needs its own opt-in switch and the KL gate
+against the current logits.
 - Tiling the attention itself was tried and rejected: `q_`/`att_`/the output projection per 256-2048 tokens takes a
   4096 pass from 3.6 s to 6.1-6.3 s of attention+output (the Tensor-core GEMMs at M = 256-2048 run at a third of the
   M = 4096 rate), so it saves the 3.5 GB but costs 2.5 s a pass - more than the second DMA pass it would buy. The
