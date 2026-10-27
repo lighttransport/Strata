@@ -248,5 +248,96 @@ class MeasuredKernelTest(unittest.TestCase):
         self.assertEqual(node.hw_barrier_us, 1.38)
 
 
+def fp4(nodes=12, **kw):
+    return layout(nodes, pack="fp4_local", trunk_format="fp4l", **kw)
+
+
+class Fp4LocalTest(unittest.TestCase):
+    """FP4-Local: census bytes, memory fit, kernel-rate sensitivity, numerics, measured-table hook."""
+
+    def test_census_matches_the_v100_census(self):
+        ref = json.loads((a64fx.DATA / "glm_fp4_v100.json").read_text())["census"]
+        c = a64fx._FP4L
+        self.assertEqual(a64fx.pack("fp4_local").routed_total_bytes(), ref["main_experts"]["gpu_bytes"])   # 171,228,266,496
+        self.assertEqual(c["main_fixed_matrix_bytes"], ref["main_fixed"]["checkpoint_bytes"])
+        self.assertEqual(c["head"]["bytes"], ref["head"]["checkpoint_bytes"])
+        self.assertAlmostEqual(a64fx.pack("fp4_local").routed_bytes_per_token() / 1e9, 4.756, delta=0.001)
+        per_layer = {k: sum(m["bytes"] for m in v["sublayers"].values()) / 1e6 for k, v in c["kinds"].items()}
+        self.assertAlmostEqual(per_layer["dense"], 302.5, delta=0.1)
+        self.assertAlmostEqual(per_layer["kda"], 174.3, delta=0.1)
+        self.assertAlmostEqual(per_layer["mla"], 177.2, delta=0.1)
+
+    def test_fits_eight_and_twelve_nodes_not_six(self):
+        self.assertTrue(a64fx.memory_fit(fp4(12, context=32768))["fits"])
+        self.assertTrue(a64fx.memory_fit(fp4(8, context=32768))["fits"])
+        self.assertFalse(a64fx.memory_fit(fp4(6, context=32768))["fits"])
+
+    def test_head_split_share(self):
+        m = a64fx._FP4L["kinds"]["kda"]["sublayers"]["q_proj"]
+        self.assertEqual(a64fx.fp4l_share(m, 12), 6 / 64)
+        self.assertEqual(a64fx.fp4l_share(m, 8), 8 / 64)
+        self.assertEqual(a64fx.fp4l_share(a64fx._FP4L["kinds"]["kda"]["sublayers"]["router"], 12), 1.0)
+
+    def test_decode_monotone_in_kernel_rate_and_exact_slower(self):
+        rates = (120, 160, 250, 330, 504)
+        tok = [a64fx.decode(fp4(), profile=dataclasses.replace(a64fx.redesign(), expert_nvfp4_w4a8_gbps=float(r))).tok_s for r in rates]
+        self.assertTrue(all(b > a for a, b in zip(tok, tok[1:])))
+        fast = a64fx.decode(fp4(), profile=a64fx.redesign()).tok_s
+        exact = a64fx.decode(fp4(numerics="exact"), profile=a64fx.redesign()).tok_s
+        self.assertLess(exact, fast)
+        self.assertGreater(fast, 62)
+        self.assertLess(fast, 85)
+
+    def test_gguf_paths_ignore_numerics(self):
+        prof = a64fx.redesign()
+        self.assertEqual(a64fx.decode(layout(12), profile=prof).tok_s, a64fx.decode(layout(12, numerics="exact"), profile=prof).tok_s)
+
+    def redesign_with(self, kern):
+        saved = a64fx._KERN
+        try:
+            a64fx._KERN = kern
+            return a64fx.redesign()
+        finally:
+            a64fx._KERN = saved
+
+    def test_measured_table_replaces_hypothesis(self):
+        bare = {k: v for k, v in a64fx._KERN.items() if k not in ("nvfp4_kernel_v1", "trunk_kernel_v1", "nvfp4_gemm_v1")}
+        kern = dict(bare, nvfp4_kernel_v1=dict(chosen_llvm_best_per_width=dict(
+            w4a8=dict(gate_up=[300.0, 200.0, 150.0, 120.0], down=[250.0, 170.0, 130.0, 100.0]))))
+        t = a64fx.fp4_tables(kern)
+        self.assertAlmostEqual(t["w4a8"][0], 3 / (2 / 300 + 1 / 250), places=6)
+        self.assertEqual(t["w4a8"][1][0], 1.0)
+        prof = self.redesign_with(kern)
+        self.assertAlmostEqual(prof.expert_nvfp4_w4a8_gbps, round(t["w4a8"][0], 1))
+        self.assertFalse(any(h.startswith("NVFP4 W4A8") for h in prof.fp4l_hypotheses))
+        self.assertTrue(any(h.startswith("NVFP4 W4A8") for h in self.redesign_with(bare).fp4l_hypotheses))
+
+    def test_redesign_uses_the_measured_fp4_kernels(self):
+        d = json.loads((a64fx.DATA / "measured_a64fx_kernels.json").read_text())
+        w = d["nvfp4_kernel_v1"]["chosen_llvm_best_per_width"]["w4a8"]
+        mix = 3 / (2 / w["gate_up"][0] + 1 / w["down"][0])
+        prof = a64fx.redesign()
+        self.assertAlmostEqual(prof.expert_nvfp4_w4a8_gbps, mix, delta=0.1)
+        self.assertGreater(prof.expert_nvfp4_w4a8_gbps, 168)          # above gemm's fused MXFP4 SDOT
+        self.assertEqual(prof.trunk_q8_gbps, d["trunk_kernel_v1"]["chosen_llvm_node48_gbps"]["q8_0"])
+
+    def test_prefill_fast_near_q23_and_exact_slowest(self):
+        prof = a64fx.redesign()
+        q23 = a64fx.prefill(layout(12), profile=prof).tok_s
+        fast = a64fx.prefill(fp4(), profile=prof).tok_s
+        exact = a64fx.prefill(fp4(numerics="exact"), profile=prof).tok_s
+        self.assertAlmostEqual(fast / q23, 1.0, delta=0.1)      # W4A8 GEMM measured at the int8 SDOT GEMM rate
+        self.assertLess(exact, 0.6 * fast)
+
+    def test_cli_report_and_sweep(self):
+        import glm_a64fx_sim
+        for argv, want in ((["report", "--pack", "fp4_local"], "W4A8 GB/s"),
+                           (["sweep", "--pack", "fp4_local", "--profile", "redesign", "--grid", "nodes=8,12"], "prefill")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(glm_a64fx_sim.main(argv), 0)
+            self.assertIn(want, out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

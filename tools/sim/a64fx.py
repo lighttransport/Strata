@@ -43,7 +43,41 @@ def sdot_q23_mix():
 
 
 _Q23_RATE, _Q23_COSTS = sdot_q23_mix()
+
+
+def fp4_tables(kern=None):
+    """Measured FP4-Local kernels from the probe (tools/a64fx_probe/glm_fp4_bench, collect_fp4.py), when the data file has
+    them: {"w4a8"|"w4a16": (node GB/s at one token, time per byte at 1..4 tokens relative to one), "trunk": {...},
+    "gemm": {...}}. Gate, up and down hold equal NVFP4 bytes, so the expert rate is the 2:1 time-weighted mix."""
+    kern = _KERN if kern is None else kern
+    out = {}
+    table = kern.get("nvfp4_kernel_v1", {}).get("chosen_llvm_best_per_width", {})
+    for mode in ("w4a8", "w4a16"):
+        t = table.get(mode)
+        if t:
+            times = [2 / a + 1 / b for a, b in zip(t["gate_up"], t["down"])]
+            out[mode] = (3 / times[0], tuple(round(x / times[0], 3) for x in times))
+    trunk = kern.get("trunk_kernel_v1", {}).get("chosen_llvm_node48_gbps")
+    if trunk:
+        out["trunk"] = trunk
+    gemm = kern.get("nvfp4_gemm_v1", {}).get("factor_vs_int8_gemm")
+    if gemm:
+        out["gemm"] = gemm
+    return out
+
+
+def _fp8_exact_rate(trunk):
+    """MXFP8 and block-FP8 exact kernels weighted by their trunk bytes (harmonic: time adds)."""
+    mx = bfp = 0
+    for info in _FP4L["kinds"].values():
+        for m in info["sublayers"].values():
+            if m["format"] == "MXFP8":
+                mx += m["bytes"] * len(info["layers"])
+            elif m["format"] == "block_FP8":
+                bfp += m["bytes"] * len(info["layers"])
+    return (mx + bfp) / (mx / trunk["mxfp8_exact"] + bfp / trunk["block_fp8_exact"])
 _MHC = json.loads((DATA / "measured_a64fx_mhc.json").read_text())
+_FP4L = json.loads((DATA / "glm_fp4_local_trunk.json").read_text())   # tools/glm_fp4_local_census.py, headers only
 MHC_LOCAL_GRAM_INMODEL_US = _MHC["per_site_us_mean_over_ranks"]["local_gram"]["end_site"]   # 42.2, 12-node runner, 8K context;
 # confirmed by the in-model A/B 52449126 (43.3 us at 512 context, decode +8.2 % over legacy; predicted +8.5 %)
 GIB = 2 ** 30
@@ -58,6 +92,8 @@ PACKS["ud_q4kxl"] = model.Pack("ud_q4kxl", 288, {l: ("Q4_K", "Q4_K", "Q5_K") for
                                description="UD-Q4_K_XL routed experts as run on 12 A64FX nodes (183.9 GB)")
 PACKS["q23_fp8"] = model.Pack("q23_fp8", 288, {l: ("Q2_K", "Q2_K", "Q3_K") for l in _MOE},
                               description="experts-q23-fp8.gguf: Q2_K gate/up + Q3_K down on all 42 layers (110.2 GB)")
+PACKS["fp4_local"] = model.Pack("fp4_local", 288, {l: ("NVFP4", "NVFP4", "NVFP4") for l in _MOE},
+                                description="nvidia/GLM-5.3-Flash-FP4-Local: NVFP4 routed experts, E4M3 scales expanded (171.2 GB)")
 
 
 def pack(name):
@@ -68,6 +104,8 @@ def pack(name):
 
 # Trunk (non-expert) weight bytes relative to model.FIXED_BYTES, which counts the UD Q5_K/Q6_K mix (~5.7 bpw).
 TRUNK_SCALE = dict(q5q6=1.0, q8=8.5 / 5.7, q4=model.DENSE_FORMATS["q4"]["bytes_scale"])
+# fp4l: the FP4-Local trunk tensor by tensor from the census (MXFP8 / block FP8 / BF16), not a scale of the UD mix
+TRUNK_FORMATS = (*TRUNK_SCALE, "fp4l")
 # Bytes every rank reads per token regardless of the trunk split in the current runner (handoff-decode100:31,
 # rank logs): the sparse-attention front (q_a/kv_a/indexer of the 11 MLA layers), the F32 routers, the mHC tensors.
 REPLICATED_PER_TOKEN = dict(sparse_front=272e6, router=FIXED_BYTES["router"] * GEOMETRY.moe_layers, mhc=66e6)
@@ -79,6 +117,80 @@ HIDDEN_BYTES_BF16 = GEOMETRY.hidden * 2
 KV_BYTES_PER_TOKEN = 26.1e3          # MLA latent + indexer key, 11 layers + draft (docs/GLM53F_RELEASE.md:90)
 KDA_STATE_BYTES = 146 * 2 ** 20
 PREFILL_GFLOP_PER_TOKEN = 19.9       # routed 16.9 + shared 2.1 + dense 0.9 (trunk GEMMs are inside the fitted eff)
+PREFILL_ROUTED_GFLOP = 16.9
+
+# FP4-Local trunk groups (census sublayer names). Routers and the mHC mixing weights are read inside the fixed router
+# and mHC site costs and are not streamed again here.
+FP4L_GROUPS = dict(
+    kda_proj=("q_proj", "k_proj", "v_proj", "o_proj", "f_a_proj", "g_a_proj", "f_b_proj", "g_b_proj", "b_proj"),
+    mla_front=("q_a_proj", "kv_a_proj", "indexer_wq_b", "indexer_wk", "indexer_weights_proj"),
+    mla_heads=("q_b_proj", "kv_b_proj", "o_proj"),
+    shared=("shared_gate", "shared_up", "shared_down"),
+    dense_ffn=("ffn_gate", "ffn_up", "ffn_down"),
+    replicated=("router", "hc_attn_fn", "hc_ffn_fn"))
+
+
+def fp4l_kernel_format(m, numerics, profile):
+    """Format the runner streams for census matrix `m`: the stored one in exact mode, Q8_0 for the formats
+    `profile.fast_requant` lists in fast mode."""
+    return "Q8_0" if numerics == "fast" and m["format"] in profile.fast_requant else m["format"]
+
+
+def fp4l_bytes(m, numerics, profile):
+    if fp4l_kernel_format(m, numerics, profile) == "Q8_0":
+        return m["rows"] * m["cols"] * 34 // 32
+    return m["bytes"]
+
+
+def fp4l_share(m, tp, heads=64, split=None):
+    """Share of matrix `m` the busiest of `tp` ranks holds: whole attention heads (64 heads over 12 ranks: 6 on the
+    busiest), 16-row or 16-column tiles, or everything when replicated."""
+    split = split or m["split"]
+    if tp <= 1 or split == "replicated":
+        return 1.0
+    if split == "heads":
+        return math.ceil(heads / tp) / heads
+    tiles = max(1, (m["rows"] if split == "rows" else m["cols"]) // 16)
+    return math.ceil(tiles / tp) / tiles
+
+
+def fp4l_rate(m, numerics, profile, node):
+    """GB/s of the trunk kernel for this matrix, capped by the streaming rate (0 = the streaming rate)."""
+    kernel = dict(Q8_0=profile.trunk_q8_gbps, BF16=profile.trunk_bf16_gbps, MXFP8=profile.trunk_fp8_exact_gbps,
+                  block_FP8=profile.trunk_fp8_exact_gbps)[fp4l_kernel_format(m, numerics, profile)]
+    stream = profile.stream_rate(node)
+    return min(kernel, stream) if kernel > 0 else stream
+
+
+def fp4l_group_ms(layout, profile, node, kind, group, shard_front=False):
+    """Milliseconds one rank spends streaming a census group of one layer at one token."""
+    subs = _FP4L["kinds"][kind]["sublayers"]
+    ms = 0.0
+    for name in FP4L_GROUPS[group]:
+        m = subs[name]
+        split = "rows" if shard_front and m["split"] == "replicated" else None
+        rate = fp4l_rate(m, layout.numerics, profile, node) / layout.ranks_per_node
+        ms += fp4l_bytes(m, layout.numerics, profile) * fp4l_share(m, layout.trunk_tp, split=split) / (rate * 1e6)
+    return ms
+
+
+def fp4l_memory(layout, profile):
+    """Per-rank trunk bytes (tensor-parallel shares, head included) and replicated bytes (routers, mHC weights,
+    norms and small extras, the BF16 embedding) of the FP4-Local trunk."""
+    trunk = replicated = 0.0
+    for kind, info in _FP4L["kinds"].items():
+        n = len(info["layers"])
+        for name, m in info["sublayers"].items():
+            b = fp4l_bytes(m, layout.numerics, profile) * n
+            if name in FP4L_GROUPS["replicated"]:
+                replicated += b
+            else:
+                trunk += b * fp4l_share(m, layout.trunk_tp)
+        replicated += sum(_FP4L["extras_per_layer"][kind].values()) * n
+    head = _FP4L["head"]
+    trunk += fp4l_bytes(head, layout.numerics, profile) * fp4l_share(head, layout.trunk_tp)
+    replicated += _FP4L["embedding"]["bytes"]
+    return trunk, replicated
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -235,6 +347,8 @@ class Layout:
     acceptance: str = "a64fx_best512"
     prefill_chunk: int = 4096
     bf16_collectives: bool = False
+    numerics: str = "fast"             # FP4-Local: fast (W4A8 experts, trunk formats in profile.fast_requant as Q8_0) | exact
+                                       # (W4A16 experts, checkpoint trunk formats); no effect on the GGUF packs
 
     def ranks(self):
         return self.nodes * self.ranks_per_node
@@ -251,7 +365,8 @@ class Layout:
 
     def describe(self):
         return (f"{self.nodes}n x{self.ranks_per_node} {self.expert_layout}(parts={self.parts}) trunk_tp={self.trunk_tp} "
-                f"{self.trunk_format} {self.pack} ctx={self.context} mtp={self.mtp_depth}")
+                f"{self.trunk_format} {self.pack} ctx={self.context} mtp={self.mtp_depth}"
+                + (f" numerics={self.numerics}" if self.pack == "fp4_local" or self.trunk_format == "fp4l" else ""))
 
     to_dict = lambda self: dataclasses.asdict(self)
 
@@ -303,6 +418,24 @@ class Profile:
     cmg_fixed_scale: float = 1.0       # 4 ranks per node: scale of the fixed per-phase costs (12-thread CMG-local teams)
     expert_width_cost: tuple = ()      # Q2 experts: time per weight byte at 1..4 tokens per expert relative to 1 token (empty:
                                        # bandwidth-bound, extra tokens are free)
+    # FP4-Local (pack fp4_local, trunk fp4l). Defaults: what exists today in gemm's A64FX kernels (a64fx/swfp4fp8).
+    expert_nvfp4_w4a8_gbps: float = 168.0   # fused MXFP4 SDOT 41.9 GB/s per CMG x 4 (swfp4fp8/RESULTS.md); MXFP4, not NVFP4
+    expert_nvfp4_w4a16_gbps: float = 30.0   # exact NVFP4 panel kernel (E4M3 gathers): 27.1-33.7 GB/s per node, M=1
+    nvfp4_w4a8_width_cost: tuple = ()
+    nvfp4_w4a16_width_cost: tuple = ()
+    trunk_fp8_exact_gbps: float = 20.5      # exact block-FP8 panel kernel at M=1 (swfp4fp8); QPN8 gathers 44-58
+    trunk_q8_gbps: float = 351.0            # standalone cold Q8 matvec (the gemm runner requantizes FP8 to Q8_0R)
+    trunk_bf16_gbps: float = 0.0            # 0 = the streaming rate
+    fast_requant: tuple = ("MXFP8", "block_FP8")
+    fp4l_sparse_fixed_us: float = 134.0     # sparse_fixed_us 160 minus the ~26 us of q_b/kv_b/o bytes it contains at TP12,
+                                            # which the fp4l path streams explicitly
+    prefill_nvfp4_w4a8_factor: float = 1.75   # GEMM time vs the int8 SDOT GEMM: one fp32 scale step per K16 group (hypothesis)
+    prefill_nvfp4_w4a16_factor: float = 2.9   # fp32 FMA GEMM (1.1 TFLOPS measured w8a16) vs int8 (3.18 TOPS)
+    prefill_trunk_exact_factor: float = 2.9
+    prefill_trunk_q8_factor: float = 1.0      # fast mode: the trunk GEMMs are the int8 SDOT GEMM of the model
+    fp4l_hypotheses: tuple = ("FP4-Local kernels are gemm's: W4A8 = fused MXFP4 SDOT (MXFP4, not NVFP4), W4A16 and exact FP8 = "
+                              "the gather-based swfp4fp8 panels; no NVFP4 kernel has run on A64FX",
+                              "fp4l sparse fixed cost 134 us = the fitted 160 minus the q_b/kv_b/o bytes now streamed explicitly")
     hypotheses: tuple = ("expert_q2k_gbps 78 GB/s is ggml's standalone SVE rate; the runner's in-model Q2 rate is not measured",
                          "context slope applied as one term on the sparse layers",
                          "6-node attention split: 64 heads / 6 is not integral (TP-6 needs a 60+4 or TP-4 split)")
@@ -319,7 +452,33 @@ def current():
 
 def redesign():
     """The proposed runner: streaming chain at the one-node measured efficiency, fused mHC/norm phases, split-phase
-    barriers, one dispatch/combine (EP) or one allreduce (TP) per MoE layer, sparse front sharded, 5 us skew."""
+    barriers, one dispatch/combine (EP) or one allreduce (TP) per MoE layer, sparse front sharded, 5 us skew.
+    FP4-Local kernel rates are hypotheses until `fp4_tables()` finds the probe's measurements."""
+    p = _redesign_base()
+    measured = fp4_tables()
+    hyp = dict(zip(("w4a8", "w4a16", "trunk", "gemm", "mla"), p.fp4l_hypotheses))
+    if "w4a8" in measured:
+        p.expert_nvfp4_w4a8_gbps, p.nvfp4_w4a8_width_cost = round(measured["w4a8"][0], 1), measured["w4a8"][1]
+        hyp.pop("w4a8")
+    if "w4a16" in measured:
+        p.expert_nvfp4_w4a16_gbps, p.nvfp4_w4a16_width_cost = round(measured["w4a16"][0], 1), measured["w4a16"][1]
+        hyp.pop("w4a16")
+    if "trunk" in measured:
+        t = measured["trunk"]
+        p.trunk_fp8_exact_gbps = round(_fp8_exact_rate(t), 1)
+        p.trunk_q8_gbps, p.trunk_bf16_gbps = t["q8_0"], t["bf16"]
+        hyp.pop("trunk")
+    if "gemm" in measured:
+        g = measured["gemm"]
+        p.prefill_nvfp4_w4a8_factor, p.prefill_nvfp4_w4a16_factor = g["w4a8"], g["w4a16"]
+        p.prefill_trunk_exact_factor = g.get("trunk_exact", p.prefill_trunk_exact_factor)
+        p.prefill_trunk_q8_factor = g.get("trunk_q8", p.prefill_trunk_q8_factor)
+        hyp.pop("gemm")
+    p.fp4l_hypotheses = tuple(hyp.values())
+    return p
+
+
+def _redesign_base():
     return Profile(
         name="redesign", binary_scale=1.0,
         kda_fixed_us=5.0, kda_small_us=12.0, kda_oproj_us=3.0, kda_skew_us=5.0,
@@ -340,6 +499,15 @@ def redesign():
         stream_rate_mode="chain", sparse_front_sharded=True,
         prefill_int8_eff=0.70, prefill_layer_fixed_ms=0.3, prefill_ctx_us_per_1k=12.0,
         prefill_collectives_per_layer=1, cmg_fixed_scale=0.7,
+        expert_nvfp4_w4a8_gbps=250.0, expert_nvfp4_w4a16_gbps=120.0,
+        nvfp4_w4a8_width_cost=_Q23_COSTS, nvfp4_w4a16_width_cost=(1.0, 1.5, 2.0, 2.5),
+        trunk_fp8_exact_gbps=250.0, trunk_q8_gbps=0.0, trunk_bf16_gbps=0.0, fp4l_sparse_fixed_us=5.0,
+        fp4l_hypotheses=("NVFP4 W4A8 SDOT 250 GB/s per node with the Q2_K SDOT width curve (between gemm's 168 MXFP4 floor and the "
+                         "504 chain rate)",
+                         "NVFP4 W4A16 exact 120 GB/s per node, width cost 1.0/1.5/2.0/2.5 (gather-free decode, fp32 FMA)",
+                         "exact E4M3 trunk 250 GB/s per node (gather-free decode); Q8_0 and BF16 trunk at the 504 GB/s chain rate",
+                         "prefill GEMM factor vs int8 SDOT: 1.75 W4A8 (K16 scale step), 2.9 W4A16 and exact trunk (fp32 FMA)",
+                         "MLA attention core 5 us per layer at zero context once q_b/kv_b/o stream at the trunk rate"),
         hypotheses=("expert_q2k_gbps and its width costs are the standalone SDOT kernels (one node); in-model rate unmeasured",
                     "mHC 42.2 us per site is today's runner in-model; a fused-phase runner might recover part of the gap to the 23-26 us standalone kernel (not assumed)",
                     "KDA small steps 12 us as one full-team phase (today 82 us on 6 threads)",
@@ -402,11 +570,23 @@ def expert_bytes_per_rank(layout, pk, layer, width, profile):
 _LOAD_CACHE = {}
 
 
-def _width_cost(profile, pk, width):
-    """Compute-bound Q2 expert kernels: time per byte at `width / union` tokens per distinct expert, interpolated in the
+def _expert_kernel(profile, pk, layout=None):
+    """(node GB/s at one token, time per byte at 1..4 tokens relative to one) of the routed-expert kernel for `pk`."""
+    fmt = pk.formats[3][0]
+    if fmt == "Q4_K":
+        return profile.expert_q4_gbps, ()
+    if fmt == "NVFP4":
+        if layout is not None and layout.numerics == "exact":
+            return profile.expert_nvfp4_w4a16_gbps, profile.nvfp4_w4a16_width_cost
+        return profile.expert_nvfp4_w4a8_gbps, profile.nvfp4_w4a8_width_cost
+    return profile.expert_q2k_gbps, profile.expert_width_cost
+
+
+def _width_cost(profile, pk, width, layout=None):
+    """Compute-bound expert kernels: time per byte at `width / union` tokens per distinct expert, interpolated in the
     measured 1..4-token table (linear extrapolation beyond 4)."""
-    costs = profile.expert_width_cost
-    if width <= 1 or not costs or pk.formats[3][0] == "Q4_K":
+    costs = _expert_kernel(profile, pk, layout)[1]
+    if width <= 1 or not costs:
         return 1.0
     n = width / routing.union_ratio(width, pk.experts, GEOMETRY.top_k)
     if n <= 1:
@@ -451,13 +631,27 @@ def _step(layout, node, tofu, profile, pk, width):
     width_factor_trunk = 1 + 0.05 * (width - 1)
     width_factor_comm = 1 + 0.10 * (width - 1)
     parts = layout.expert_parts()
-    exp_rate = (profile.expert_q4_gbps if pk.formats[3][0] == "Q4_K" else profile.expert_q2k_gbps) / rpn
+    exp_rate = _expert_kernel(profile, pk, layout)[0] / rpn
+    fp4l = layout.trunk_format == "fp4l"
     exp_rate /= 1 + profile.slice_penalty * (parts - 1)
     owner_ranks = min(R, distinct_owners(R, g.top_k) * parts) if parts < R else R
     for layer in range(g.layers):
         is_mla = layer in g.mla_layers
         is_dense = layer < g.dense_layers
         # ---- mixer
+        if is_dense and fp4l:
+            # FP4-Local dense layer: KDA mixer + dense FFN, their small steps, two mHC sites, two allreduces
+            t = (fp4l_group_ms(layout, profile, node, "dense", "kda_proj")
+                 + fp4l_group_ms(layout, profile, node, "dense", "dense_ffn")) * width_factor_trunk
+            small = (profile.kda_fixed_us + profile.kda_small_us + profile.kda_oproj_us) * bs * fixed_scale * 1e-3 * width + 0.03 * bs
+            m = sum(profile.mhc_site_us) * bs * fixed_scale * 1e-3 * (1 + 0.3 * (width - 1))
+            c = 2 * tree_allreduce_us(tofu, hidden_ar * width, tp, bf16, profile.kda_skew_us * bs) * 1e-3 * width_factor_comm
+            trunk += t
+            comm += c
+            mhc += m
+            dense += t + small + c
+            phases += profile.phases_per_dense_layer * (profile.phase_us + node.split_phase_barrier_us) * fixed_scale * 1e-3
+            continue
         if is_dense:
             t = trunk_bytes_per_rank(layout, layer) * width_factor_trunk / (rate * 1e6) + 0.03 * bs
             trunk += t
@@ -466,7 +660,15 @@ def _step(layout, node, tofu, profile, pk, width):
             dense += t + c
             phases += profile.phases_per_dense_layer * (profile.phase_us + node.split_phase_barrier_us) * fixed_scale * 1e-3
             continue
-        if is_mla:
+        if is_mla and fp4l:
+            t_front = (fp4l_group_ms(layout, profile, node, "mla", "mla_front", profile.sparse_front_sharded)
+                       + fp4l_group_ms(layout, profile, node, "mla", "mla_heads")) * width_factor_trunk
+            t_fixed = profile.fp4l_sparse_fixed_us * bs * fixed_scale * 1e-3 * width
+            c = tree_allreduce_us(tofu, hidden_ar * width, tp, bf16, profile.sparse_skew_us * bs) * 1e-3 * width_factor_comm
+            sparse += t_front + t_fixed + c
+            trunk += t_front
+            comm += c
+        elif is_mla:
             front = REPLICATED_PER_TOKEN["sparse_front"] / MLA_LAYERS
             if profile.sparse_front_sharded:
                 front /= tp
@@ -477,8 +679,12 @@ def _step(layout, node, tofu, profile, pk, width):
             trunk += t_front
             comm += c
         else:
-            proj_bytes = KDA_PROJ_BYTES_PER_RANK12 * 12 / tp * (TRUNK_SCALE[layout.trunk_format] / TRUNK_SCALE["q8"])
-            t_proj = profile.kda_fixed_us * bs * fixed_scale * 1e-3 + proj_bytes * width_factor_trunk / (rate * 1e6)
+            if fp4l:
+                t_bytes = fp4l_group_ms(layout, profile, node, "kda", "kda_proj") * width_factor_trunk
+            else:
+                proj_bytes = KDA_PROJ_BYTES_PER_RANK12 * 12 / tp * (TRUNK_SCALE[layout.trunk_format] / TRUNK_SCALE["q8"])
+                t_bytes = proj_bytes * width_factor_trunk / (rate * 1e6)
+            t_proj = profile.kda_fixed_us * bs * fixed_scale * 1e-3 + t_bytes
             t_small = (profile.kda_small_us + profile.kda_oproj_us) * bs * fixed_scale * 1e-3 * width
             c = tree_allreduce_us(tofu, hidden_ar * width, tp, bf16, profile.kda_skew_us * bs) * 1e-3 * width_factor_comm
             kda += t_proj + t_small + c
@@ -489,12 +695,15 @@ def _step(layout, node, tofu, profile, pk, width):
         mhc += m
         # ---- FFN
         router = profile.router_us * bs * fixed_scale * 1e-3 * width
-        shared_bytes = FIXED_BYTES["shared_expert"] * TRUNK_SCALE[layout.trunk_format] / tp
-        t_shared = shared_bytes * width_factor_trunk / (rate * 1e6)
+        if fp4l:
+            t_shared = fp4l_group_ms(layout, profile, node, "mla" if is_mla else "kda", "shared") * width_factor_trunk
+        else:
+            shared_bytes = FIXED_BYTES["shared_expert"] * TRUNK_SCALE[layout.trunk_format] / tp
+            t_shared = shared_bytes * width_factor_trunk / (rate * 1e6)
         eb, ratio = expert_bytes_per_rank(layout, pk, layer, width, profile)
         load_ratio = ratio
         expert_bytes_total += eb
-        t_exp = eb / (exp_rate * 1e6) * _width_cost(profile, pk, width) + profile.expert_fixed_us * 1e-3
+        t_exp = eb / (exp_rate * 1e6) * _width_cost(profile, pk, width, layout) + profile.expert_fixed_us * 1e-3
         # the busiest rank finishes (ratio - 1) x the mean expert time later; everyone waits for it at the combine
         skew = profile.moe_skew_frac * max(0.0, ratio - 1) * t_exp * 1e3
         if profile.moe_collective == "allreduce" or owner_ranks >= R / 2:
@@ -509,8 +718,13 @@ def _step(layout, node, tofu, profile, pk, width):
         comm += c
         phases += profile.phases_per_moe_layer * (profile.phase_us + node.split_phase_barrier_us) * fixed_scale * 1e-3
     # ---- head: vocab-sharded lm_head, allgather of the logits slice, fixed sampler/embed work
-    head_bytes = FIXED_BYTES["lm_head"] * TRUNK_SCALE[layout.trunk_format] / tp
-    head = head_bytes * width_factor_trunk / (rate * 1e6) + profile.head_fixed_ms * bs \
+    if fp4l:
+        h = _FP4L["head"]
+        head_ms = (fp4l_bytes(h, layout.numerics, profile) * fp4l_share(h, tp)
+                   / (fp4l_rate(h, layout.numerics, profile, node) / rpn * 1e6))
+    else:
+        head_ms = FIXED_BYTES["lm_head"] * TRUNK_SCALE[layout.trunk_format] / tp / (rate * 1e6)
+    head = head_ms * width_factor_trunk + profile.head_fixed_ms * bs \
         + tree_allreduce_us(tofu, g.vocab // tp * 4 * width, tp, False, 0.0) * 1e-3
     ctx = context_ms(layout, profile) * width
     if profile.name == "current":
@@ -524,7 +738,9 @@ def _step(layout, node, tofu, profile, pk, width):
     # layer costs; the total is the stage view plus what sits outside the layers
     total = dense + kda + sparse + moe + mhc + head + ctx + phases_add
     if layout.trunk_tp == 1:
-        notes.append(f"replicated trunk: every node streams {FIXED_BYTES['total'] * TRUNK_SCALE[layout.trunk_format] / 1e9:.1f} GB "
+        total_trunk = (_FP4L["main_fixed_matrix_bytes"] + _FP4L["head"]["bytes"] if fp4l
+                       else FIXED_BYTES['total'] * TRUNK_SCALE[layout.trunk_format])
+        notes.append(f"replicated trunk: every node streams {total_trunk / 1e9:.1f} GB "
                      f"per token; bandwidth-infeasible at one token per step")
     return dict(total=total, trunk=trunk, experts=experts, comm=comm, phases=phases_report, mhc=mhc, head=head + dense,
                 kda=kda, sparse=sparse + ctx, moe=moe, ctx=ctx, expert_bytes=expert_bytes_total, load_ratio=load_ratio,
@@ -537,7 +753,7 @@ def decode(layout, node=None, tofu=None, profile=None):
     tofu = tofu or TofuD()
     profile = profile or current()
     pk = pack(layout.pack)
-    fit = memory_fit(layout, node, pk)
+    fit = memory_fit(layout, node, pk, profile)
     notes = list(fit["notes"])
     depth = layout.mtp_depth
     width = depth + 1
@@ -583,6 +799,20 @@ class PrefillResult:
         return dataclasses.asdict(self)
 
 
+def _prefill_factor(profile, pk, layout):
+    """GEMM time relative to the int8 SDOT roofline: Q4_K 1.0 (the fitted runner), Q2_K/Q3_K 1.08 (dequantize to int8 once
+    per chunk, hypothesis), NVFP4 the profile's expert factor on the routed share and its trunk factor in exact mode."""
+    fmt = pk.formats[3][0]
+    if fmt == "Q4_K":
+        return 1.0
+    if fmt == "NVFP4":
+        exact = layout.numerics == "exact"
+        expert = profile.prefill_nvfp4_w4a16_factor if exact else profile.prefill_nvfp4_w4a8_factor
+        trunk = profile.prefill_trunk_exact_factor if exact else profile.prefill_trunk_q8_factor
+        return (PREFILL_ROUTED_GFLOP * expert + (PREFILL_GFLOP_PER_TOKEN - PREFILL_ROUTED_GFLOP) * trunk) / PREFILL_GFLOP_PER_TOKEN
+    return 1.08
+
+
 def prefill(layout, node=None, tofu=None, profile=None, prompt=8192):
     """ms per position = compute (int8 SDOT GEMM roofline over all ranks at the chunk's M per expert) + trunk and
     expert collectives + per-layer fixed cost per chunk + a context term; anchored on 412.27 (8K, chunk 4096),
@@ -591,7 +821,7 @@ def prefill(layout, node=None, tofu=None, profile=None, prompt=8192):
     tofu = tofu or TofuD()
     profile = profile or current()
     pk = pack(layout.pack)
-    fit = memory_fit(layout, node, pk)
+    fit = memory_fit(layout, node, pk, profile)
     g = GEOMETRY
     R = layout.ranks()
     chunk = max(1, min(layout.prefill_chunk, prompt))
@@ -599,8 +829,7 @@ def prefill(layout, node=None, tofu=None, profile=None, prompt=8192):
     m_per_expert = chunk * g.top_k / pk.experts
     tops = node.int8_tops(m_per_expert) / layout.ranks_per_node
     compute = PREFILL_GFLOP_PER_TOKEN * 1e9 / (R * tops * 1e12 * profile.prefill_int8_eff) * 1e3
-    if pk.formats[3][0] != "Q4_K":
-        compute *= 1.08   # Q2_K/Q3_K dequantize-to-int8 once per chunk (hypothesis: 8 % of the GEMM time)
+    compute *= _prefill_factor(profile, pk, layout)
     # collectives per layer per chunk: TP trunk reduce-scatter/all-gather (2 per layer today, 1 with EP + fused
     # combine), expert all-to-all under EP
     rsag = reduce_scatter_allgather_ms(tofu, chunk, layout.trunk_tp, bf16=layout.bf16_collectives) if layout.trunk_tp > 1 else 0.0
@@ -618,19 +847,24 @@ def prefill(layout, node=None, tofu=None, profile=None, prompt=8192):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-def memory_fit(layout, node=None, pk=None):
+def memory_fit(layout, node=None, pk=None, profile=None):
     """Per-rank bytes: expert share (whole pack / nodes, times the slice duplication of parts), trunk share,
-    replicated tensors, KV and KDA state for the context, MTP block, scratch. Refuses what exceeds the usable HBM."""
+    replicated tensors, KV and KDA state for the context, MTP block, scratch. Refuses what exceeds the usable HBM.
+    The FP4-Local trunk (fp4l) comes from the census: tensor-parallel shares, replicated routers/mHC/embedding."""
     node = node or A64FXNode()
     pk = pk or pack(layout.pack)
     R = layout.ranks()
-    scale = TRUNK_SCALE[layout.trunk_format]
     experts = pk.routed_total_bytes() / R
-    trunk_total = (FIXED_BYTES["total"] - FIXED_BYTES["token_embd"] - FIXED_BYTES["router"] * GEOMETRY.moe_layers) * scale
-    trunk = trunk_total / layout.trunk_tp
-    replicated = REPLICATED_PER_TOKEN["router"] + REPLICATED_PER_TOKEN["mhc"] + FIXED_BYTES["token_embd"] / layout.trunk_tp
+    if layout.trunk_format == "fp4l":
+        trunk, replicated = fp4l_memory(layout, profile or current())
+        mtp = _FP4L["draft_fixed_bytes"] / layout.trunk_tp + _FP4L["experts"]["draft"]["expanded_bytes"] / R
+    else:
+        scale = TRUNK_SCALE[layout.trunk_format]
+        trunk_total = (FIXED_BYTES["total"] - FIXED_BYTES["token_embd"] - FIXED_BYTES["router"] * GEOMETRY.moe_layers) * scale
+        trunk = trunk_total / layout.trunk_tp
+        replicated = REPLICATED_PER_TOKEN["router"] + REPLICATED_PER_TOKEN["mhc"] + FIXED_BYTES["token_embd"] / layout.trunk_tp
+        mtp = FIXED_BYTES["mtp_dense"] * scale / layout.trunk_tp + pk.expert_bytes(GEOMETRY.layers - 1) * pk.experts / R
     kv = layout.context * KV_BYTES_PER_TOKEN + KDA_STATE_BYTES
-    mtp = FIXED_BYTES["mtp_dense"] * scale / layout.trunk_tp + pk.expert_bytes(GEOMETRY.layers - 1) * pk.experts / R
     scratch = 1.0 * GIB / layout.ranks_per_node
     total = experts + trunk + replicated + kv + mtp + scratch
     usable = node.usable_gib * GIB if layout.ranks_per_node == 1 else node.usable_per_cmg_gib * GIB

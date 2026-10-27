@@ -74,9 +74,17 @@ void gf4_bf16k_part(const uint8_t *m, int cols, int k0, int k1, int t0, int t1, 
 void gf4_tile_many(int kind, const uint8_t *m, int cols, const float *const *x, int nt, float *y, int ldy);
 /* two tiles (rows of m0 to y0, of m1 to y1), each bitwise gf4_tile_many's */
 void gf4_tile_many2(int kind, const uint8_t *m0, const uint8_t *m1, int cols, const float *const *x, int nt, float *y0, float *y1, int ldy);
-/* gf4_w4a8 for one tile and up to 2048 tokens: the tile's codes decoded once per slab of 8 superblocks (int8 and F32
-   scales in scratch), every token through w4a8_tile's steps in its order; bitwise equal to gf4_w4a8 */
-void gf4_w4a8_many(const uint8_t *m, int cols, float global, const gf4_q8act *act, int nt, float *y, int ldy);
+/* gf4_w4a8 for tiles [t0, t1) and any number of tokens (prefill): 16 tokens per vector against broadcast weight rows,
+   each tile decoded once per slab for up to 32 tokens; bitwise equal to gf4_w4a8 over groups of 4 tokens */
+void gf4_w4a8_gemm(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, float *y, int ldy);
+/* gf4_w4a8_gemm with the activations transposed once for every caller (an expert use's tokens, shared by its tiles
+   over the team): gf4_w4a8_gemm_blocks(nt) blocks of 16 tokens, gf4_w4a8_gemm_prep writes them to xt (blocks * cols * 16
+   bytes) and xs (blocks * (cols / group) * 16 floats); gf4_w4a8_gemm_t reads them (act for the tokens past the blocks:
+   one scale group for all, bitwise gf4_w4a8_gemm) */
+int gf4_w4a8_gemm_blocks(int nt);
+void gf4_w4a8_gemm_prep(const gf4_q8act *act, int nt, int cols, int8_t *xt, float *xs);
+void gf4_w4a8_gemm_t(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, const int8_t *xt,
+                     const float *xs, float *y, int ldy);
 
 /* scalar replicas (same operation order, any ISA) */
 void gf4_w4a8_ref(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, float *y, int ldy);

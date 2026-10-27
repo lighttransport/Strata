@@ -511,6 +511,7 @@ baseline on these nodes is 169.6 tok/s at 2K (fast exp, section 6.3) and 145.1 a
 | all-reduce copies over the team, one activation array per pass, attention in 128-token sub-blocks, blocked latent average (4 tokens x 32 latents) | 173.0 (c128) / 175.1 (c256) | 153.6 (c512) |
 | comm thread + pipelined passes (`STRATA_RUNNER_PREFILL_PIPE=1`, opt-in) | 186.5 (c256) | 160.5 (c512) |
 | union walk off again (see below) | | 167.4 (c512) |
+| MLA front all-reduces posted asynchronously in two stages, index-query transpose only for scoring tokens, `gf4_tile_many2` | **198.0** (c256, pipe) / 178.2 (default) | **175.6** (c512, pipe) |
 
 - **Pipelined passes.** A thread pinned to the 48th core (`STRATA_RUNNER_COMM_CORE`) runs the uTofu all-reduces the
   main thread posts, in posting order. The same order on every rank keeps the collectives matched. A pass of 64+
@@ -529,12 +530,624 @@ baseline on these nodes is 169.6 tok/s at 2K (fast exp, section 6.3) and 145.1 a
   union of their selections, reading each cache row once (scores 4 tokens x 4 rows; average 4 tokens x 3 heads
   x 16 latents). Bitwise (4096-token dumps on 12 ranks, 180 of 180), but slower: 8K 155.5 against 167.4 tok/s,
   `mla.avg` 0.99 against 0.58 ms. The unions of 4 neighbouring tokens are far larger than one selection.
+- **Two-stage async MLA front.** In a pipelined pass, the front's two all-reduces (the sharded x projections, then
+  `iq`) are posted on the comm thread. The waits then have the other half's work in front of them:
+  `comm_mla_front` drops from 0.36 to 0.05 ms per prompt token.
+- **`gf4_tile_many2`** (`STRATA_RUNNER_MANY2=0`: off): the FP32 long-pass kernel takes two tiles at once, 2 tiles
+  x 3 tokens per register block. That is 24 chains and 5 loads per 6 FMLAs, against 16 chains and 5 loads per 4.
+  The per-chain order is unchanged, so it is bitwise (node test over all three layouts). On one core it gives +14 %
+  for MXFP8 (11.8 -> 13.4 MAC per cycle) and +21 % for block FP8 (13.0 -> 15.7). In the model it gives 2K 198.0 vs
+  193.1 tok/s (`kda_proj` 0.74 vs 0.79 ms).
 - **No gain:** splitting the MLA front from the rest of attention so both halves' fronts run first (2K 185.6). The
   `MANY_KS` W4A8 GEMM microkernels (none beat the 4-token tile, removed).
 
 Per prompt token at 2K c256, pipelined (5.4 ms): routed experts 1.08, KDA projections 0.80 (input projections 0.54),
 MLA attention 0.76, MLA projections 0.66, mHC 0.48, router + shared expert 0.45, comm waits 0.60, draft block
 0.25, KDA small phases 0.24.
+
+#### 6.2.1b Overheads found against the roofline (2026-10-25, 12 'k' nodes, through the iteration loop)
+
+Every change is bitwise: 8-layer dumps against single steps, and the md5 suite at 2K / 8K / decode b. A different
+allocation ('k' nodes) gives 2K 201.1 / 8K 178.6 tok/s on the 6.2.1 binary (vs 195.8 / 174.8 on the 's' nodes).
+
+| change | effect (per prompt token, 2K c256) | 2K tok/s |
+|---|---|---:|
+| mHC: the projection's blocks with their row sums in registers (one SVE routine per block, no call or store) | `mhc.site` 0.506 -> 0.465 ms | |
+| mHC: a token group's residual update before its projection | the projection reread values still in the store queue: 0.467 -> 0.331 | |
+| pipelined pass: the summed sublayer outputs in per-token rows first touched by the token's owner | sites read them from their own CMG: 0.331 -> 0.298 | 201.8 ('s') |
+| activation pools per call site (allocated once; only copied and quantized) | `acts_of` zero-filled T buffers on the main thread: router 0.167 -> 0.027, KDA 0.058 -> 0.010 | 209.1 (vs 198.4) |
+| expert outputs summed in SVE (16 lanes, the same zero start and fused multiply-adds) | the scalar loop chased a row pointer per element: `experts.sum` 0.273 -> 0.037 | **219.4** |
+| GEMV items balanced over all jobs of a call, (tile pair, token block) | KDA q/k/v bench 692 -> 749 GMAC/s on 47 threads; neutral in the model | 217-219 |
+| indexer keys, pools and cache rows over the team (the snapshot callback was always passed, so this path never ran) | `mla.index` 0.132 -> 0.076 (8K 0.371 -> 0.311) | 218.5; 8K 198.8 |
+| pipelined passes the default | | |
+
+Measured on these nodes (one core, no memory traffic): FP32 32, FP64 16 and int8 SDOT **128** MAC per cycle. Eco
+mode is off (the job requests `eco_state=0`). The roofline's int8 peak (6.2.2) is twice what it assumed.
+
+Not kept:
+- **Allocating the activations on their owner threads** (`STRATA_RUNNER_ACTS_PAR=1`): the GEMVs reading them got
+  slower than the allocation saved (198.2 vs 200.1).
+- **Finer GEMV items** (12 or 24 per thread): each tile's weights are decoded once per fewer tokens (669 / 544
+  against 749 GMAC/s).
+- **Sharding mHC by token over the ranks** (exact: rsag sums every element in rank order) waits for a 3-4 part
+  pipeline. With two halves, the all-gather of the site outputs has only the other half's site to hide behind.
+
+The full-node FP32 GEMV still runs at 7.9 MAC per cycle per thread against 10.7 on 12-24 threads and 14.5 for one
+core. Per thread, the rate falls as CMGs are added (12: 10.7, 24: 10.1, 36: 9.5, 47: 7.9).
+
+#### 6.2.1c The FP32 GEMVs (2026-10-25, 'k' nodes)
+
+**The kernel.** `priv/a64fx-fp4/blk_bench.c` times the inner loop alone, with F32 weights in L1:
+- 2 tiles x 3 tokens, the bitwise 4-chain order, runs at 17.5 MAC per cycle (peak 32).
+- Six blockings fit one model within ~5 %: each 64-byte weight load costs ~1.8 cycles, each `ld1rw` broadcast ~0.7.
+  Pre-broadcast activations in memory are slower (2-7).
+- A hand-written asm block (exactly 2 loads, 3 broadcasts and 6 FMLAs per column) is bitwise but slower. The
+  compiler's schedule issues the loads ahead of their FMLAs; with 24 accumulators there are only 8 spare
+  registers, not enough to software-pipeline A64FX's long load latency.
+- Relaxed orders (2 chains per tile and token, 3 x 4) reach 21.2 (+21 %). They would need the text gate, for
+  ~0.1 ms per prompt token: not done.
+
+The kernel stays as it is: 13-15 MAC per cycle at the model's shapes.
+
+**The split over the team** was the loss. Whole items (tile pair x token block, or whole tiles per job) left the
+busiest thread ceil(items / n) of them: 7 of 6.13 on 47 threads; 48 threads, 6 of 6, ran 13 % faster in total.
+- The flattened (job, tile pair, token) space now goes in equal contiguous cost ranges, so each thread gets token
+  ranges of 1-3 pairs. Bench on 47 threads: KDA q/k/v 749 -> 946 GMAC/s (10.1 MAC per cycle per thread, as on
+  12-24 threads), router 500 -> 746.
+- The KDA phase's plan holds two K-split matrices (`f_a`, `g_a`). The balanced split now covers the plan's other
+  jobs too: `kdap.p1` 0.56 -> 0.415 ms.
+- Bitwise (each token is computed once, by the same kernel).
+
+md5 suite (all unchanged): 2K **234.8** tok/s (215.4 non-pipelined), 8K **208.6**, decode b 11.5 ms per token.
+
+#### 6.2.1d Routed experts: balance and plan (2026-10-25, 'k' nodes)
+
+- **Balance.** Busiest thread against the mean (c256): gate/up 0.404 / 0.368, down 0.434 / 0.417.
+  - `gemv_share_cmg` keeps every expert tile in the CMG whose thread placed it, so the weights stream from that
+    CMG's own memory. The CMG's tiles go in equal contiguous cost ranges, tile by tile, to its threads
+    (`STRATA_RUNNER_EXPERT_BALANCE=0`: the placement split; long passes only, decode unchanged).
+  - Down mean 0.419 -> 0.331 ms, gate/up unchanged; the expert phase 0.956 -> 0.896.
+  - The prefill total did not move (2K 234.1 vs 233.9): `comm.wait` rose 0.106 -> 0.158. The likely mechanism:
+    the shorter FFN halves no longer hide the previous layer's second-half FFN all-reduce (2 MB, ~0.67 ms on the
+    wire), and the next MLA layer's front all-reduces queue behind it (one comm thread, the same order on every
+    rank).
+- **Plan.** The per-use token lists by a counting sort into one array (separately allocated per-use vectors cost
+  ~0.1 ms per call in cache misses on thread 0): `experts.plan` 0.083 -> 0.068.
+- **The kernel at expert shapes** (`--bench-gemv`, 47 threads, GMAC/s):
+
+  | tokens per slice | gate/up | down |
+  |---:|---:|---:|
+  | 1 | 405 | 288 |
+  | 2 | 659 | 506 |
+  | 4 | 927 | 751 |
+  | 8 | 1204 | 731 |
+
+  The model runs ~4 tokens per slice. Down is capped by its K of 192 per rank with 12 expert parts; fewer parts
+  would change the partial sums (gated) and the image layout.
+
+md5 suite unchanged: 2K 234.0, 8K 209.9, decode b 11.48 ms.
+
+#### 6.2.1e The exposed all-reduces (2026-10-25, 'k' nodes)
+
+**Diagnosis.** Per prompt token at 2K:
+- the comm thread is busy **1.45 ms** for ~1.8 MB of all-reduces, against 0.6 ms at the probe's 3 GB/s;
+- the waits the pipeline exposes total 0.15-0.17 ms, spread over the slots (the largest: half A's attention
+  output in KDA layers, 0.07);
+- the rsag call copies the payload into its send slots, sums the 12 shards and copies the gathered result back:
+  ~5 MB of single-core memory traffic per MB, slowed further by the 47 compute threads;
+- placing the comm thread on CMG0, next to its buffers (team on cores 1-47), cut its time only 10 % (and slowed
+  decode): locality is not the cause.
+
+**Staged all-reduces** (default; `STRATA_RUNNER_AR_STAGED=0`: off).
+- Four extra registered regions ("banks", one per pipeline slot: attention / FFN x half A / B;
+  `STRATA_RUNNER_AR_BANK` floats each, default 1M = a 256-token half).
+- The team writes each half's rows straight into the bank's send slots, shard by shard. The comm thread only sums
+  (in rank order, as before) and Puts. The team reads the sums from the bank's result slots.
+- A bank is reused four all-reduces later; every rank takes part in the three in between, so no slot is
+  overwritten while in use.
+- Bitwise.
+
+| | before | staged |
+|---|---:|---:|
+| comm thread, ms per prompt token | 1.45 | 1.01 |
+| exposed waits, ms | 0.15-0.17 | 0.09-0.11 |
+| 2K tok/s (c256 / c512) | 234.0 / 239.7 | **238.5 / 244.3** |
+| 8K tok/s | 209.9 | 211.2 |
+
+#### 6.2.1f More pipeline parts; chunk size (2026-10-25, 'k' nodes)
+
+**Pipeline parts** (`STRATA_RUNNER_PIPE_PARTS`, default 2; 2 staged banks per part). 3 and 4 parts are bitwise
+(8-layer dumps), but slower. The comm thread's per-call costs multiply, and every part's GEMVs see fewer tokens:
+
+| parts | 2K c256 | 2K c512 | comm thread (c512) | waits (c512) |
+|---:|---:|---:|---:|---:|
+| 2 | 232.7 | 240.6 | 0.63 | 0.038 |
+| 3 | 223.3 | 237.6 | 1.76 | 0.073 |
+| 4 | 213.8 | 227.0 | 2.79 | 0.159 |
+
+**Chunk sweep** (one md5 per prompt at every chunk). The default prefill chunk is now **1024** (it was 128). The
+multi-context path keeps 128: its passes hold every context's chunk.
+
+| chunk | 128 | 256 | 512 | 1024 | 2048 |
+|---|---:|---:|---:|---:|---:|
+| 2K tok/s | 215.4 | 234.4 | 241.1 | **245.5** | 228.7 |
+| 8K tok/s | | 201.6 | 209.8 | **216.7** | 204.5 |
+
+md5 suite at the defaults: 2K **245.8**, 8K **215.5**, decode b 11.44 ms (all md5 unchanged).
+
+#### 6.2.1g MLA attention (2026-10-25, 'k' nodes)
+
+**Where it goes.** Per prompt token (chunk 1024):
+- 2K: 0.67 ms (average 0.27, scores 0.17, expand 0.06, q prep 0.05, indexer 0.035);
+- 8K: 1.52 ms (average 0.62, scores 0.40, indexer scores 0.24).
+
+The FP64 dots ran at 7-15 % of the FP64 peak.
+
+**The kernel on one core** (`priv/a64fx-fp4/att_bench.c`, 4 queries x 4 positions, 1024 positions):
+- 5.2 MAC per cycle, and 9.2 with the cache rows L1-resident: the bound is streaming rows (or queries) from L2,
+  1 byte per MAC.
+- Not the cause: f64 queries, zip loads, an f64 cache copy (6.4 at most), padded strides, merging FMLAs, and a
+  hand-written asm loop with exactly 28 instructions per step (5.4).
+- A transpose tree reproduces `svaddv` bit for bit (FADDV's recursive pairwise order): +11 %, not used yet.
+
+**Changes** (all bitwise: 8-layer dumps; 4096-token dumps against the morning's reference, 180 of 180, new suite
+`t1l`; md5 suite):
+- **Prefix scores:** an item covers 4 consecutive position blocks for the same 4 tokens and head, so the queries
+  come from L2 once per 16 positions (`STRATA_RUNNER_SCORE_PB`, default 4): 0.176 -> 0.148 ms at 2K.
+- **Gather scores and average** (beyond the 2048-position selection; `STRATA_RUNNER_GATHER_BLOCK=0`: off):
+  - scores in items of 1 token x 3 heads x 4 positions over 4 blocks, each gathered row feeding 3 heads' dots in
+    registers: 0.397 -> 0.315;
+  - the average in items of 1 token x 3 heads x 32 latents (the scalar loop read each row segment per head):
+    0.623 -> 0.400;
+  - attention at 8K 1.515 -> 1.208 ms, 8K **216.5 -> 231.4 tok/s**.
+- **Not kept:** sharding the indexer at 8K (`STRATA_RUNNER_INDEX_SHARD_MIN` 512 / 1024). The scores drop 0.24 ->
+  0.05-0.09, but the synchronous candidate exchange costs 0.33-0.44 ms: 206.6 / 210.2 against 220.
+
+md5 suite: 2K **245.2**, 8K **231.3**, decode b 11.52 ms (all unchanged).
+
+**Then** (same checks, all bitwise):
+- **The prefix average with each cache row segment shared by 2 heads** (4 tokens x 2 heads x 16 latents per item;
+  `STRATA_RUNNER_AVG_HEADS=1`: as before): 0.280 -> 0.157 ms at 2K.
+- **The scores' horizontal sums by the transpose tree** (`STRATA_RUNNER_TREE_SUM=0`: `svaddv`). It is bitwise
+  in the model too, but neutral there (0.151 vs 0.157): the kernel is bound by L2, not by its reductions.
+
+md5 suite: 2K **248.5**, 8K **234.5**, MLA attention 0.56 ms (2K) / 1.16 ms (8K) per prompt token.
+
+#### 6.2.1h mHC sites (2026-10-25): no gain found
+
+At chunk 1024 the sites take ~0.31-0.34 ms per prompt token.
+- Per thread (`RUNNER_MHC_THREADS`): 0.18-0.28 ms; the slowest thread of each site 0.345 against a mean of 0.269.
+  The spread is within the CMGs, not between them.
+- Thread 0's projection runs at ~4.3 MAC per cycle (the inner kernel's load-bound rate is ~25).
+
+Tried, all bitwise, all slower:
+- tokens taken dynamically within a CMG: 0.407 vs 0.334 ms (the owner's L1 holds its tokens' residuals);
+- each virtual thread's row sums kept in registers, one tile at a time: projection 0.198 vs 0.146;
+- 12 tokens per pass over the weights (`STRATA_RUNNER_MHC_TOK`; each block streamed from L2 once per 12 tokens):
+  0.391 vs 0.314.
+
+The bound is not the weight stream, the store round trips or the balance; it stays open.
+
+**The microbenchmark** (`priv/a64fx-fp4/mhc_bench.c`, the projection of 4 tokens on one core) reproduces it: 5.2-5.4
+MAC per cycle. L1-resident weights or activations change nothing, and neither do row sums in registers. Without
+the per-unit sum of squares it runs at 7.7.
+- `sumsq` compiled to 128-bit NEON. It now runs in 8 double lanes with FADDV's tree, which is the loop's own order
+  (bitwise: 0 mismatches in 6K blocks).
+- The block kernel loads two BF16 columns at once (`ld1h`, widened by `zip` with zero) instead of one extending
+  load and a shift per column.
+- Bench 200.7 -> 159.8 us; in the model the projection drops 0.146 -> 0.124 ms (thread 0) and the site to
+  ~0.30-0.35.
+- md5 suite (bitwise, decode too: `sumsq` serves the norms): 2K **253.0**, 8K **235.6**.
+
+#### 6.4b Batched multi-context decode, profiled (2026-10-25, 'k' nodes)
+
+`generate_multi` (`--contexts C`; suite `mc`): 128-token prompts, 64 tokens each, MTP 3 adaptive, eval text (~50 %
+of drafts accepted):
+
+| C | ms per generated token | total tok/s | ms per verify pass |
+|---:|---:|---:|---:|
+| 1 | 18.3 | 54.6 | |
+| 4 | 12.8 | 78.3 | 79.8 |
+| 8 | 10.7 | 93.3 | 133.9 |
+| 16 | 9.26 | 107.9 | 225.9 |
+
+The shared phases amortize from C = 1 to 16 (ms per generated token): experts 3.44 -> 1.76, mHC 2.46 -> 0.78,
+router 2.00 -> 0.69, all-reduce 1.96 -> 0.84. The per-context ones barely do:
+- MLA attention 1.16 -> 1.09 (a sequence of team regions per context group, per layer);
+- KDA conv / recurrence / gates 1.08 -> 0.76;
+- MTP drafting 0.95 -> 0.86 (each context's drafts serial, single-token draft-block passes).
+
+Together ~2.7 of the 9.3 ms at C = 16.
+
+**Batched MTP drafts** (default; `STRATA_RUNNER_MTP_BATCH=0`: one context at a time).
+- Each round drafts depth by depth: one draft-block pass per depth over every context still drafting at that
+  depth (`mtp_forward_ctx`). The draft layer's attention runs per context through `mla_back`'s grouped path,
+  with that context's draft layer state and its own cell; the projections, MoE and head run over all contexts'
+  tokens.
+- The post-verify MTP re-syncs of all contexts are one pass.
+- Every context's tokens are unchanged (md5 per context at C = 4 / 8 / 16).
+- MTP 0.861 -> 0.438 ms per generated token at C = 16. Total tok/s: C = 4 77.7 -> 80.0, C = 8 93.5 -> 96.7,
+  C = 16 107.8 -> 112.9.
+
+**One attention call for all contexts** (`STRATA_RUNNER_GROUP_ATTN=0`: per group).
+- The verify pass (and the batched drafts) select per context. Then a single `mla_attention` covers every group's
+  tokens, each reading its own context's latent cache through a per-token base pointer.
+- Such a pass takes the per-token (gather) kernels, because the prefix kernels share cache rows between tokens.
+- The per-group calls had cost ~190 us each for ~2 tokens.
+
+**KDA recurrence items per (column group, context)** (`STRATA_RUNNER_KDA_REC_CTX=0`: per column group). Each item
+walks only its context's tokens, instead of chaining all ~34 tokens' state loads.
+
+Per-context md5s are unchanged in all four on/off combinations.
+
+| at C = 16 | before | after |
+|---|---:|---:|
+| MLA attention, ms per generated token | 1.09 | 0.63 |
+| KDA recurrence | 0.34 | 0.26 |
+| MTP | 0.44 | 0.37 |
+| total tok/s | 112.7 | **120.4** |
+
+C = 4: 80.0 -> 81.8. Still per context: the selection (`mla.index` 0.15) and the KDA convolution's per-context
+histories (0.23).
+
+**Parallel per-context selection** (`STRATA_RUNNER_GROUP_SELECT=0`: one context after another).
+- When every group has at most 8 tokens and stays inside the 2048-position selection, and the cache has no ring and
+  the index skip applies, all contexts' `mla_select_multi` calls run in one team region, one context per item.
+- Each item works on its context's `LayerState` directly. The timers are off inside the region, because the timer
+  map is shared.
+- Otherwise the old sequential loop runs, with its own parallel regions.
+
+**KDA conv items per (part, context, channel)** (`STRATA_RUNNER_KDA_CONV_CTX=0`: per part and channel). Each item
+walks one context's history buffer, instead of all contexts' tokens per channel.
+
+The full suite passes with both on (t1 64/64, t1l 180/180, md5s; 2K 253.2, 8K 236.7 tok/s). Per-context md5s are
+identical in all three variants.
+
+| total tok/s | C = 4 | C = 16 |
+|---|---:|---:|
+| both on (default) | 83.1 | **123.6** |
+| `GROUP_SELECT=0` | 82.7 | 121.3 |
+| `KDA_CONV_CTX=0` | 83.1 | 122.7 |
+
+At C = 16, the selection saves 0.15 ms per generated token and the conv items 0.06 (8.30 -> 8.09 ms).
+
+**Work arrays kept across calls, and a vector conv** (2026-10-26). Bitwise: full suite, and per-context md5s at C = 4 / 16.
+- `kda_multi`'s outputs, its activations (`km_afa`, `km_aga`, `km_ay`) and `mla_attention`'s three work arrays were
+  allocated and zero-filled per call. They are now kept across calls; every element is written before it is read.
+- At C = 16 this took `kdap.setup` from 0.172 to 0.048 ms per generated token and `mla.qprep` from 0.077 to 0.052.
+  The conv loop that follows the setup went from 0.150 to 0.046 ms with its code unchanged.
+- glibc malloc tunables (no mmap, no trim) made no difference, so the cost was not page faults.
+- The KDA conv runs 16 channels per item with SVE. `svld3` / `svld4` read the histories and weights, and each lane
+  does the same multiply and fused multiply-adds (`STRATA_RUNNER_KDA_CONV_VEC=0`: per channel).
+
+| | 2K prefill | 8K prefill | C = 4 | C = 16 |
+|---|---:|---:|---:|---:|
+| before | 253.2 | 236.7 | 82.7 | 123.6 |
+| work arrays kept | 257.1 | 242.4 | 86.0 | 129.2 |
+| + vector conv | **269.5** | **245.9** | 86.1 | **129.2** |
+
+Tried and dropped:
+- `site_multi` for passes of up to 64 tokens. At C = 16 mHC rose from 0.73 to 1.90 ms per generated token.
+- Its per-CMG sums spread over the whole team: no change.
+
+`site_tokens`' imbalance at about 37 tokens remained: thread busy maximum 0.64 against a mean of 0.37 (fixed below by
+sending these passes through `site_multi`).
+
+**`site_multi` at 4-16 tokens** (2026-10-26). These are the mHC sites of decode passes: single-context MTP verify
+(T = 4) and multi-context passes up to 16 tokens.
+
+Phase clocks are inside the function (`STRATA_RUNNER_MHC_PHASES=1`: thread 0 after each barrier, every thread's
+projection time, calls, bucketed by T), measured in C = 1 / 2 / 4 / 16 runs.
+
+The projection dominated and grew 5-7 us per token per thread, against ~0.35 us of arithmetic. The cause was the
+residual update: per (unit, token), 32 scalar stores, then vector reloads of the same values by the sum of squares and
+the kernel. A64FX forwards stores to loads poorly, and `site_tokens` had already avoided this.
+
+Changes, all bitwise:
+- **Write first.** Each thread updates its chunks of every token's residual with SVE first: the same multiply and
+  fused multiply-adds (`STRATA_RUNNER_MHC_WRITE_FIRST=0`: per unit).
+- **Row sums in registers.** The projection uses `mhc_block_acc`, tokens in groups of 4 with this thread's units
+  inside, the same unit order per token (`STRATA_RUNNER_MHC_UNITS=0`: `gf4_bf16k` partials).
+- **`y` sized in parallel.** Each thread sizes its own tokens' `y` vectors; the serial zero fill had cost ~1.7 us per
+  token.
+- **Vector combination.** 16 lanes at a time. Its sum of squares is taken from the registers (zip to double lanes in
+  `ld1uw`'s order, the same FADDV).
+- A prefetch of the residual chunks (`STRATA_RUNNER_MHC_PREFETCH_R`) gained little (12 tokens: 89 -> 78 us) and is kept.
+
+| us per call | T = 4 | 8 | 12 | 16 |
+|---|---:|---:|---:|---:|
+| before | 59-63 | 89-128 | 149 | 240 |
+| write first | 55-58 | 79-99 | 111 | 169 |
+| all | **43** | **59-73** | **84** | **112** |
+| of which projection (all) | 14 | 22-30 | 38 | 54 |
+
+The rest at T = 4 (us): coefficients 5.9 (Sinkhorn, one thread per token), combination 6.4, and the four short phases
+2.5-3.3 each, which is roughly the barrier cost.
+
+| decode | before | after |
+|---|---:|---:|
+| C = 1, ms per token (`mc`, adaptive MTP) | 18.35 | **17.44** |
+| decode b, ms per token (t2) | 11.39 | **10.87** |
+| C = 2 total tok/s | 64.7 | **68.4** |
+| C = 4 | 84.5 | **92.3** |
+| C = 16 (mostly `site_tokens`) | 128.5 | 128.6 |
+
+mHC at C = 4: 1.76 -> 1.02 ms per generated token.
+
+**Merged phases: two barriers instead of five** (`STRATA_RUNNER_MHC_MERGE=0`: the five phases). After the
+projection's barrier, thread `th` takes token `th % T` and a slice of that token's chunks. It does three things for
+that token:
+- it sums every thread's partials itself, per CMG and then over the CMG sums (the same order as the CMG leaders);
+- it computes the coefficients, so each thread of the token gets the same values;
+- it computes its chunks of x and their sums of squares.
+
+After one more barrier it computes `inv_x` from all chunks and writes its slice of y. The results are bitwise: full
+suite PASS, and the mc md5s are identical at C = 1/4/8/16.
+
+| us per call (C = 4 run) | T = 4 | 8 | 12 | 16 |
+|---|---:|---:|---:|---:|
+| five phases | 46.3 | 76.5 | 85.1 | 117.0 |
+| merged | **39.5** | **71.8** | **82.2** | 118.0 |
+
+At T = 16 there are only about 3 threads per token. Their x chunks come from residual lines the other threads wrote,
+so the combination took 22 us instead of 14 + 3, and the merge doesn't pay at that size.
+
+Decode:
+- C = 1: 17.77 -> 17.35 ms per token, measured against `MERGE=0` in the same allocation.
+- decode b: 10.87 -> 10.75 ms.
+- C = 4: 91.3 -> 91.6 tok/s.
+- C = 16: 128.3 -> 128.5 tok/s.
+
+**Passes of 17-64 tokens through `site_multi`** (2026-10-26). At C = 16 (passes of about 37 tokens), `site_tokens`
+gives one token to each of 37 threads and leaves 10 idle. Each busy thread streams all of `fn` (1 MB) for its one
+token, so the CMGs with 12 busy threads were limited by L2 bandwidth: busy time per CMG was 0.56 / 0.55 / 0.44 /
+0.16 ms per token.
+
+`site_multi` splits by chunk instead: `fn` is read once by the team, and every thread's residual chunks are its own.
+It had lost at this size before (0.73 -> 1.9 ms) because of the store-forwarding projection; with the fixes above it
+wins.
+
+Changes:
+- `SITE_MAX` is 64, and the default `site_max` is 64 (`STRATA_RUNNER_SITE_MAX=16`: the old split).
+- The merged phases apply at every size (`STRATA_RUNNER_MHC_MERGE_MAX`). At 24-48 tokens they beat the five phases
+  too: 151-262 -> 139-233 us.
+- **Pipelined residual prefetch.** `STRATA_RUNNER_MHC_PF_DIST`, default 2: token t + 2's lines are prefetched during
+  token t's update. Prefetching all tokens at once means about 27 lines per token, more than a core keeps in flight.
+  Distance 2 beat 4 and 8; the update at 36 tokens went from 62 to 51 us.
+- **The sum of squares in the row partials' line.** It goes at offset 32 of each (token, thread) line, so the merged
+  sums read 47 lines per token instead of 94. Sums and coefficients at 36 tokens: 26.6 -> 20.8 us.
+
+All of this is bitwise. The full suite passes, and the mc md5s are identical at C = 1/4/8/16.
+
+| C = 16 | `site_tokens` | `site_multi`, 5 phases | merged | + prefetch, one line |
+|---|---:|---:|---:|---:|
+| mhc ms per token | 0.795 | 0.739 | 0.673 | **0.603** |
+| tok/s | 128.0 | 129.9 | 130.6 | **131.9** |
+
+C = 8: 109.3 -> 115.9 tok/s. C = 4: 92.5. Prefill is unchanged (2K 256-261, 8K 242-243).
+
+At 36 tokens a call takes 169 us:
+- the projection, 107 us: the residual update 52 (latency-bound reads of other CMGs' lines), the blocks about 40, and
+  the 2-vs-3-chunk split, whose busiest thread runs 11 % over the mean;
+- the sums and coefficients, 21 us;
+- the combination and output, 16 us;
+- the serial setup and teardown, 14 + 11 us (the latter includes the phase timers themselves).
+
+**KDA recurrence and the MTP block per context** (2026-10-26).
+
+*Recurrence.* A (head, 16-column group) item runs two chains of 128 dependent adds per token, which every lane must
+keep in the reference's order. One item at a time therefore ran at the add latency. `kda_groups_step<G>` interleaves
+G column groups of one head; they share k, q and the decay, and each lane's operations are unchanged, so the result
+is bitwise.
+
+G (1, 2 or 4) is chosen from the rounds of items per thread times a step's cost at G (`STRATA_RUNNER_KDA_REC_G`
+fixes it). The usual choices:
+- C = 16: 768 items -> 192 (G = 4);
+- one context: 48 items on 47 threads -> 24 (G = 2), so no thread takes a second item.
+
+| | G = 1 | auto |
+|---|---:|---:|
+| kdam.rec, C = 16, ms per token | 0.268 | **0.137** |
+| kdam.rec, C = 1 | 0.404 | **0.342** |
+| C = 16 tok/s | 131.3 | **133.9** |
+| C = 8 | 116.0 | **117.7** |
+| C = 4 | 93.5 | **94.3** |
+
+*MTP.* Sub-timers `mtp.front / attn / moe / head / argmax / calls / tokens`; `STRATA_RUNNER_MTP_DETAIL=1` also
+attributes the shared timers to the block, as `mtpa.*` and `mtpm.*`. At C = 16 the block was 0.36 ms per token over
+3.4 calls per pass of about 9 tokens each. Per call:
+- attention, 1.08 ms: MLA projections 0.49, attention 0.37, all-reduces;
+- MoE, 0.84 ms: experts 0.40, router 0.16;
+- front, 0.40 ms;
+- head, 0.39 ms.
+
+Most of this is weight streaming per call, plus the experts the tokens route to.
+
+A context's re-sync (the cells of its accepted drafts) now joins its next depth-1 draft: the cells follow on, so one
+pass replaces two, and a context that is done needs none (`STRATA_RUNNER_MTP_FUSE_RS=0`: a re-sync pass after each
+verify). md5s are identical.
+
+| C = 16 | before | after |
+|---|---:|---:|
+| MTP calls per token | 0.141 | **0.100** |
+| MTP ms per token | 0.361 | **0.342** |
+| tok/s | 134.4 | **135.0** |
+
+The calls carry more tokens, at about 0.24 ms per extra token (experts), so the gain is smaller than the call count
+suggests. Single-context `generate()` (C = 1, decode b) does the same on its non-lazy path: MTP calls per token
+1.33 -> 1.00, mtp 0.964 -> 0.849 ms, C = 1 17.14 -> 17.00 ms per token, decode b 10.69 ms; md5s identical.
+
+**MLA expand and query prep per context** (2026-10-26). Sub-timers `mla.ex_jobs / ex_plan / ex_run / ex_copy /
+ex_calls`. At C = 16 the expand took 0.108 ms per token, but its GEMV (already balanced by `balanced_items`) only 0.024.
+The jobs' setup took 0.061 (about 110 us per call): `mla_attention` built fresh `std::vector<Activation>`s each call,
+and thread 0 malloc'd and copied each (token, head) row in `set()` (T x heads of them). The absorb's `qh` (`mla.qprep`)
+was the same.
+
+The fix (`STRATA_RUNNER_MLA_ACTS_PAR=0`: as before), bitwise:
+- both arrays persist (`ma_qh`, `ma_avs`), so their `x` stays allocated;
+- for passes over 4 tokens, the team fills them;
+- the `values` copy is spread over the team too.
+
+| C = 16 | before | after |
+|---|---:|---:|
+| mla.expand, ms per token | 0.100 | **0.050** |
+| mla.qprep | 0.047 | **0.010** |
+| mla_attn | 0.430 | **0.293** |
+| tok/s | 134.6 | **137.6** |
+
+C = 8 119.0 -> 119.7, C = 4 94.9 -> 95.2, C = 1 16.96 -> 16.92 ms. Prefill uses the same code: 2K 268.6, 8K 252.4
+(from about 260 / 243). Full PASS (t1 64/64, t1l 180/180, dec-b 10.54 ms); mc md5s identical.
+
+**Routed experts per context: two balance attempts, both dropped** (2026-10-27). At C = 16 the experts take 1.70 ms per
+token:
+- gate/up GEMVs 0.69 mean / 0.77 max, and down 0.54 / 0.64; thread 0 waits 0.08 + 0.12 at the barriers;
+- plan 0.15;
+- weighted sum 0.08.
+
+Neither attempt changes results (who computes a tile does not change its bits; md5s identical in every variant):
+- **A fixed cost per tile** in `gemv_share_cmg`'s CMG split, `cols x (tokens + K)`: the down projection's busiest
+  thread rose from 0.63 to 0.81 / 0.99 / 1.16 ms at K = 1 / 2 / 4, and C = 16 fell 137.1 -> 135.5 / 132.0 / 127.7.
+  One cost model does not fit both the routed slices and the shared expert's down projection, which sit in one list.
+- **Dynamic tiles per CMG**, from an atomic counter (chunks of 2-64 tiles, each CMG's own tiles, so memory stays
+  local). Small chunks balanced the threads (wait 0.03-0.06) but raised the down projection's mean cost from 0.54 to
+  0.69-1.17 ms: its tiles are tiny, so the counter's line is contended. Large chunks brought the imbalance back.
+  C = 16 reached at best 135.7 (chunk 8) against 137.1 static.
+
+What remains is kernel-bound:
+- The routed slices see about 1.6 tokens each at C = 16, so the W4A8 kernel's per-weight decode dominates (the plan's
+  expert GEMM, step 2, targets slices of 8+ tokens).
+- `router.gemv` (router 288 x 4096 BF16, plus the shared gate/up) costs 7 us per token per layer at C = 16 and 11 at
+  C = 1. That is about 4 MACs per cycle per core, against the 12 of `gf4_tile_many` in 128-token prefill: each
+  thread's item is half a tile pair over about 20 tokens. `STRATA_RUNNER_GEMM_DECODE=0` (0.489) and
+  `STRATA_RUNNER_MANY2=0` (0.472) are no better than the default (0.443 ms per token).
+
+**W4A8 expert kernel: two bitwise variants, measured and dropped** (2026-10-27). The setup is a one-core microbench
+(`priv/a64fx-fp4/w4p_test.c`, suite `w4p`) on the expert slice shapes: gate/up 192 x 4096 and 128 x 4096, down
+4096 x 192. It runs 1-4 tokens, 64- and 16-value activation groups, L2-resident and streamed from a 32 MB set.
+`gf4_w4a8` (`w4a8_tile`) runs at:
+
+| MAC per cycle, L2 / streamed | 1 token | 2 | 3 | 4 |
+|---|---:|---:|---:|---:|
+| 192 x 4096, single tile | 12.9 / 12.0 | 16.7 / 16.1 | 18.4 / 17.9 | 19.2 / 18.8 |
+| tile pairs | 15.0 / 13.3 | 18.2 / 16.8 | 19.2 / 18.1 | 21.8 / 20.7 |
+| ILP form | 11.0 / 7.6 | 10.5 / 10.7 | 14.5 / 14.1 | 14.7 / 14.4 |
+| 4096 x 192, single | 11.6 / 10.9 | 15.8 / 15.1 | 16.6 / 16.2 | 16.8 / 16.5 |
+| tile pairs (earlier run) | 11.6 / 5.1 | 15.2 / 7.9 | 15.8 / 8.5 | 19.2 / 11.0 |
+
+That is 10-17 % of the core's SDOT peak (2 pipes x 64 MACs).
+
+The two variants:
+- **Tile pairs** (`w4a8_tile2`): two tiles in lock-step, each activation broadcast used by both, and two independent
+  float chains. On long rows that is +12-17 %; streamed short rows (down) ran at half speed, so pairs were limited to
+  rows of 1024+ columns. In the runner it changed nothing: experts.up 0.688 vs 0.687 ms per token at C = 16, because
+  `gemv_share_cmg` gives a thread only one or two tiles of a slice, so pairs seldom form.
+- **ILP form**: the 4 SDOTs of a group into separate accumulators added as integers, and two superblocks at a time.
+  It was slower everywhere (the extra adds, and spills). The SDOT chain's latency is not the limit, so the
+  instruction mix (decode TBLs, scale conversions, SDOT, cvt and FMA per group) is.
+
+Both were removed. A real gain needs fewer instructions per MAC (e.g. weights decoded once and reused across more
+tokens, which decode passes do not have), not more parallel chains.
+
+Full suite PASS with both changes (t1 64/64, t1l 180/180; 2K 263.2, 8K 243.7, dec-b 10.73 ms).
+
+#### 6.2.2 Prefill roofline (2026-10-25)
+
+`tools/a64fx_fp4/prefill_roofline.py` counts the MACs per prompt token from the census. Matrices: 16.4 GMAC,
+of which routed experts 8.46 (W4A8), and the exact FP32 trunk 7.6 (KDA projections 4.68, MLA 1.37, router + shared
+1.11, dense FFN 0.45, draft block 0.39). MLA attention adds 0.81 GMAC at 2K and 1.40 at 8K: 64 heads x 1024 MAC per
+selected position, in FP64 (the FP32 form fails the gate).
+
+Rates per node (47 cores, 2.0 GHz):
+- **peaks:** FP32 3.0 TMAC/s, int8 6.0 TMAC/s, FP64 1.5 TMAC/s;
+- **best measured kernels:** `gf4_tile_many2` 14.5 MAC per cycle (1.36 TMAC/s); W4A8 GEMM 1.62 TMAC/s (3.24 TOPS,
+  section 3); attention at an assumed 30 % of FP64 peak. Head-split matrices carry the 6/5.33 heads imbalance.
+
+| phase | measured (2K, pipe) | kernel roofline | peak roofline |
+|---|---:|---:|---:|
+| routed experts | 1.07 | 0.44 | 0.12 |
+| KDA projections | 0.75 | 0.32 | 0.13 |
+| MLA attention | 0.73 | 0.15 (8K: 0.26) | 0.05 |
+| mHC sites | 0.51 | ~0.03 (35 M MAC per token, every rank) | |
+| router + shared expert | 0.45 | 0.08 | 0.03 |
+| comm waits | 0.36 | hidden (1.51 MB per token = 0.50 ms of all-reduce, under the compute) | |
+| MLA projections | 0.32 | 0.09 | 0.04 |
+| KDA conv / recurrence / gates | 0.25 | ~0.02 | |
+| draft block | 0.24 | 0.03 | 0.01 |
+| dense FFN, head, other | ~0.1 | 0.03 | 0.01 |
+| **per prompt token** | **4.86 ms (206 tok/s from main_s)** | **1.13 ms (885 tok/s; 8K 806)** | 0.38 ms (2600) |
+
+Weight streaming does not bind: a node's 15 GB per pass at ~800 GB/s is 0.07 ms per prompt token at c256. The
+400 tok/s target (2.5 ms) is 2.2x the kernel roofline. The gaps are in overheads, not in the kernels:
+- mHC (15x), the draft block (8x), router + shared (5.6x) and attention (4.9x) are far from their kernels;
+- the experts and the projections are at 2.3-3.4x.
+
+#### 6.2.3 Prefill chunk sweep (2026-10-27)
+
+Current build, prefill tok/s and rank-0 ms per prompt token; the generated text is the same at every chunk (2K
+md5 da2742e4, 8K f2f13c32):
+
+| prompt, chunk | tok/s | experts | kda_proj | mhc.site | mla_attn | router | comm.wait |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2K, 256 | 262.6 | 0.981 | 0.566 | 0.322 | 0.445 | 0.332 | 0.098 |
+| 2K, 512 | 270.1 | 0.923 | 0.519 | 0.339 | 0.448 | 0.314 | 0.043 |
+| 2K, 1024 (default) | **271.3** | 0.823 | 0.541 | 0.310 | 0.415 | 0.295 | 0.189 |
+| 2K, 2048 | 251.2 | 0.869 | 0.661 | 0.504 | 0.396 | 0.312 | 0.082 |
+| 8K, 512 | 245.6 | 0.841 | 0.517 | 0.281 | 1.075 | 0.312 | 0.017 |
+| 8K, 1024 (default) | **252.4** | 0.795 | 0.539 | 0.237 | 1.045 | 0.311 | 0.026 |
+| 8K, 2048 | 237.6 | 0.817 | 0.661 | 0.267 | 1.061 | 0.315 | 0.014 |
+
+The default chunk of 1024 stays the best. Going from 256 to 1024 positions per pass, there are 4x the tokens per
+expert slice, but the expert time falls by only 16 %. A slice with many tokens still runs `gf4_w4a8` once per
+4 tokens, and each run decodes the tile again; the expert GEMM of the plan's step 2 (decode once, a register block
+across tokens) is what would turn more tokens per slice into speed. At 2048, the KDA projections (`kdap.p1`
+0.41 -> 0.53) and the 2K mHC sites (0.31 -> 0.50) slow down, presumably from the larger per-pass working set.
+
+#### 6.2.4 Expert GEMM for prefill: gf4_w4a8_gemm (2026-10-27)
+
+`gf4_w4a8_gemm` (`src/kernels/cpu/glm_fp4_sve.c`) puts the tokens in the lanes:
+- 16 tokens per vector, and a row's 4 weight bytes broadcast (`ld1rw`) against them, 4 rows x 2 token vectors per
+  register block;
+- each tile decoded once per slab of 8 superblocks for up to 32 tokens (the old path decoded it again for every
+  4 tokens);
+- the activations of a call transposed once to [block][4-column chunk][16 tokens x 4 bytes] with four rounds of
+  zips, and the outputs transposed back the same way;
+- a remainder of 1-8 tokens (and calls of up to 8 tokens) through `gf4_w4a8`.
+
+Per (row, token) the integer dots, scale products and fused multiply-adds are `w4a8_tile`'s in its order, so it
+is bitwise: 66 cases under qemu and on A64FX (`priv/a64fx-fp4/w4g_test.c`, suite `w4g`), and the full suite's
+md5s and dumps unchanged. It is on by default in `tile_kernel`'s prefill branch; `STRATA_RUNNER_W4A8_GEMM=0` turns it
+off, `STRATA_RUNNER_W4A8_GEMM_MIN` (8) sets the smallest token count.
+
+One core, MAC per cycle (group 64; group 16 is 10-25 % lower):
+
+| shape | tokens | 4-token path | gemm, all tiles in one call | gemm, one call per tile |
+|---|---:|---:|---:|---:|
+| gate/up 192 x 4096 | 16 | 17.6 | 27.8 | 20.4 |
+| | 32 | 17.8 | 37.0 | 25.2 |
+| down 4096 x 192 | 16 | 13.7 | 19.1 | 14.4 |
+| | 32 | 13.7 | 24.1 | 17.8 |
+
+The first version wrote its outputs with scalar stores; at the down projection's ldy of 4096 floats they all fell in
+one L1 set, the down shape ran at 3.7 MAC per cycle, and prefill at 226 tok/s. Vector stores after the transpose
+fixed that.
+
+In the runner (2K, chunk 1024): experts 0.823 -> 0.807 ms per prompt token, prefill 271.3 -> 272.1 tok/s; full
+suite 2K 274.9, 8K 255.5 tok/s. Down went 0.347 -> 0.253, up stayed 0.341 -> 0.338. The CMG split gives a thread
+about one tile of a slice's gate or up matrix per call (12 tiles over 47 threads), so every call transposes all
+of its tokens' activations for a single tile (the "one call per tile" column). Next step: transpose each expert
+use's activations once per pass, shared by the team (gate and up of a slice share them; down's after the SwiGLU
+blocks), and pass the transposed blocks to the kernel.
+
+**Shared transposition** (`gf4_w4a8_gemm_prep` / `gf4_w4a8_gemm_t`, `STRATA_RUNNER_W4A8_XT`, default on): the plan's
+per-use loop transposes the use's hidden-token activations once for its gate and up jobs; a pass after the SwiGLU
+blocks does the same for down (`experts.xt_down`); `gemv_share_cmg` hands the blocks to the kernel. One core, one call
+per tile: 37.8 MAC per cycle on prepared blocks at 32 tokens (25.9 transposing per call). In the runner (2K, chunk
+1024; per-use growing buffers, the first version): up 0.338 -> 0.251, down 0.253 -> 0.249, xt_down 0.005, but
+`experts.plan_jobs` 0.037 -> 0.273 and prefill 253.3 tok/s (md5 unchanged). The full suite passed on that version
+(all md5s and dumps; 2K 250.4, 8K 251.0 tok/s). The second version uses one grow-only buffer for all uses, sized in
+the plan: `plan_jobs` back to 0.044, up 0.236, down 0.229, experts 0.704 ms per prompt token (from 0.823 with the
+4-token kernel), **prefill 2K 280.2 tok/s** (271.3 before this kernel), md5 da2742e4. Full suite PASS on this build (all md5s and dumps; 2K 280.4, 8K 259.4 tok/s,
+decode b 10.43 ms).
 
 ### 6.3 Vector math and decode follow-ups (2026-10-24)
 
@@ -656,9 +1269,8 @@ MLA attention 0.76, MLA projections 0.66, mHC 0.48, router + shared expert 0.45,
 2. **Latent average:** block it like the scores, so rows are shared by the tokens of a pass whose selections
    overlap. At long context these are mostly the same top pools.
 3. **Hybrid attention:** blocking over tokens as well as rows, then a gate run at 512K / 1M.
-4. **Experts:** a W4A8 GEMM that wins with ~28+ tokens per slice. The decode-once version (`STRATA_RUNNER_W4A8_MANY`)
-   is still slower than the per-tile 4-token kernel, so longer passes do not pay yet (chunk 128 stays the
-   default).
+4. **Experts:** a W4A8 GEMM that wins with ~28+ tokens per slice. Done 2026-10-27: `gf4_w4a8_gemm` with shared
+   transposed activations (section 6.2.4); the earlier decode-once `gf4_w4a8_many` (slower) is removed.
 5. **Prefill and decode together:** prefill chunks of one context interleaved with other contexts' decode passes
    (several contexts): the decode passes keep their latency while the prefill fills the nodes.
 
@@ -708,7 +1320,8 @@ keeps the results bitwise unless it says otherwise):
 | `STRATA_RUNNER_MHC_SVE`, `STRATA_RUNNER_PLAN_TEAM_MIN`, `GF4_W4A8_LANE=1` | 1, 2, off | vector Sinkhorn; passes of at least N tokens plan experts over the team; the indexed SDOT W4A8 form |
 | `STRATA_RUNNER_INDEX_SKIP`, `STRATA_RUNNER_INDEX_SHARD_MIN` | 1, 16384 | skip indexer scores while every pool is kept; shard the scoring over ranks above this many pools |
 | `STRATA_RUNNER_CACHE_HOT` | 65536 | hybrid latent cache beyond this many positions (ring + sharded cold blocks; 0: replicated) |
-| `STRATA_RUNNER_ATTN_F32=1`, `STRATA_RUNNER_W4A8_MANY=1` | off | fp32 MLA scores/averages (approximate); W4A8 decode-once kernel (bitwise, slower) |
+| `STRATA_RUNNER_ATTN_F32=1` | off | fp32 MLA scores/averages (approximate) |
+| `STRATA_RUNNER_W4A8_GEMM=0`, `STRATA_RUNNER_W4A8_GEMM_MIN`, `STRATA_RUNNER_W4A8_XT=0` | on, 8, on | prefill W4A8 experts through the 4-token kernel; smallest token count for `gf4_w4a8_gemm`; per-call instead of shared activation transposition (all bitwise) |
 | `STRATA_RUNNER_ROT_SPREAD`, `GF4_FLOAT_LANE=1` | 1, off | shared-expert tile rotation away from the router; the indexed exact float kernels |
 | `--contexts C` | 1 | C resident sequences (eval: segments; `--generate`: batched decode) |
 | `STRATA_RUNNER_PREFILL_TIMERS=1`, `STRATA_BENCH_NT=N` | off | the prefill's phase timers per prompt token; `--bench-gemv` for N tokens per job |

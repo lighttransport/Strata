@@ -56,6 +56,17 @@ extern "C" int cpu_utofu_init(int rank, int world, int max_count);
 extern "C" int cpu_utofu_max(void);   // the longest vector one call takes (the big region's count; 0: tree mode)
 extern "C" void cpu_utofu_allreduce(float *x, int n);
 extern "C" const char *cpu_utofu_mode(void);
+extern "C" int cpu_utofu_banks(int nb, int max);   // staged all-reduce regions (collective)
+extern "C" int cpu_utofu_bank_max(void);
+extern "C" void cpu_utofu_shards(int count, int *off);
+extern "C" float *cpu_utofu_bank_send(int bank, int d);
+extern "C" const float *cpu_utofu_bank_result(int bank, int d);
+extern "C" void cpu_utofu_bank_allreduce(int bank, int count);
+#else   // no staged banks without uTofu (Comm::banks stays 0, so these are never called)
+static void cpu_utofu_shards(int, int *) {}
+static float *cpu_utofu_bank_send(int, int) { return nullptr; }
+static const float *cpu_utofu_bank_result(int, int) { return nullptr; }
+static void cpu_utofu_bank_allreduce(int, int) {}
 #endif
 
 namespace ref = strata::kernels::glm_reference;
@@ -74,6 +85,36 @@ bool attn_f32() {
     return on;
 }
 // STRATA_RUNNER_INDEX_SKIP=0: score the indexer's pools even when the selection keeps all of them
+// pipelined prefill passes (step_multi_pipe), default since 2026-10-25: 2K 218 vs 202 tok/s, 8K 199 vs 181, bitwise
+bool prefill_pipe() {
+    static const bool on = !(std::getenv("STRATA_RUNNER_PREFILL_PIPE") && std::string(std::getenv("STRATA_RUNNER_PREFILL_PIPE")) == "0");
+    return on;
+}
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+// the 8 horizontal sums of v[0..8) (lane j: svaddv(v[j])) by a transpose tree in FADDV's recursive pairwise order
+// ((e0 + e1) + (e2 + e3)) + ((e4 + e5) + (e6 + e7)): bit for bit svaddv's results (checked on A64FX over 24K dots), in
+// 21 vector operations instead of 8 reductions (STRATA_RUNNER_TREE_SUM=0: svaddv)
+typedef svfloat64_t vf64t __attribute__((arm_sve_vector_bits(512)));
+static inline svfloat64_t hsum8_f64(const vf64t *v) {
+    const svbool_t pd = svptrue_b64();
+    vf64t l1[4], l2[2];
+    for (int j = 0; j < 4; ++j) l1[j] = svadd_f64_x(pd, svuzp1_f64(v[2 * j], v[2 * j + 1]), svuzp2_f64(v[2 * j], v[2 * j + 1]));
+    for (int j = 0; j < 2; ++j) l2[j] = svadd_f64_x(pd, svuzp1_f64(l1[2 * j], l1[2 * j + 1]), svuzp2_f64(l1[2 * j], l1[2 * j + 1]));
+    return svadd_f64_x(pd, svuzp1_f64(l2[0], l2[1]), svuzp2_f64(l2[0], l2[1]));
+}
+bool tree_sum_on() {
+    static const bool on = !(std::getenv("STRATA_RUNNER_TREE_SUM") && std::string(std::getenv("STRATA_RUNNER_TREE_SUM")) == "0");
+    return on;
+}
+#endif
+int avg_heads() {   // the prefix average's heads per item (STRATA_RUNNER_AVG_HEADS: 1 or 2, default 2)
+    static const int v = std::getenv("STRATA_RUNNER_AVG_HEADS") ? std::clamp(std::atoi(std::getenv("STRATA_RUNNER_AVG_HEADS")), 1, 2) : 2;
+    return v;
+}
+bool gather_block_on() {   // MLA scores beyond the selection size in (token, 3 heads, 4 positions) blocks
+    static const bool on = !(std::getenv("STRATA_RUNNER_GATHER_BLOCK") && std::string(std::getenv("STRATA_RUNNER_GATHER_BLOCK")) == "0");
+    return on;
+}
 bool index_skip() {
     static const bool on = !(std::getenv("STRATA_RUNNER_INDEX_SKIP") && std::string(std::getenv("STRATA_RUNNER_INDEX_SKIP")) == "0");
     return on;
@@ -236,6 +277,18 @@ struct Comm {
             MPI_Allreduce(&ok, &all, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
             utofu = all == 1;
             if (rank == 0) std::cerr << "RUNNER comm " << (utofu ? cpu_utofu_mode() : "mpi (utofu init failed)") << " rc " << rc << '\n';
+            // staged all-reduces for the pipelined prefill: 2 banks per pass part (attention / FFN output), for
+            // STRATA_RUNNER_PIPE_PARTS parts (default 2), of STRATA_RUNNER_AR_BANK floats (default 1M: a part of
+            // 256 tokens; 0: none)
+            const char *eb = std::getenv("STRATA_RUNNER_AR_BANK");
+            const int bank = eb ? std::atoi(eb) : 1 << 20;
+            const int parts = std::getenv("STRATA_RUNNER_PIPE_PARTS") ? std::clamp(std::atoi(std::getenv("STRATA_RUNNER_PIPE_PARTS")), 2, 4) : 2;
+            if (utofu && world > 1 && bank > 0) {
+                const int brc = cpu_utofu_banks(2 * parts, bank);
+                banks = brc == 0 ? cpu_utofu_bank_max() : 0;
+                nbanks = banks ? 2 * parts : 0;
+                if (rank == 0) std::cerr << "RUNNER comm staged banks " << nbanks << " x " << banks << " floats rc " << brc << '\n';
+            }
         }
 #endif
 #else
@@ -251,7 +304,9 @@ struct Comm {
     // ---- asynchronous all-reduces (pipelined prefill passes): a thread on a core of its own (STRATA_RUNNER_COMM_CORE,
     // default the core after the team's) runs the uTofu all-reduces the main thread posts, in posting order; every
     // rank posts the same sequence. While it runs, every all-reduce goes through it (one thread on the queues).
-    struct ArReq { float *x; int n; };
+    struct ArReq { float *x; int n; int bank = -1; };   // bank >= 0: a staged all-reduce in that bank
+    int banks = 0;   // floats per staged bank (0: none)
+    int nbanks = 0;
     std::array<ArReq, 64> ar_ring{};
     std::atomic<long> ar_posted{0}, ar_done{0};
     std::atomic<bool> ar_stop{false};
@@ -278,7 +333,8 @@ struct Comm {
                 if (d < ar_posted.load(std::memory_order_acquire)) {
                     const ArReq r = ar_ring[d % 64];
                     const double t = now();
-                    allreduce_now(r.x, r.n);
+                    if (r.bank >= 0) cpu_utofu_bank_allreduce(r.bank, r.n);
+                    else allreduce_now(r.x, r.n);
                     ar_thread_busy += now() - t;
                     ar_done.store(d + 1, std::memory_order_release);
                 }
@@ -302,6 +358,20 @@ struct Comm {
         return id + 1;
     }
     void ar_wait(long ticket) { while (ar_done.load(std::memory_order_acquire) < ticket) {} }
+    // a staged all-reduce of n floats already written to bank's send slots (staged_layout); the results stay in
+    // the bank (staged_result) until the bank's next use
+    long allreduce_staged(int bank, int n) {
+        if (!ar_thread.joinable()) ar_start();
+        const long id = ar_posted.load(std::memory_order_relaxed);
+        while (id - ar_done.load(std::memory_order_acquire) >= long(ar_ring.size())) {}
+        ar_ring[id % ar_ring.size()] = {nullptr, n, bank};
+        ar_posted.store(id + 1, std::memory_order_release);
+        return id + 1;
+    }
+    bool staged_ok(int n) const { return banks > 0 && n <= banks; }
+    void staged_shards(int n, std::vector<int> &off) const { off.resize(world + 1); cpu_utofu_shards(n, off.data()); }
+    float *staged_send(int bank, int d) const { return cpu_utofu_bank_send(bank, d); }
+    const float *staged_result(int bank, int d) const { return cpu_utofu_bank_result(bank, d); }
     // sum over ranks; every element is reduced on one rank and then broadcast, so all ranks hold identical bits
     void allreduce(float *x, int n) {
         if (world == 1) return;
@@ -789,7 +859,44 @@ struct Job {
     float *y;              // token n's output at y + n * ldy
     int nt = 1, ldy = 0;
     ActList as{};          // token n's activation (when as[0] is set)
+    const int8_t *xt = nullptr;   // W4A8 prefill: the activations transposed once (gf4_w4a8_gemm_prep), shared by the team
+    const float *xs = nullptr;
 };
+
+// STRATA_RUNNER_W4A8_GEMM=0: W4A8 tiles of a prefill pass through the 4-token kernel (default: gf4_w4a8_gemm, 16
+// tokens per vector, bitwise the same, from STRATA_RUNNER_W4A8_GEMM_MIN tokens, default 8)
+bool w4a8_gemm_on() {
+    static const bool on = !(std::getenv("STRATA_RUNNER_W4A8_GEMM") && std::string(std::getenv("STRATA_RUNNER_W4A8_GEMM")) == "0");
+    return on;
+}
+int w4a8_gemm_min() {
+    static const int n = std::getenv("STRATA_RUNNER_W4A8_GEMM_MIN") ? std::atoi(std::getenv("STRATA_RUNNER_W4A8_GEMM_MIN")) : 8;
+    return n;
+}
+// STRATA_RUNNER_W4A8_XT=0: each gf4_w4a8_gemm call transposes its tokens' activations itself (default: an expert
+// use's transposed once in the plan, for all its tiles over the team; 12 gate/up tiles per slice give a thread about
+// one tile per call)
+bool w4a8_xt_on() {
+    static const bool on = !(std::getenv("STRATA_RUNNER_W4A8_XT") && std::string(std::getenv("STRATA_RUNNER_W4A8_XT")) == "0");
+    return w4a8_gemm_on() && on;
+}
+// uninitialized 256-byte aligned memory that grows and stays (transposed activations: one buffer for all the
+// uses of a pass; per-use vectors regrew, and faulted, whenever a use had more tokens than before)
+template <class T> struct AlignedBuf {
+    std::unique_ptr<T[]> p; size_t n = 0;
+    T *get(size_t want) {
+        if (want > n) n = want + want / 4, p.reset(new T[n + 256 / sizeof(T)]);
+        return reinterpret_cast<T *>((reinterpret_cast<uintptr_t>(p.get()) + 255) & ~uintptr_t(255));
+    }
+};
+// gf4_w4a8_gemm_prep of acts a[0..nt) (a job's list; cols values, one scale group) into xt / xs
+void w4a8_xt_prep(const ActList &a, int nt, int cols, int8_t *xt, float *xs) {
+    thread_local std::vector<gf4_q8act> q;
+    q.resize(nt);
+    for (int n = 0; n < nt; ++n)
+        q[n] = gf4_q8act{cols, const_cast<int8_t *>(a[n]->q.data()), const_cast<float *>(a[n]->qs.data()), a[n]->group};
+    gf4_w4a8_gemm_prep(q.data(), nt, cols, xt, xs);
+}
 
 // one tile (or, with k0/k1, columns [k0, k1) of one tile as a sub-matrix) into out[0..16)
 // nt tokens (*a[0..nt)) at once: the kernels read each weight once for all of them, with the same arithmetic per
@@ -822,19 +929,12 @@ void tile_kernel(const Matrix &m, const Activation *const *a, int nt, int t0, in
                 gf4_tile_many(kind, base + size_t(tile) * tile_bytes, cols, x, nt, out + (part ? 0 : 16 * tile), ldy);
             return;
         }
-        // STRATA_RUNNER_W4A8_MANY=1: W4A8 tiles decoded once per slab for all tokens (gf4_w4a8_many, bitwise the same;
-        // measured slower than the 4-token kernel per tile: experts 1.58 vs 1.21 ms per prompt token at chunk 1024)
-        static const bool w4_many = std::getenv("STRATA_RUNNER_W4A8_MANY") && std::string(std::getenv("STRATA_RUNNER_W4A8_MANY")) == "1";
-        if (w4_many && m.kind == Kind::NvQ) {
-            const int cols = k1 - k0;
-            const size_t tile_bytes = m.data.size() / (m.padded / 16);
-            const uint8_t *base = m.data.data() + size_t(k0 / block_cols(m.kind)) * block_bytes(m.kind);
-            std::vector<gf4_q8act> q(nt);
+        if (w4a8_gemm_on() && m.kind == Kind::NvQ && nt >= w4a8_gemm_min() && k0 == 0 && k1 == m.cols) {   // gf4_w4a8_gemm
+            thread_local std::vector<gf4_q8act> q;
+            q.resize(nt);
             for (int n = 0; n < nt; ++n)
-                q[n] = gf4_q8act{cols, const_cast<int8_t *>(a[n]->q.data()) + k0, const_cast<float *>(a[n]->qs.data()) + k0 / a[n]->group, a[n]->group};
-            const bool part = k0 != 0 || k1 != m.cols;
-            for (int tile = t0; tile < t1; ++tile)
-                gf4_w4a8_many(base + size_t(tile) * tile_bytes, cols, m.global, q.data(), nt, out + (part ? 0 : 16 * tile), ldy);
+                q[n] = gf4_q8act{m.cols, const_cast<int8_t *>(a[n]->q.data()), const_cast<float *>(a[n]->qs.data()), a[n]->group};
+            gf4_w4a8_gemm(m.data.data(), m.cols, m.global, t0, t1, q.data(), nt, out, ldy);
             return;
         }
         for (int tile = t0; tile < t1; ++tile)
@@ -938,6 +1038,41 @@ inline void team_barrier() {
 // the team calls run(t, n) once, inside a region of its own (gemv_multi) or one the caller opened (the fused layers).
 // run() contains one barrier when a job has a K split and none otherwise; outputs are complete for the caller only
 // after its next barrier (or the region's end).
+struct ShareItem { int j, tile, ntile, b0, bn; };
+// f(item) for thread t of n's items; false: not a long pass (or switched off), the caller splits as before
+template <class F>
+bool balanced_items(const std::vector<Job> &jobs, int t, int n, F &&f) {
+    // the flattened (job, tile pair, token) space in equal contiguous cost ranges, one per thread: token j of a pair
+    // goes to the thread whose range holds its midpoint, so a thread gets a token range of 1-3 pairs. Whole items
+    // (pair x token block) left the busiest thread ceil(items / n): 7 of 6.13 on 47 threads (87.5 %; 48 threads,
+    // 6 of 6, ran 13 % faster in total)
+    static const bool on = !(std::getenv("STRATA_RUNNER_GEMV_BALANCE") && std::string(std::getenv("STRATA_RUNNER_GEMV_BALANCE")) == "0");
+    if (!on || n < 2 || jobs.empty()) return false;
+    double total = 0;
+    for (const auto &j : jobs) {
+        if (j.nt <= 4) return false;
+        total += double(j.m->padded / 16) * j.nt * j.m->cols;
+    }
+    if (total <= 0) return true;
+    const double lo = total * t / n, hi = total * (t + 1) / n;
+    double start = 0;
+    for (int ji = 0; ji < int(jobs.size()); ++ji) {
+        const auto &j = jobs[ji];
+        const int tiles = j.m->padded / 16, nt = j.nt;
+        for (int tl = 0; tl < tiles; tl += 2) {
+            const int ntl = std::min(2, tiles - tl);
+            const double u = double(ntl) * j.m->cols, end = start + u * nt;
+            if (end > lo && start < hi) {
+                const int j0 = std::clamp(int(std::ceil((lo - start) / u - 0.5)), 0, nt);
+                const int j1 = std::clamp(int(std::ceil((hi - start) / u - 0.5)), 0, nt);
+                if (j1 > j0) f(ShareItem{ji, tl, ntl, j0, j1 - j0});
+            }
+            start = end;
+            if (start >= hi) return true;
+        }
+    }
+    return true;
+}
 struct GemvPlan {
     struct Split { int chunks = 0, width = 0; std::vector<float> part; };   // see ksplit()
     std::vector<Job> jobs;
@@ -961,10 +1096,30 @@ struct GemvPlan {
                 any_split = true;
             }
         }
+        for (size_t i = 0; i < jobs.size(); ++i)
+            if (!split[i].chunks) whole.push_back(jobs[i]), whole_of.push_back(int(i));
     }
+    std::vector<Job> whole;      // the jobs without a K split (balanced over the team in long passes)
+    std::vector<int> whole_of;   // their indices in jobs
     void run(int t, int n) {
         const Activation *ap[MAX_PASS];
+        // a long pass: the jobs without a K split as balanced token ranges over the team (see balanced_items), the
+        // K-split ones (few-row matrices) through their (tile, chunk) items below
+        int cur = -1;
+        const bool bal = !whole.empty() && balanced_items(whole, t, n, [&](const ShareItem &it) {
+            const int jj = whole_of[it.j];
+            const Job &jb = jobs[jj];
+            const Matrix &m = *jb.m;
+            if (jj != cur) job_acts(jb, ap), cur = jj;
+            tile_kernel(m, ap + it.b0, it.bn, it.tile, it.tile + it.ntile, 0, m.cols, out[jj] + size_t(it.b0) * ostride[jj], ostride[jj]);
+            if (out[jj] != jb.y)   // this item's rows of a padded output
+                for (int k = it.b0; k < it.b0 + it.bn; ++k)
+                    for (int r = 16 * it.tile; r < std::min(16 * (it.tile + it.ntile), m.rows); ++r)
+                        jb.y[size_t(k) * jb.ldy + r] = out[jj][size_t(k) * ostride[jj] + r];
+        });
+        if (bal && !any_split) return;
         for (size_t j = 0; j < jobs.size(); ++j) {
+            if (bal && !split[j].chunks) continue;   // done above
             const Matrix &m = *jobs[j].m;
             const Job &jb = jobs[j];
             const int tiles = m.padded / 16, nt = jb.nt;
@@ -1079,7 +1234,75 @@ void prefetch_mats(const std::vector<const Matrix *> &ms, int t, int n) {   // t
 
 // thread t of n's whole tiles of each job, inside a team region the caller already opened (gemv_multi's split and
 // placement for matrices without a K split); every y holds the matrix's padded rows
+// Long passes (every job > 4 tokens): one item list over all the jobs, (tile pair, token block) items in (job, tile,
+// block) order, contiguous ranges of equal cost per thread. Whole tiles per job left the busiest thread with 4 tiles
+// of 3 x 48 against 3.06 on average (KDA q/k/v: 692 GMAC/s on 47 threads, 10.7 MAC/cycle per thread on 24).
+// tile_kernel per item: a token's arithmetic does not depend on its group, so the bits are the same.
+// STRATA_RUNNER_GEMV_BALANCE=0: whole tiles per job (and token_split for few-tile jobs)
+bool gemv_share_balanced(const std::vector<Job> &jobs, int t, int n) {
+    const Activation *ap[MAX_PASS];
+    int cur = -1;
+    return balanced_items(jobs, t, n, [&](const ShareItem &it) {
+        const Job &j = jobs[it.j];
+        if (it.j != cur) job_acts(j, ap), cur = it.j;
+        const int ldy = j.nt > 1 ? j.ldy : j.m->padded;
+        tile_kernel(*j.m, ap + it.b0, it.bn, it.tile, it.tile + it.ntile, 0, j.m->cols, j.y + size_t(it.b0) * ldy, ldy);
+    });
+}
+
+void gemv_share(const std::vector<Job> &jobs, int t, int n);
+// The routed experts of a long pass (many jobs of a few tokens each, weights streamed from HBM every pass): every
+// tile stays in the CMG whose thread placed it (gemv_share's split: weights read from the CMG's own memory), and
+// the CMG's tiles go in equal contiguous cost ranges, tile by tile, to its threads. The placement split gave the
+// busiest thread 9 % more than the mean (gate / up). STRATA_RUNNER_EXPERT_BALANCE=0: gemv_share
+void gemv_share_cmg(const std::vector<Job> &jobs, int t, int n) {
+    static const bool on = !(std::getenv("STRATA_RUNNER_EXPERT_BALANCE") && std::string(std::getenv("STRATA_RUNNER_EXPERT_BALANCE")) == "0");
+    const int gsz = cmg_threads(), g = t / gsz, m0 = g * gsz, m1 = std::min(n, m0 + gsz), mc = m1 - m0;
+    if (!on || n < 2 || mc < 2) { gemv_share(jobs, t, n); return; }
+    // this CMG's tiles: per job and member thread, the placement's tile range (job order, then member order)
+    struct R { int j, t0, t1; };
+    thread_local std::vector<R> rs;
+    rs.clear();
+    double total = 0;
+    for (int ji = 0; ji < int(jobs.size()); ++ji) {
+        const Matrix &m = *jobs[ji].m;
+        const int tiles = m.padded / 16;
+        for (int u = m0; u < m1; ++u) {
+            const int v = (u + m.rot) % n, a = int(int64_t(tiles) * v / n), b = int(int64_t(tiles) * (v + 1) / n);
+            if (b > a) rs.push_back({ji, a, b}), total += double(b - a) * jobs[ji].nt * m.cols;
+        }
+    }
+    if (total <= 0) return;
+    const int li = t - m0;
+    const Activation *ap[MAX_PASS];
+    int cur = -1;
+    const double lo = total * li / mc, hi = total * (li + 1) / mc;
+    double start = 0;
+    for (const R &r : rs) {
+        const Job &j = jobs[r.j];
+        const double u = double(j.nt) * j.m->cols, end = start + u * (r.t1 - r.t0);
+        if (end > lo && start < hi) {   // tile k of the range goes to the thread whose range holds its midpoint
+            const int k0 = std::clamp(int(std::ceil((lo - start) / u - 0.5)), 0, r.t1 - r.t0);
+            const int k1 = std::clamp(int(std::ceil((hi - start) / u - 0.5)), 0, r.t1 - r.t0);
+            if (k1 > k0) {
+                if (r.j != cur) job_acts(j, ap), cur = r.j;
+                if (j.xt) {   // the use's transposed activations (the plan's gf4_w4a8_gemm_prep)
+                    thread_local std::vector<gf4_q8act> q;
+                    q.resize(j.nt);
+                    for (int i = 0; i < j.nt; ++i)
+                        q[i] = gf4_q8act{j.m->cols, const_cast<int8_t *>(ap[i]->q.data()), const_cast<float *>(ap[i]->qs.data()), ap[i]->group};
+                    gf4_w4a8_gemm_t(j.m->data.data(), j.m->cols, j.m->global, r.t0 + k0, r.t0 + k1, q.data(), j.nt, j.xt, j.xs, j.y, j.ldy);
+                } else
+                    tile_kernel(*j.m, ap, j.nt, r.t0 + k0, r.t0 + k1, 0, j.m->cols, j.y, j.nt > 1 ? j.ldy : j.m->padded);
+            }
+        }
+        start = end;
+        if (start >= hi) break;
+    }
+}
+
 void gemv_share(const std::vector<Job> &jobs, int t, int n) {
+    if (gemv_share_balanced(jobs, t, n)) return;
     const Activation *ap[MAX_PASS];
     for (const auto &j : jobs) {
         const Matrix &m = *j.m;
@@ -1149,6 +1372,42 @@ static inline void kda_group_step(const float *S0, float *S, const float *kh, co
             o[c] += sv * qh[i];
         }
     for (int c = 0; c < KDA_GROUP; ++c) out[c] = o[c];
+#endif
+}
+// G consecutive column groups of one head for one token: kda_group_step per group, the groups' chains interleaved (a
+// group's two sums are chains of `dim` dependent adds; one group at a time ran at the add latency, not its rate).
+// Group g's state block is G0 + g * dim * 16, its v and out lanes + 16 g; per lane the same operations
+template <int G>
+static inline void kda_groups_step(const float *S0, float *S, const float *kh, const float *qh, const float *eh, const float *v, float sb,
+                                   float *out, int dim) {
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+    const svbool_t pg = svptrue_b32();
+    const size_t bs = size_t(dim) * KDA_GROUP;
+    vf32 mem[G], o[G], delta[G];
+    for (int g = 0; g < G; ++g) mem[g] = svdup_n_f32(0), o[g] = svdup_n_f32(0);
+    for (int i = 0; i < dim; ++i) {
+        const float e = eh[i], k = kh[i];
+#pragma GCC unroll 4
+        for (int g = 0; g < G; ++g) {
+            const svfloat32_t s0 = svmul_n_f32_x(pg, svld1_f32(pg, S0 + g * bs + i * KDA_GROUP), e);
+            svst1_f32(pg, S + g * bs + i * KDA_GROUP, s0);
+            mem[g] = svadd_f32_x(pg, mem[g], svmul_n_f32_x(pg, s0, k));
+        }
+    }
+    for (int g = 0; g < G; ++g) delta[g] = svmul_n_f32_x(pg, svsub_f32_x(pg, svld1_f32(pg, v + 16 * g), mem[g]), sb);
+    for (int i = 0; i < dim; ++i) {
+        const float k = kh[i], q = qh[i];
+#pragma GCC unroll 4
+        for (int g = 0; g < G; ++g) {
+            const svfloat32_t s1 = svmla_n_f32_x(pg, svld1_f32(pg, S + g * bs + i * KDA_GROUP), delta[g], k);
+            svst1_f32(pg, S + g * bs + i * KDA_GROUP, s1);
+            o[g] = svadd_f32_x(pg, o[g], svmul_n_f32_x(pg, s1, q));
+        }
+    }
+    for (int g = 0; g < G; ++g) svst1_f32(pg, out + 16 * g, o[g]);
+#else
+    for (int g = 0; g < G; ++g)
+        kda_group_step(S0 + size_t(g) * dim * KDA_GROUP, S + size_t(g) * dim * KDA_GROUP, kh, qh, eh, v + 16 * g, sb, out + 16 * g, dim);
 #endif
 }
 // half a column group (8 of its 16 lanes, from lane lo): per lane the operations of kda_group_step, so the bits are
@@ -1680,6 +1939,33 @@ struct Runner {
     struct MtpState { int position = 0; Vec keys, gates; };
     MtpState mtp_save() const { return {mtp.position, mtp.layer.ml.keys, mtp.layer.ml.gates}; }
     void mtp_restore(const MtpState &st) { mtp.position = st.position, mtp.layer.ml.keys = st.keys, mtp.layer.ml.gates = st.gates; }
+    // the same for context c without switching to it (its MTP state is in ctx_store unless it is active)
+    MtpState mtp_save_ctx(int c) const {
+        if (c == active_ctx) return mtp_save();
+        const auto &cs = ctx_store[c];
+        return {cs.mtp_position, cs.mtp_layer.keys, cs.mtp_layer.gates};
+    }
+    void mtp_restore_ctx(int c, const MtpState &st) {
+        if (c == active_ctx) { mtp_restore(st); return; }
+        auto &cs = ctx_store[c];
+        cs.mtp_position = st.position, cs.mtp_layer.keys = st.keys, cs.mtp_layer.gates = st.gates;
+    }
+    int position_ctx(int c) const { return c == active_ctx ? position : ctx_store[c].position; }
+    // MTP cells of several contexts in one pass: groups (context, tokens) in token order, cells[g] group g's first
+    // cell. The draft block's projections and MoE run over every token; its attention per context, with that
+    // context's draft layer state (mla_back's grouped path): each context's results are those of its own calls
+    std::vector<int> mtp_cells;
+    std::vector<Vec> mtp_forward_ctx(const std::vector<int> &tokens, const std::vector<Vec> &prev, const std::vector<std::pair<int, int>> &groups,
+                                     const std::vector<int> &cells, std::vector<Vec> *logits) {
+        if (groups.size() == 1) {
+            switch_ctx(groups[0].first);
+            return mtp_forward(tokens, prev, cells[0], logits);
+        }
+        pass_groups = groups, mtp_cells = cells;
+        auto h = mtp_forward(tokens, prev, cells[0], logits);
+        pass_groups.clear(), mtp_cells.clear();
+        return h;
+    }
     bool want_mtp = false;
     // STRATA_RUNNER_REMAINDER_SPREAD=1: split remainders on different ranks per tensor family (the head split puts the
     // 4 extra heads on ranks 0-3; every other split did too, so ranks 0-3 carried every extra unit)
@@ -2267,15 +2553,31 @@ struct Runner {
     }
 
     // sub-phase timers: adds the time since `t` to timers[what] and restarts `t`
+    static inline thread_local bool lap_off = false;   // inside a parallel region: no timers (the map is shared)
     void lap(double &t, const char *what) {
         const double n = now();
-        timers[what] += n - t;
+        if (!lap_off) timers[what] += n - t;
         t = n;
     }
 
     // ---------------------------------------------------------------------------------------------- forward
     // sum of squares of n values in eight chains (one serial double chain is latency-bound on A64FX)
     static double sumsq(const float *x, size_t n) {
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+        // the loop below in 8 double lanes (lane j: the fused x^2 + acc_j over i, as clang contracts it) and FADDV's
+        // reduction tree, which is the loop's ((a0 + a1) + (a2 + a3)) + ((a4 + a5) + (a6 + a7)): the same bits (checked
+        // on A64FX over 6K blocks); clang compiled the loop to 128-bit NEON, ~56 cycles per 32 values
+        if (n % 8 == 0) {
+            typedef svfloat64_t vd __attribute__((arm_sve_vector_bits(512)));
+            const svbool_t pd = svptrue_b64();
+            vd acc = svdup_n_f64(0);
+            for (size_t i = 0; i < n; i += 8) {
+                const vd v = svcvt_f64_f32_x(pd, svreinterpret_f32_u64(svld1uw_u64(pd, reinterpret_cast<const uint32_t *>(x + i))));
+                acc = svmla_f64_x(pd, acc, v, v);
+            }
+            return svaddv_f64(pd, acc);
+        }
+#endif
         double acc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
         const size_t n8 = n / 8 * 8;
         for (size_t i = 0; i < n8; i += 8)
@@ -2580,6 +2882,41 @@ struct Runner {
     // order, then the per-CMG sums, then the CMG sums in order), so every sum has site()'s order and the result its
     // bits; no barrier inside the site, and fn's blocks come from the thread's CMG copy
     std::vector<Vec> st_rn;   // per token: the updated residual (swapped with r)
+    std::array<double, 64> mhc_thr_total{};   // every thread's site_tokens time (RUNNER_MHC_THREADS at the prefill end)
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+    // one BF16 block (32 columns x 16 rows) for NT tokens with gf4_bf16k's arithmetic (bf16_tile, the default chain
+    // form: chain c over columns 8c .. 8c + 7, then (q0 + q1) + (q2 + q3) added to a zero sum), added to acc[n]:
+    // the bits of gf4_bf16k(m, 32, 0, 1, x, NT, lp) followed by acc += lp, without a call and a store per block
+    typedef svfloat32_t vf32s __attribute__((arm_sve_vector_bits(512)));
+    template <int NT>
+    static inline void mhc_block_acc(const uint8_t *m, const float *const *x, vf32s *acc) {
+        const svbool_t pw = svptrue_b32();
+        // the weights two columns per 64-byte load, widened by a zip with zero (bf16 bits as the high half of each
+        // f32: the same values as the shift; one-column extending loads were slower)
+        const svuint16_t z0 = svdup_n_u16(0);
+        vf32s w[32];
+        for (int k = 0; k < 32; k += 2) {
+            const svuint16_t v = svld1_u16(svptrue_b16(), reinterpret_cast<const uint16_t *>(m + size_t(k) * 32));
+            w[k] = svreinterpret_f32_u16(svzip1_u16(z0, v)), w[k + 1] = svreinterpret_f32_u16(svzip2_u16(z0, v));
+        }
+        vf32s q[NT][4];
+        for (int n = 0; n < NT; ++n) for (int c = 0; c < 4; ++c) q[n][c] = svdup_n_f32(0);
+#pragma GCC unroll 2
+        for (int h = 0; h < 2; ++h)
+#pragma GCC unroll 4
+            for (int i = 0; i < 4; ++i)
+#pragma GCC unroll 4
+                for (int c = 0; c < 4; ++c) {
+                    const int k = 8 * c + 4 * h + i;
+#pragma GCC unroll 4
+                    for (int n = 0; n < NT; ++n) q[n][c] = svmla_f32_x(pw, q[n][c], w[k], svdup_n_f32(x[n][k]));
+                }
+        for (int n = 0; n < NT; ++n) {
+            const svfloat32_t t = svadd_f32_x(pw, svdup_n_f32(0), svadd_f32_x(pw, svadd_f32_x(pw, q[n][0], q[n][1]), svadd_f32_x(pw, q[n][2], q[n][3])));
+            acc[n] = svadd_f32_x(pw, acc[n], t);
+        }
+    }
+#endif
     std::vector<std::pair<Vec, Vec>> site_tokens(std::vector<Vec> &r, const std::vector<Vec> *cw, const std::vector<Vec> *yw, const Matrix &fn,
                                                  const Vec &base, const Vec &scale, const Vec &w) {
         const double t0 = now();
@@ -2588,38 +2925,90 @@ struct Runner {
         const size_t tile_bytes = fn.bytes() / size_t(tiles), bb = block_bytes(Kind::B16);
         std::vector<std::pair<Vec, Vec>> res(T);
         if (cw && st_rn.size() < size_t(T)) st_rn.resize(T);
+        // the projection's blocks with their row sums in registers (STRATA_RUNNER_MHC_UNITS=0: one gf4_bf16k call and
+        // scalar row adds per block, as before; bitwise the same)
+        static const bool fused_units = !(std::getenv("STRATA_RUNNER_MHC_UNITS") && std::string(std::getenv("STRATA_RUNNER_MHC_UNITS")) == "0");
+        (void)fused_units;
+        static const bool write_first = !(std::getenv("STRATA_RUNNER_MHC_WRITE_FIRST") && std::string(std::getenv("STRATA_RUNNER_MHC_WRITE_FIRST")) == "0");
+        double st_t[4] = {0, 0, 0, 0};   // thread 0: projection, per-token tail, its end (sub-timers)
+        double st_wf = 0;
+        std::array<double, 64> th_busy{};  // every thread's time in the region (the balance by CMG)
         team_run([&] {
+            const double tb0 = now();
             const int th = omp_get_thread_num(), nth = omp_get_num_threads(), gsz = cmg_threads();
             const uint8_t *fnd = fn.cmg_data(th);
             const bool cm = !fn.cmg_copy.empty();
+            if (th == 0) st_t[3] = cm;
             auto blk = [&](int ch, int j, int tile) {
                 return cm ? fnd + (size_t(ch * 4 + j) * tiles + tile) * bb : fnd + size_t(tile) * tile_bytes + size_t(j * nc + ch) * bb;
             };
-            int mine[4], k = 0;
-            for (int t0_ = th; t0_ < T; t0_ += 4 * nth) {   // this thread's tokens, up to 4 per group
+            // this thread's tokens, up to MHC_TOK (STRATA_RUNNER_MHC_TOK: 4, 8 or 12; default 4) per pass over fn's
+            // blocks, in kernel groups of 4 (12 streamed the weights once per 12 tokens but was slower, 0.391 vs 0.314
+            // ms: the passes' residuals no longer stay in cache). Dynamic groups within a CMG were slower too (0.407
+            // vs 0.334 ms: the owner's L1 holds its tokens' residuals)
+            constexpr int MT = 12;
+            static const int mtok = std::getenv("STRATA_RUNNER_MHC_TOK") ? std::clamp(std::atoi(std::getenv("STRATA_RUNNER_MHC_TOK")) / 4 * 4, 4, MT) : 4;
+            int mine[MT], k = 0;
+            for (int t0_ = th; t0_ < T; t0_ += mtok * nth) {
                 k = 0;
-                for (int t = t0_; t < T && k < 4; t += nth) mine[k++] = t;
+                for (int t = t0_; t < T && k < mtok; t += nth) mine[k++] = t;
                 const int g4 = k;
-                const float *src[4];
+                const float *src[MT];
                 for (int a = 0; a < g4; ++a) {
                     const int t = mine[a];
                     if (cw && st_rn[t].size() != size_t(n)) st_rn[t].resize(n);
                     src[a] = cw ? st_rn[t].data() : r[t].data();
                 }
-                float tot_pr[4][32] = {}, gpr[4][32] = {};
-                double tot_sq[4] = {}, gsq[4] = {};
+                float tot_pr[MT][32] = {}, gpr[MT][32] = {};
+                double tot_sq[MT] = {}, gsq[MT] = {};
+                const double ta = th == 0 ? now() : 0;
+                // the group's residual updates first, whole streams (STRATA_RUNNER_MHC_WRITE_FIRST=0: per unit, just
+                // before its projection): the projection then reads values that are not in flight in the store queue
+                // (A64FX forwards stores to the reloads poorly); each value is computed as before
+                if (cw && write_first)
+                    for (int a = 0; a < g4; ++a) {
+                        const int t = mine[a];
+                        const Vec &cc = (*cw)[t], &yy = (*yw)[t];
+                        float *rn = st_rn[t].data();
+                        const float *rt = r[t].data();
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+                        if (H % 16 == 0) {   // the same multiply, then the same fused multiply-adds, 16 lanes at a time
+                            const svbool_t pw = svptrue_b32();
+                            for (int j = 0; j < 4; ++j) {
+                                const svfloat32_t cy = svdup_n_f32(cc[4 + j]), c0 = svdup_n_f32(cc[8 + j]), c1 = svdup_n_f32(cc[12 + j]),
+                                                  c2 = svdup_n_f32(cc[16 + j]), c3 = svdup_n_f32(cc[20 + j]);
+                                for (int d = 0; d < H; d += 16) {
+                                    svfloat32_t v = svmul_f32_x(pw, cy, svld1_f32(pw, yy.data() + d));
+                                    v = svmla_f32_x(pw, v, c0, svld1_f32(pw, rt + d));
+                                    v = svmla_f32_x(pw, v, c1, svld1_f32(pw, rt + size_t(H) + d));
+                                    v = svmla_f32_x(pw, v, c2, svld1_f32(pw, rt + size_t(2) * H + d));
+                                    v = svmla_f32_x(pw, v, c3, svld1_f32(pw, rt + size_t(3) * H + d));
+                                    svst1_f32(pw, rn + size_t(j) * H + d, v);
+                                }
+                            }
+                            continue;
+                        }
+#endif
+                        for (int j = 0; j < 4; ++j)
+                            for (int d = 0; d < H; ++d) {
+                                float v = cc[4 + j] * yy[d];
+                                for (int i = 0; i < 4; ++i) v += cc[8 + i * 4 + j] * rt[size_t(i) * H + d];
+                                rn[size_t(j) * H + d] = v;
+                            }
+                    }
+                if (th == 0) st_t[1] -= 0, st_wf += now() - ta;   // thread 0: the residual update (write-first)
                 for (int u = 0; u < nth; ++u) {   // the team's threads in order, as site()
                     if (u % gsz == 0)
                         for (int a = 0; a < g4; ++a) { gsq[a] = 0; for (int row = 0; row < 32; ++row) gpr[a][row] = 0; }
-                    float pr[4][32] = {};
-                    double sq[4] = {};
+                    float pr[MT][32] = {};
+                    double sq[MT] = {};
                     for (int ch = mhc_block_begin(nc, u, nth); ch < mhc_block_begin(nc, u + 1, nth); ++ch)
                         for (int j = 0; j < 4; ++j) {
                             const int q = j * nc + ch;
-                            const float *xs[4];
+                            const float *xs[MT];
                             for (int a = 0; a < g4; ++a) {
                                 const int t = mine[a];
-                                if (cw) {
+                                if (cw && !write_first) {
                                     const Vec &cc = (*cw)[t], &yy = (*yw)[t];
                                     float *rn = st_rn[t].data();
                                     for (int d = ch * DC; d < (ch + 1) * DC; ++d) {
@@ -2631,10 +3020,31 @@ struct Runner {
                                 sq[a] += sumsq(src[a] + size_t(q) * DC, DC);
                                 xs[a] = src[a] + size_t(q) * DC;
                             }
-                            alignas(64) float lp[4 * 32];
-                            for (int tile = 0; tile < tiles; ++tile) gf4_bf16k(blk(ch, j, tile), DC, 0, 1, xs, g4, lp + 16 * tile, 32);
-                            for (int a = 0; a < g4; ++a)
-                                for (int row = 0; row < fn.rows; ++row) pr[a][row] += lp[a * 32 + row];
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+                            if (fused_units && DC == 32 && tiles <= 2) {   // the rows' sums in registers (lanes = rows)
+                                for (int tile = 0; tile < tiles; ++tile)
+                                    for (int a0 = 0; a0 < g4; a0 += 4) {   // the block stays in L1 for every group
+                                        const int gn = std::min(4, g4 - a0);
+                                        vf32s acc[4];
+                                        for (int a = 0; a < gn; ++a) acc[a] = svld1_f32(svptrue_b32(), pr[a0 + a] + 16 * tile);
+                                        switch (gn) {
+                                        case 1: mhc_block_acc<1>(blk(ch, j, tile), xs + a0, acc); break;
+                                        case 2: mhc_block_acc<2>(blk(ch, j, tile), xs + a0, acc); break;
+                                        case 3: mhc_block_acc<3>(blk(ch, j, tile), xs + a0, acc); break;
+                                        default: mhc_block_acc<4>(blk(ch, j, tile), xs + a0, acc); break;
+                                        }
+                                        for (int a = 0; a < gn; ++a) svst1_f32(svptrue_b32(), pr[a0 + a] + 16 * tile, acc[a]);
+                                    }
+                                continue;
+                            }
+#endif
+                            for (int a0 = 0; a0 < g4; a0 += 4) {
+                                const int gn = std::min(4, g4 - a0);
+                                alignas(64) float lp[4 * 32];
+                                for (int tile = 0; tile < tiles; ++tile) gf4_bf16k(blk(ch, j, tile), DC, 0, 1, xs + a0, gn, lp + 16 * tile, 32);
+                                for (int a = 0; a < gn; ++a)
+                                    for (int row = 0; row < fn.rows; ++row) pr[a0 + a][row] += lp[a * 32 + row];
+                            }
                         }
                     for (int a = 0; a < g4; ++a) {
                         gsq[a] += sq[a];
@@ -2646,6 +3056,8 @@ struct Runner {
                             for (int row = 0; row < fn.rows; ++row) tot_pr[a][row] += gpr[a][row];
                         }
                 }
+                const double tb = th == 0 ? now() : 0;
+                if (th == 0) st_t[0] += tb - ta;
                 for (int a = 0; a < g4; ++a) {   // coefficients, combination, norm: site()'s steps for one token
                     const int t = mine[a];
                     Vec c(24), x(H), y(H);
@@ -2667,13 +3079,31 @@ struct Runner {
                     if (cw) r[t].swap(st_rn[t]);
                     res[t] = {std::move(y), std::move(c)};
                 }
+                if (th == 0) st_t[1] += now() - tb;
             }
+            if (th == 0) st_t[2] = now();
+            th_busy[th] = now() - tb0;
         });
-        timers["mhc.site"] += now() - t0;
-        timers["mhc.site_tokens"] += now() - t0;
+        const double te = now();
+        timers["mhc.site"] += te - t0;
+        timers["mhc.site_tokens"] += te - t0;
+        timers["mhc.st_proj"] += st_t[0], timers["mhc.st_tail"] += st_t[1], timers["mhc.st_write"] += st_wf;
+        timers["mhc.st_wait"] += te - st_t[2];   // thread 0 done -> region end: the slowest thread's lead
+        timers["mhc.st_cmg"] += st_t[3];         // sites whose fn has CMG copies (count; > 0: local reads)
+        {
+            const int nth = omp_get_max_threads(), gsz = cmg_threads();
+            double mx = 0, mean = 0, cm[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+            int cn[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+            for (int i = 0; i < nth && i < 64; ++i) mx = std::max(mx, th_busy[i]), mean += th_busy[i], cm[std::min(7, i / gsz)] += th_busy[i], ++cn[std::min(7, i / gsz)];
+            timers["mhc.thr_max"] += mx, timers["mhc.thr_mean"] += mean / nth;
+            for (int i = 0; i < nth && i < 64; ++i) mhc_thr_total[i] += th_busy[i];
+            for (int g = 0; g < 4; ++g) if (cn[g]) timers[std::string("mhc.thr_cmg") + char('0' + g)] += cm[g] / cn[g];
+        }
         return res;
     }
-    static constexpr int SITE_MAX = 16;   // tokens per batched site region (STRATA_RUNNER_SITE_MAX: fewer)
+    // tokens per batched site region (STRATA_RUNNER_SITE_MAX: fewer). 64: at C = 16 (passes of ~37 tokens) mhc 0.795
+    // -> 0.673 ms per token against site_tokens (whole tokens per thread, each streaming all of fn for one token)
+    static constexpr int SITE_MAX = 64;
     std::vector<std::pair<Vec, Vec>> site_multi(std::vector<Vec> &r, const std::vector<Vec> *cw, const std::vector<Vec> *yw, const Matrix &fn,
                                                 const Vec &base, const Vec &scale, const Vec &w) {
         const int T = int(r.size()), H = m.hidden, n = int(r[0].size()), DC = MHC_CHUNK, nc = H / DC, nq = 4 * nc;
@@ -2716,12 +3146,19 @@ struct Runner {
         auto &x = sm_x;
         if (x.size() < size_t(T)) x.resize(T);
         for (auto &v : x) if (v.size() != size_t(H)) v.resize(H);
-        std::vector<Vec> c(T, Vec(24)), y(T, Vec(H));
+        std::vector<Vec> c(T, Vec(24)), y(T);   // y sized inside the region, a token per thread (a serial zero fill
+                                                // of T x H values was ~1.7 us per token)
         std::vector<float> inv_x(T);
         static const bool mhc_prefetch = !(std::getenv("STRATA_RUNNER_MHC_PREFETCH") && std::string(std::getenv("STRATA_RUNNER_MHC_PREFETCH")) == "0");
         float projected[SITE_MAX][32];
+        // phase clocks (thread 0 after each barrier) and every thread's projection time, by pass size (mhs<T bucket>.*)
+        double sm_ts[6] = {0, 0, 0, 0, 0, 0};
+        std::array<double, 64> sm_pb{}, sm_wb{};
+        const double t_reg = now();
         team_run([&] {
             const int th = omp_get_thread_num(), nth = omp_get_num_threads();
+            const double tb0 = now();
+            for (int t = th; t < T; t += nth) y[t].resize(H);   // written after the barriers below
             const int c0 = mhc_block_begin(nc, th, nth), c1 = mhc_block_begin(nc, th + 1, nth);
             const uint8_t *fnd = fn.cmg_data(th);
             const bool cm = !fn.cmg_copy.empty();
@@ -2735,17 +3172,123 @@ struct Runner {
             if (lpart_v.size() < size_t(c1 - c0) * 4 * T * 32) lpart_v.resize(size_t(c1 - c0) * 4 * T * 32), lss_v.resize(size_t(c1 - c0) * 4 * T);
             float *lpart = lpart_v.data();
             double *lss = lss_v.data();
+            // this thread's chunks of every token's residual streams (and of y with a residual update): T separate
+            // vectors, written by other threads, often on other CMGs; prefetched at once, the misses overlap instead of
+            // coming one chunk after another. STRATA_RUNNER_MHC_PREFETCH_R=0: off
+            static const bool write_first_m = !(std::getenv("STRATA_RUNNER_MHC_WRITE_FIRST") && std::string(std::getenv("STRATA_RUNNER_MHC_WRITE_FIRST")) == "0");
+            static const bool prefetch_r = !(std::getenv("STRATA_RUNNER_MHC_PREFETCH_R") && std::string(std::getenv("STRATA_RUNNER_MHC_PREFETCH_R")) == "0");
+            // STRATA_RUNNER_MHC_PF_DIST=D > 0 (default 2; 0: all at once): the first D tokens here, then token t + D's
+            // lines during token t's update (all T tokens at once is ~27 lines per token, beyond the misses a core
+            // keeps in flight; at 36 tokens the update took 62 -> 51 us)
+            static const int pf_dist = std::getenv("STRATA_RUNNER_MHC_PF_DIST") ? std::atoi(std::getenv("STRATA_RUNNER_MHC_PF_DIST")) : 2;
+            auto prefetch_tok = [&](int t) {
+                for (int i = 0; i < 4; ++i) {
+                    const float *rt = (cw ? r[t].data() : src[t]) + size_t(i) * H;
+                    for (size_t o = size_t(c0) * DC; o < size_t(c1) * DC; o += 64) __builtin_prefetch(rt + o, 0, 3);
+                    if (cw)
+                        for (size_t o = size_t(c0) * DC; o < size_t(c1) * DC; o += 64) __builtin_prefetch(r_next_multi[t].data() + size_t(i) * H + o, 1, 3);
+                    if (cw && i == 0)
+                        for (size_t o = size_t(c0) * DC; o < size_t(c1) * DC; o += 64) __builtin_prefetch((*yw)[t].data() + o, 0, 3);
+                }
+            };
+            const bool pf_pipe = prefetch_r && pf_dist > 0 && cw && write_first_m;
+            if (pf_pipe)
+                for (int t = 0; t < std::min(T, pf_dist); ++t) prefetch_tok(t);
+            else if (prefetch_r)
+                for (int t = 0; t < T; ++t)
+                    for (int i = 0; i < 4; ++i) {
+                        const float *rt = (cw ? r[t].data() : src[t]) + size_t(i) * H;
+                        for (size_t o = size_t(c0) * DC; o < size_t(c1) * DC; o += 64) __builtin_prefetch(rt + o, 0, 3);
+                        if (cw)   // the update's output lines, for write
+                            for (size_t o = size_t(c0) * DC; o < size_t(c1) * DC; o += 64) __builtin_prefetch(r_next_multi[t].data() + size_t(i) * H + o, 1, 3);
+                        if (cw && i == 0)
+                            for (size_t o = size_t(c0) * DC; o < size_t(c1) * DC; o += 64) __builtin_prefetch((*yw)[t].data() + o, 0, 3);
+                    }
             if (mhc_prefetch)   // site()'s prefetch of this thread's weight blocks
                 for (int ch = c0; ch < c1; ++ch)
                     for (int j = 0; j < 4; ++j)
                         for (int tile = 0; tile < tiles; ++tile)
                             for (size_t o = 0; o < bb; o += 256) __builtin_prefetch(blk(ch, j, tile) + o, 0, 3);
+            // two barriers instead of five: each thread takes token th % T and a slice of its chunks; it sums every
+            // thread's partials itself (per CMG, then the CMG sums: the same order), computes that token's coefficients
+            // (the same values on each thread of the token), its chunks of x with their sums of squares, then after the
+            // barrier inv_x from all chunks and its slice of y. STRATA_RUNNER_MHC_MERGE=0: the phases below
+            static const bool merge_m = !(std::getenv("STRATA_RUNNER_MHC_MERGE") && std::string(std::getenv("STRATA_RUNNER_MHC_MERGE")) == "0");
+            // STRATA_RUNNER_MHC_MERGE_MAX: the most tokens merged (default all: at 24-48 tokens 151-262 -> 139-233 us)
+            static const int merge_max = std::getenv("STRATA_RUNNER_MHC_MERGE_MAX") ? std::atoi(std::getenv("STRATA_RUNNER_MHC_MERGE_MAX")) : SITE_MAX;
+            const bool merged = merge_m && T <= merge_max && nth >= T && (nth + cmg_threads() - 1) / cmg_threads() <= 8;
+            // the residual update of this thread's chunks for every token first, 16 lanes at a time (the same multiply,
+            // then the same fused multiply-adds): the projection then reads values no longer in the store queue (A64FX
+            // forwards stores to reloads poorly; see site_tokens). STRATA_RUNNER_MHC_WRITE_FIRST=0: per unit, as before
+            bool updated = false;
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+            if (cw && write_first_m && DC % 16 == 0) {
+                const svbool_t pw = svptrue_b32();
+                for (int t = 0; t < T; ++t) {
+                    if (pf_pipe && t + pf_dist < T) prefetch_tok(t + pf_dist);
+                    const Vec &cc = (*cw)[t], &yy = (*yw)[t];
+                    const float *rt = r[t].data();
+                    float *rn = r_next_multi[t].data();
+                    for (int j = 0; j < 4; ++j) {
+                        const svfloat32_t cy = svdup_n_f32(cc[4 + j]), k0 = svdup_n_f32(cc[8 + j]), k1 = svdup_n_f32(cc[12 + j]),
+                                          k2 = svdup_n_f32(cc[16 + j]), k3 = svdup_n_f32(cc[20 + j]);
+                        for (int d = c0 * DC; d < c1 * DC; d += 16) {
+                            svfloat32_t v = svmul_f32_x(pw, cy, svld1_f32(pw, yy.data() + d));
+                            v = svmla_f32_x(pw, v, k0, svld1_f32(pw, rt + d));
+                            v = svmla_f32_x(pw, v, k1, svld1_f32(pw, rt + size_t(H) + d));
+                            v = svmla_f32_x(pw, v, k2, svld1_f32(pw, rt + size_t(2) * H + d));
+                            v = svmla_f32_x(pw, v, k3, svld1_f32(pw, rt + size_t(3) * H + d));
+                            svst1_f32(pw, rn + size_t(j) * H + d, v);
+                        }
+                    }
+                }
+                updated = true;
+            }
+            sm_wb[th] = now() - tb0;
+            // the projection with the row sums in registers (mhc_block_acc, as site_tokens): tokens in groups of 4, this
+            // thread's units inside (its blocks stay in L1); per token the same unit order, so the same sums as the
+            // per-unit partials below. STRATA_RUNNER_MHC_UNITS=0: gf4_bf16k per unit into lpart, then the sums
+            static const bool fused_m = !(std::getenv("STRATA_RUNNER_MHC_UNITS") && std::string(std::getenv("STRATA_RUNNER_MHC_UNITS")) == "0");
+            if (fused_m && updated == bool(cw) && DC == 32 && tiles <= 2) {
+                for (int a0 = 0; a0 < T; a0 += 4) {
+                    const int gn = std::min(4, T - a0);
+                    vf32s acc[2][4];
+                    double sq[4] = {0, 0, 0, 0};
+                    for (int tile = 0; tile < 2; ++tile)
+                        for (int a = 0; a < 4; ++a) acc[tile][a] = svdup_n_f32(0);
+                    for (int ch = c0; ch < c1; ++ch)
+                        for (int j = 0; j < 4; ++j) {
+                            const int q = j * nc + ch;
+                            const float *xs[4];
+                            for (int a = 0; a < gn; ++a) {
+                                xs[a] = src[a0 + a] + size_t(q) * DC;
+                                sq[a] += sumsq(xs[a], DC);
+                            }
+                            for (int tile = 0; tile < tiles; ++tile) switch (gn) {
+                                case 1: mhc_block_acc<1>(blk(ch, j, tile), xs, acc[tile]); break;
+                                case 2: mhc_block_acc<2>(blk(ch, j, tile), xs, acc[tile]); break;
+                                case 3: mhc_block_acc<3>(blk(ch, j, tile), xs, acc[tile]); break;
+                                default: mhc_block_acc<4>(blk(ch, j, tile), xs, acc[tile]); break;
+                                }
+                        }
+                    for (int a = 0; a < gn; ++a) {
+                        const int t = a0 + a;
+                        if (!merged) sm_th_ss[(size_t(t) * 64 + th) * 32] = sq[a];   // one line per (token, thread), as site()
+                        float *pp = sm_th_part.data() + (size_t(t) * 64 + th) * 64;
+                        std::memcpy(pp + 32, &sq[a], sizeof(double));   // and next to the rows (the merged sums' read)
+                        svst1_f32(svptrue_b32(), pp, acc[0][a]);
+                        svst1_f32(svptrue_b32(), pp + 16, tiles == 2 ? svfloat32_t(acc[1][a]) : svdup_n_f32(0));
+                    }
+                }
+                sm_pb[th] = now() - tb0;
+            } else {
+#endif
             for (int ch = c0; ch < c1; ++ch)
                 for (int j = 0; j < 4; ++j) {
                     const int q = j * nc + ch;
                     const float *xs[SITE_MAX];
                     for (int t = 0; t < T; ++t) {
-                        if (cw) {
+                        if (cw && !updated) {
                             const Vec &cc = (*cw)[t], &yy = (*yw)[t];
                             float *rn = r_next_multi[t].data();
                             for (int d = ch * DC; d < (ch + 1) * DC; ++d) {
@@ -2762,6 +3305,7 @@ struct Runner {
                         for (int b = 0; b < T; b += 4)
                             gf4_bf16k(blk(ch, j, tile), DC, 0, 1, xs + b, std::min(4, T - b), lpart + (size_t(u) * T + b) * 32 + 16 * tile, 32);
                 }
+            sm_pb[th] = now() - tb0;
             for (int t = 0; t < T; ++t) {   // per thread and token, as site()
                 double sq = 0;
                 float pr[32] = {0};
@@ -2773,9 +3317,84 @@ struct Runner {
                     }
                 sm_th_ss[(size_t(t) * 64 + th) * 32] = sq;   // one line per (token, thread), as site()
                 std::copy(pr, pr + 32, sm_th_part.begin() + (size_t(t) * 64 + th) * 64);
+                std::memcpy(sm_th_part.data() + (size_t(t) * 64 + th) * 64 + 32, &sq, sizeof(double));
             }
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+            }
+#endif
             team_barrier();
+            if (th == 0) sm_ts[0] = now();
             const int gsz = cmg_threads(), g = th / gsz;   // site()'s order: per CMG, then the CMG sums
+            if (merged) {
+                const int t = th % T, k = th / T, kn = (nth - t + T - 1) / T;
+                const int e0 = mhc_block_begin(nc, k, kn), e1 = mhc_block_begin(nc, k + 1, kn);
+                for (int u = 0; u < nth; ++u)
+                    __builtin_prefetch(&sm_th_part[(size_t(t) * 64 + u) * 64], 0, 3);   // rows and sum of squares: one line
+                for (int i = 0; i < 4; ++i)
+                    for (size_t o = size_t(e0) * DC; o < size_t(e1) * DC; o += 64) __builtin_prefetch(src[t] + size_t(i) * H + o, 0, 3);
+                double gss[8];
+                float gpr[8][32];
+                for (int h = 0; h * gsz < nth; ++h) {
+                    double sq = 0;
+                    float pr[32] = {0};
+                    for (int u = h * gsz; u < std::min(nth, h * gsz + gsz); ++u) {
+                        double v;
+                        std::memcpy(&v, sm_th_part.data() + (size_t(t) * 64 + u) * 64 + 32, sizeof(double));
+                        sq += v;
+                        for (int row = 0; row < fn.rows; ++row) pr[row] += sm_th_part[(size_t(t) * 64 + u) * 64 + row];
+                    }
+                    gss[h] = sq;
+                    std::copy(pr, pr + 32, gpr[h]);
+                }
+                double sq = 0;
+                float pr[32] = {0};
+                for (int h = 0; h * gsz < nth; ++h) {
+                    sq += gss[h];
+                    for (int row = 0; row < fn.rows; ++row) pr[row] += gpr[h][row];
+                }
+                const float inv = float(1 / std::sqrt(sq / n + m.rms_epsilon));
+                float pj[32], cc[24];
+                for (int row = 0; row < fn.rows; ++row) pj[row] = pr[row] * inv;
+                mhc_coef(pj, base.data(), scale.data(), cc, m.sinkhorn_iterations, m.hc_epsilon);
+                if (k == 0) std::copy(cc, cc + 24, c[t].begin());
+                if (th == 0) sm_ts[1] = sm_ts[2] = now();
+                const float *s0 = src[t];
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+                if (DC == 32) {   // as the vector combination below
+                    typedef svfloat64_t vd __attribute__((arm_sve_vector_bits(512)));
+                    const svbool_t pw = svptrue_b32(), pd = svptrue_b64();
+                    const svfloat32_t k0 = svdup_n_f32(cc[0]), k1 = svdup_n_f32(cc[1]), k2 = svdup_n_f32(cc[2]), k3 = svdup_n_f32(cc[3]);
+                    for (int ch = e0; ch < e1; ++ch) {
+                        vd acc = svdup_n_f64(0);
+                        for (int d = ch * DC; d < (ch + 1) * DC; d += 16) {
+                            svfloat32_t v = svmla_f32_x(pw, svdup_n_f32(0), k0, svld1_f32(pw, s0 + d));
+                            v = svmla_f32_x(pw, v, k1, svld1_f32(pw, s0 + size_t(H) + d));
+                            v = svmla_f32_x(pw, v, k2, svld1_f32(pw, s0 + size_t(2) * H + d));
+                            v = svmla_f32_x(pw, v, k3, svld1_f32(pw, s0 + size_t(3) * H + d));
+                            svst1_f32(pw, x[t].data() + d, v);
+                            const vd lo = svcvt_f64_f32_x(pd, svzip1_f32(v, v)), hi = svcvt_f64_f32_x(pd, svzip2_f32(v, v));
+                            acc = svmla_f64_x(pd, acc, lo, lo), acc = svmla_f64_x(pd, acc, hi, hi);
+                        }
+                        ss_x[size_t(t) * nc + ch] = svaddv_f64(pd, acc);
+                    }
+                } else
+#endif
+                for (int ch = e0; ch < e1; ++ch) {
+                    for (int d = ch * DC; d < (ch + 1) * DC; ++d) {
+                        float v = 0;
+                        for (int i = 0; i < 4; ++i) v += cc[i] * s0[size_t(i) * H + d];
+                        x[t][d] = v;
+                    }
+                    ss_x[size_t(t) * nc + ch] = sumsq(x[t].data() + size_t(ch) * DC, DC);
+                }
+                team_barrier();
+                if (th == 0) sm_ts[3] = sm_ts[4] = now();
+                double sx = 0;
+                for (int ch = 0; ch < nc; ++ch) sx += ss_x[size_t(t) * nc + ch];
+                const float ix = float(1 / std::sqrt(sx / H + m.rms_epsilon));
+                for (int d = e0 * DC; d < e1 * DC; ++d) y[t][d] = x[t][d] * ix * (w.empty() ? 1 : w[d]);
+                return;
+            }
             if (th % gsz == 0)
                 for (int t = 0; t < T; ++t) {
                     double sq = 0;
@@ -2788,6 +3407,7 @@ struct Runner {
                     std::copy(pr, pr + 32, sm_g_part.begin() + (size_t(t) * 8 + g) * 64);
                 }
             team_barrier();
+            if (th == 0) sm_ts[1] = now();
 #pragma omp for schedule(static, 1) nowait
             for (int t = 0; t < T; ++t) {
                 double sq = 0;
@@ -2801,6 +3421,32 @@ struct Runner {
                 mhc_coef(projected[t], base.data(), scale.data(), c[t].data(), m.sinkhorn_iterations, m.hc_epsilon);
             }
             team_barrier();
+            if (th == 0) sm_ts[2] = now();
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+            // 16 lanes at a time (the same fused chain from 0) and sumsq's 8 double lanes taken from the registers
+            // (zip puts value k in the low half of container k, as ld1uw does), not reloaded from the stores just made
+            if (DC == 32) {
+                typedef svfloat64_t vd __attribute__((arm_sve_vector_bits(512)));
+                const svbool_t pw = svptrue_b32(), pd = svptrue_b64();
+                for (int t = 0; t < T; ++t) {
+                    const svfloat32_t k0 = svdup_n_f32(c[t][0]), k1 = svdup_n_f32(c[t][1]), k2 = svdup_n_f32(c[t][2]), k3 = svdup_n_f32(c[t][3]);
+                    const float *s0 = src[t];
+                    for (int ch = c0; ch < c1; ++ch) {
+                        vd acc = svdup_n_f64(0);
+                        for (int d = ch * DC; d < (ch + 1) * DC; d += 16) {
+                            svfloat32_t v = svmla_f32_x(pw, svdup_n_f32(0), k0, svld1_f32(pw, s0 + d));
+                            v = svmla_f32_x(pw, v, k1, svld1_f32(pw, s0 + size_t(H) + d));
+                            v = svmla_f32_x(pw, v, k2, svld1_f32(pw, s0 + size_t(2) * H + d));
+                            v = svmla_f32_x(pw, v, k3, svld1_f32(pw, s0 + size_t(3) * H + d));
+                            svst1_f32(pw, x[t].data() + d, v);
+                            const vd lo = svcvt_f64_f32_x(pd, svzip1_f32(v, v)), hi = svcvt_f64_f32_x(pd, svzip2_f32(v, v));
+                            acc = svmla_f64_x(pd, acc, lo, lo), acc = svmla_f64_x(pd, acc, hi, hi);
+                        }
+                        ss_x[size_t(t) * nc + ch] = svaddv_f64(pd, acc);
+                    }
+                }
+            } else
+#endif
             for (int ch = c0; ch < c1; ++ch)
                 for (int t = 0; t < T; ++t) {
                     for (int d = ch * DC; d < (ch + 1) * DC; ++d) {
@@ -2811,6 +3457,7 @@ struct Runner {
                     ss_x[size_t(t) * nc + ch] = sumsq(x[t].data() + size_t(ch) * DC, DC);
                 }
             team_barrier();
+            if (th == 0) sm_ts[3] = now();
 #pragma omp for schedule(static, 1) nowait
             for (int t = 0; t < T; ++t) {
                 double sq = 0;
@@ -2818,14 +3465,32 @@ struct Runner {
                 inv_x[t] = float(1 / std::sqrt(sq / H + m.rms_epsilon));
             }
             team_barrier();
+            if (th == 0) sm_ts[4] = now();
             for (int t = 0; t < T; ++t)
                 for (int d = c0 * DC; d < c1 * DC; ++d) y[t][d] = x[t][d] * inv_x[t] * (w.empty() ? 1 : w[d]);
         });
+        sm_ts[5] = now();
         for (int t = 0; t < T; ++t) {
             if (cw) r[t].swap(r_next_multi[t]);
             res[t] = {std::move(y[t]), std::move(c[t])};
         }
         timers["mhc.site"] += now() - t0;
+        static const bool mhs_timers = std::getenv("STRATA_RUNNER_MHC_PHASES") && std::string(std::getenv("STRATA_RUNNER_MHC_PHASES")) == "1";
+        if (mhs_timers) {   // STRATA_RUNNER_MHC_PHASES=1: the phase clocks above by pass size (mhs<T bucket>.*)
+            const std::string b = "mhs" + std::to_string((T + 3) / 4 * 4) + ".";
+            const int nth = omp_get_max_threads();
+            double mx = 0, mean = 0;
+            for (int i = 0; i < nth && i < 64; ++i) mx = std::max(mx, sm_pb[i]), mean += sm_pb[i] / nth;
+            static const char *ph[5] = {"a_proj", "b_cmg", "c_coef", "d_comb", "e_invx"};
+            double prev = t_reg;
+            for (int i = 0; i < 5; ++i) timers[b + ph[i]] += sm_ts[i] - prev, prev = sm_ts[i];
+            timers[b + "f_out"] += sm_ts[5] - prev;
+            timers[b + "setup"] += t_reg - t0, timers[b + "post"] += now() - sm_ts[5];
+            double wmean = 0;
+            for (int i = 0; i < nth && i < 64; ++i) wmean += sm_wb[i] / nth;
+            timers[b + "proj_max"] += mx, timers[b + "proj_mean"] += mean, timers[b + "proj_write"] += wmean;
+            timers[b + "calls"] += 1e-3;
+        }
         return res;
     }
     Vec r_next;   // write()'s output buffer, swapped with the residual (no allocation or zero fill per call)
@@ -3047,15 +3712,72 @@ struct Runner {
     // order (`after(tk)` after each: the caller's snapshot), then every position's pool scores in one team region and
     // the selections one position per thread. Each position scores the pools complete at its position, as T calls
     // of mla_select would (the same values: a pool does not change once complete)
+    struct LayerState;
+    // st: a context's index state and cache instead of the layer's (a several-context pass selecting all contexts in
+    // parallel; small passes within the selection size only: no nested team regions)
     std::vector<std::vector<int>> mla_select_multi(MlaLayer &M, const Vec &iq, const Vec &iw, const Vec &ik, const Vec &gate,
-                                                   const std::vector<Vec> &row, int pos0, const std::function<void(int)> &after) {
+                                                   const std::vector<Vec> &row, int pos0, const std::function<void(int)> &after,
+                                                   LayerState *st = nullptr) {
         double t = now(), tl = t;
+        Vec &Mkeys = st ? st->keys : M.keys, &Mgates = st ? st->gates : M.gates, &Mpooled = st ? st->pooled : M.pooled;
+        auto put = [&](int pos, const float *r) {
+            if (!st) { cache_put(M, pos, r); return; }
+            std::copy(r, r + m.kv_rank, st->cache.begin() + size_t(pos) * m.kv_rank);
+        };
         const int T = int(row.size()), dim = m.index_dim, P = m.index_pool, IH = int(m.index_heads);
         const int iq_r = int(iq.size()) / T, iw_r = int(iw.size()) / T;
         if (int(ik.size()) != T * dim || int(gate.size()) != T * dim) throw std::runtime_error("runner: indexer key size");
         if (pos0 + T > capacity) throw std::runtime_error("runner: positions up to " + std::to_string(pos0 + T - 1) + " beyond the context capacity " + std::to_string(capacity));
         std::vector<int> pools(T);
-        for (int tk = 0; tk < T; ++tk) {
+        // a long pass without snapshots: the keys, cache rows and complete pools over the team (each value computed as
+        // below; a pool from its P keys in ring order, the ring left as the loop below leaves it).
+        // STRATA_RUNNER_INDEX_KEYS_PAR=0: the loop below
+        static const bool keys_par = !(std::getenv("STRATA_RUNNER_INDEX_KEYS_PAR") && std::string(std::getenv("STRATA_RUNNER_INDEX_KEYS_PAR")) == "0");
+        const bool kpar = keys_par && !after && T > 8;
+        if (kpar) {
+            std::vector<float> Kt(size_t(T) * dim), Gt(size_t(T) * dim);
+            std::vector<int> ends;   // positions that complete a pool
+            for (int tk = 0; tk < T; ++tk) {
+                pools[tk] = (pos0 + tk + 1) / P;
+                if ((pos0 + tk + 1) % P == 0) ends.push_back(pos0 + tk);
+            }
+            team_run([&] {
+#pragma omp for schedule(static) nowait
+                for (int tk = 0; tk < T; ++tk) {
+                    const float *ikt = ik.data() + size_t(tk) * dim, *gt = gate.data() + size_t(tk) * dim;
+                    double mean = 0, var = 0;
+                    for (int i = 0; i < dim; ++i) mean += ikt[i];
+                    mean /= dim;
+                    for (int i = 0; i < dim; ++i) var += (ikt[i] - mean) * (ikt[i] - mean);
+                    const float inv = float(1 / std::sqrt(var / dim + 1e-6));
+                    for (int i = 0; i < dim; ++i) {
+                        Kt[size_t(tk) * dim + i] = float(ikt[i] - mean) * inv * M.k_norm_w[i] + M.k_norm_b[i];
+                        Gt[size_t(tk) * dim + i] = gt[i];
+                    }
+                    put(pos0 + tk, row[tk].data());
+                }
+                team_barrier();
+                std::vector<float> kb(size_t(P) * dim), gb(size_t(P) * dim);
+#pragma omp for schedule(static) nowait
+                for (int e = 0; e < int(ends.size()); ++e) {
+                    const int last = ends[e], first = last + 1 - P;
+                    for (int ps = first; ps <= last; ++ps) {   // ring slot ps % P: this pass's key, or the ring's (earlier)
+                        const int sl = ps % P;
+                        const float *ks = ps >= pos0 ? Kt.data() + size_t(ps - pos0) * dim : Mkeys.data() + size_t(sl) * dim;
+                        const float *gs = ps >= pos0 ? Gt.data() + size_t(ps - pos0) * dim : Mgates.data() + size_t(sl) * dim;
+                        std::copy(ks, ks + dim, kb.begin() + size_t(sl) * dim);
+                        std::copy(gs, gs + dim, gb.begin() + size_t(sl) * dim);
+                    }
+                    ref::pool(kb.data(), gb.data(), M.ape.data(), Mpooled.data() + size_t((last + 1) / P - 1) * dim, P, dim);
+                }
+            });
+            for (int tk = std::max(0, T - P); tk < T; ++tk) {   // the ring as the loop leaves it
+                const int sl = (pos0 + tk) % P;
+                std::copy(Kt.begin() + size_t(tk) * dim, Kt.begin() + size_t(tk + 1) * dim, Mkeys.begin() + size_t(sl) * dim);
+                std::copy(Gt.begin() + size_t(tk) * dim, Gt.begin() + size_t(tk + 1) * dim, Mgates.begin() + size_t(sl) * dim);
+            }
+        }
+        for (int tk = 0; tk < T && !kpar; ++tk) {
             const int pos = pos0 + tk, tokens = pos + 1, tail = pos % P;
             const float *ikt = ik.data() + size_t(tk) * dim, *gt = gate.data() + size_t(tk) * dim;
             double mean = 0, var = 0;
@@ -3064,14 +3786,15 @@ struct Runner {
             for (int i = 0; i < dim; ++i) var += (ikt[i] - mean) * (ikt[i] - mean);
             const float inv = float(1 / std::sqrt(var / dim + 1e-6));
             for (int i = 0; i < dim; ++i) {
-                M.keys[tail * dim + i] = float(ikt[i] - mean) * inv * M.k_norm_w[i] + M.k_norm_b[i];
-                M.gates[tail * dim + i] = gt[i];
+                Mkeys[tail * dim + i] = float(ikt[i] - mean) * inv * M.k_norm_w[i] + M.k_norm_b[i];
+                Mgates[tail * dim + i] = gt[i];
             }
             pools[tk] = tokens / P;
-            if (tokens % P == 0) ref::pool(M.keys.data(), M.gates.data(), M.ape.data(), M.pooled.data() + (pools[tk] - 1) * dim, P, dim);
-            cache_put(M, pos, row[tk].data());
+            if (tokens % P == 0) ref::pool(Mkeys.data(), Mgates.data(), M.ape.data(), Mpooled.data() + (pools[tk] - 1) * dim, P, dim);
+            put(pos, row[tk].data());
             if (after) after(tk);
         }
+        lap(tl, "mla.ix_keys");   // (mla.index_scores now from here)
         std::vector<Vec> scores(T);
         for (int tk = 0; tk < T; ++tk) scores[tk].resize(pools[tk]);
         // the tokens whose selection keeps every complete pool need no scores (mla_select's skip)
@@ -3124,7 +3847,7 @@ struct Runner {
             auto item = [&](long gi) {
                 int tk = int(std::upper_bound(off.begin(), off.end(), gi) - off.begin()) - 1, b0 = int(2 * (gi - off[tk]));
                 if (tk >= T) { const auto &it = own_items[gi - off[T]]; tk = it.first, b0 = it.second; }
-                index_pair32(iqt.data() + size_t(tk) * dim * 32, iw.data() + size_t(tk) * iw_r, M.pooled.data(), b0, spools[tk], dim, rs, rh,
+                index_pair32(iqt.data() + size_t(tk) * dim * 32, iw.data() + size_t(tk) * iw_r, Mpooled.data(), b0, spools[tk], dim, rs, rh,
                              scores[tk].data());
             };
             off.push_back(off[T] + long(own_items.size()));   // the sharded items after every token's own range
@@ -3140,11 +3863,11 @@ struct Runner {
 #endif
             for (int tk = 0; tk < T; ++tk) {
                 if (!shard[tk]) {
-                    index_scores(iq.data() + size_t(tk) * iq_r, iw.data() + size_t(tk) * iw_r, M.pooled.data(), spools[tk], IH, dim, scores[tk].data());
+                    index_scores(iq.data() + size_t(tk) * iq_r, iw.data() + size_t(tk) * iw_r, Mpooled.data(), spools[tk], IH, dim, scores[tk].data());
                     continue;
                 }
                 for (int b0 = 32 * comm.rank; b0 < spools[tk]; b0 += 32 * comm.world)   // this rank's 32-pool blocks
-                        index_scores(iq.data() + size_t(tk) * iq_r, iw.data() + size_t(tk) * iw_r, M.pooled.data() + size_t(b0) * dim, std::min(32, spools[tk] - b0), IH, dim,
+                        index_scores(iq.data() + size_t(tk) * iq_r, iw.data() + size_t(tk) * iw_r, Mpooled.data() + size_t(b0) * dim, std::min(32, spools[tk] - b0), IH, dim,
                                      scores[tk].data() + b0);
             }
         lap(tl, "mla.index_scores");
@@ -3212,7 +3935,8 @@ struct Runner {
                 for (int i = 0; i < P; ++i) ids.push_back(b * P + i);
             for (int i = np * P; i < tokens; ++i) ids.push_back(i);
         };
-        if (T > 1 && pools[T - 1] > int(m.index_top_k / P))   // nth_element over many pools: one position per thread
+        if (T > 8 || (T > 1 && pools[T - 1] > int(m.index_top_k / P)))   // one position per thread (a long pass's lists of
+                                                                          // up to index_top_k positions, or nth_element)
             team_run([&] {
 #pragma omp for schedule(static, 1) nowait
                 for (int tk = 0; tk < T; ++tk) select(tk);
@@ -3226,20 +3950,42 @@ struct Runner {
     // the absorbed attention of T tokens (q[t], the positions ids[t] each reads): per head one GEMV call for all
     // tokens (K and V absorbed read once), the score, softmax and average passes over every (token, head) at once;
     // the same arithmetic per (token, head) as one token at a time. values[t]: heads x head dim.
+    const float *const *mla_tcache = nullptr;   // see mla_attention
+    Vec ma_aq, ma_val, ma_av;   // mla_attention's work arrays
+    std::vector<Activation> ma_qh, ma_avs;   // and its per (token, head) activations (their x kept allocated)
     void mla_attention(MlaLayer &M, const std::vector<const Vec *> &q, const std::vector<std::vector<int>> &ids, std::vector<Vec> &values) {
         double t0 = now(), tl = t0;
         const int T = int(q.size()), lat = m.kv_rank, nh = heads.size(), hd = M.kb.empty() ? 0 : M.kb[0].cols;
         const float scale = 1 / std::sqrt(float(hd));
-        std::vector<Activation> qh(size_t(T) * nh), avs(size_t(T) * nh);
-        Vec aq_all(size_t(nh) * T * lat), val_all(size_t(T) * nh * hd), av_all(size_t(T) * nh * lat);   // [h][t][lat], [t][h][hd], [t][h][lat]
+        // the per (token, head) activations persistent and filled by the team (STRATA_RUNNER_MLA_ACTS_PAR=0: fresh
+        // ones per call, filled by thread 0; at 16 contexts ~110 us per expand call)
+        static const bool acts_par = !(std::getenv("STRATA_RUNNER_MLA_ACTS_PAR") && std::string(std::getenv("STRATA_RUNNER_MLA_ACTS_PAR")) == "0");
+        std::vector<Activation> qh_fresh, avs_fresh;
+        if (!acts_par) qh_fresh.resize(size_t(T) * nh), avs_fresh.resize(size_t(T) * nh);
+        else if (ma_qh.size() < size_t(T) * nh) ma_qh.resize(size_t(T) * nh), ma_avs.resize(size_t(T) * nh);
+        auto &qh = acts_par ? ma_qh : qh_fresh;
+        auto &avs = acts_par ? ma_avs : avs_fresh;
+        auto fill = [&](std::vector<Activation> &dst, auto &&src_of, int len) {   // dst[t * nh + h] = src_of(t, h)[0, len)
+            if (acts_par && T > 4)
+                team_run([&] {
+#pragma omp for schedule(static) nowait
+                    for (int i = 0; i < T * nh; ++i) dst[i].set(src_of(i / nh, i % nh), len, false);
+                });
+            else
+                for (int i = 0; i < T * nh; ++i) dst[i].set(src_of(i / nh, i % nh), len, false);
+        };
+        // [h][t][lat], [t][h][hd], [t][h][lat]: persistent (each element is written before it is read; a zero-filled
+        // allocation per call cost ~0.08 ms per generated token at 16 contexts)
+        auto &aq_all = ma_aq, &val_all = ma_val, &av_all = ma_av;
+        if (aq_all.size() < size_t(nh) * T * lat) aq_all.resize(size_t(nh) * T * lat);
+        if (val_all.size() < size_t(T) * nh * hd) val_all.resize(size_t(T) * nh * hd);
+        if (av_all.size() < size_t(T) * nh * lat) av_all.resize(size_t(T) * nh * lat);
         std::vector<Job> absorb;
+        fill(qh, [&](int t, int h) { return q[t]->data() + size_t(h) * hd; }, hd);
         for (int h = 0; h < nh; ++h) {
             Job j{&M.kb[h], nullptr, aq_all.data() + size_t(h) * T * lat, T, lat};
-            for (int t = 0; t < T; ++t) {
-                qh[size_t(t) * nh + h].set(q[t]->data() + size_t(h) * hd, hd, false);
-                j.as[t] = &qh[size_t(t) * nh + h];
-            }
-            absorb.push_back(j);
+            for (int t = 0; t < T; ++t) j.as[t] = &qh[size_t(t) * nh + h];
+            absorb.push_back(std::move(j));
         }
         lap(tl, "mla.qprep");
         gemv_multi(absorb);
@@ -3257,7 +4003,10 @@ struct Runner {
         // a long pass where every token reads all positions up to its own (contexts within the selection size): items of
         // 4 tokens x 4 positions per head, so each cache row and query is loaded once for 4 dots (the dots as below:
         // per lane in order over i, then svaddv)
-        bool prefix = T > 4 && lat % 8 == 0;
+        // mla_tcache (a pass over several contexts): token t's latent cache at mla_tcache[t]; the prefix and union
+        // kernels share cache rows between tokens, so such a pass takes the per-token (gather) kernels
+        auto cbase = [&](int t) { return mla_tcache ? mla_tcache[t] : M.cache.data(); };
+        bool prefix = T > 4 && lat % 8 == 0 && !mla_tcache;
         for (int t = 0; t < T && prefix; ++t)
             prefix = !ids[t].empty() && ids[t].front() == 0 && ids[t].back() + 1 == int(ids[t].size());
         // a long pass beyond the selection size: groups of 4 tokens walk the sorted union of their selections, each
@@ -3265,7 +4014,7 @@ struct Runner {
         // (STRATA_RUNNER_UNION_BLOCK=1, opt-in: bitwise, but slower at 8K, 155.5 vs 167.4 tok/s: the 4 tokens' unions
         // are much larger than one selection)
         static const bool union_block = std::getenv("STRATA_RUNNER_UNION_BLOCK") && std::string(std::getenv("STRATA_RUNNER_UNION_BLOCK")) == "1";
-        const bool uni = !prefix && union_block && T > 4 && lat % 32 == 0;
+        const bool uni = !prefix && union_block && T > 4 && lat % 32 == 0 && !mla_tcache;
         const int ntg_u = (T + 3) / 4;
         std::vector<std::vector<int>> u_pos(uni ? ntg_u : 0), u_idx(uni ? ntg_u : 0);   // union rows; [a][u] index or -1
         if (uni)
@@ -3334,19 +4083,23 @@ struct Runner {
             });
         } else
         if (prefix && score_block) {
+            // an item: SCORE_PB consecutive 4-position blocks for the same 4 tokens and head (STRATA_RUNNER_SCORE_PB,
+            // default 4): the queries stream from L2 once per SCORE_PB blocks instead of once per block (the kernel was
+            // bound by that stream: 1 byte per MAC; with L1-resident operands it ran 1.7x faster). Each block as before
+            static const int spb = std::getenv("STRATA_RUNNER_SCORE_PB") ? std::max(1, std::atoi(std::getenv("STRATA_RUNNER_SCORE_PB"))) : 4;
             const int ntg = (T + 3) / 4;
-            const long npb = (S[T - 1] + 3) / 4, items = npb * ntg * nh;
+            const long npb = (S[T - 1] + 3) / 4, npg = (npb + spb - 1) / spb, items = npg * ntg * nh;
             team_run([&] {
                 typedef svfloat64_t vf64 __attribute__((arm_sve_vector_bits(512)));
                 const svbool_t pd = svptrue_b64();
                 const int th = omp_get_thread_num();
 #pragma omp for schedule(static) nowait
-                for (long gi = 0; gi < items; ++gi) {
-                    const long pb = gi / (long(ntg) * nh);
+                for (long gi = 0; gi < items; ++gi)
+                for (long pb = (gi / (long(ntg) * nh)) * spb, pb1 = std::min(npb, pb + spb); pb < pb1; ++pb) {
                     const int tg = int((gi / nh) % ntg), h = int(gi % nh);
                     const int t0 = 4 * tg, tn = std::min(4, T - t0);
                     const long s0 = 4 * pb;
-                    if (s0 >= S[t0 + tn - 1]) continue;   // past the group's longest selection
+                    if (s0 >= S[t0 + tn - 1]) break;   // past the group's longest selection
                     const float *ap[4], *cp[4];
                     for (int a = 0; a < 4; ++a) ap[a] = aq_all.data() + (size_t(h) * T + t0 + std::min(a, tn - 1)) * lat;
                     for (int k = 0; k < 4; ++k) cp[k] = M.cache.data() + size_t(std::min<long>(s0 + k, S[t0 + tn - 1] - 1)) * lat;
@@ -3362,12 +4115,78 @@ struct Runner {
                             for (int k = 0; k < 4; ++k) acc[a][k] = svmla_f64_x(pd, acc[a][k], qv, cv[k]);
                         }
                     }
+                    double hs[16];
+                    if (tree_sum_on())
+                        for (int g = 0; g < 2; ++g) {   // dots (2g, k), (2g + 1, k)
+                            vf64t v[8];
+                            for (int j = 0; j < 8; ++j) v[j] = acc[2 * g + j / 4][j % 4];
+                            svst1_f64(pd, hs + 8 * g, hsum8_f64(v));
+                        }
+                    else
+                        for (int a = 0; a < 4; ++a) for (int k = 0; k < 4; ++k) hs[4 * a + k] = svaddv_f64(pd, acc[a][k]);
                     for (int a = 0; a < tn; ++a) {
                         const int t = t0 + a;
                         const long St = S[t];
                         double *pr = prob.data() + poff[t] + size_t(h) * St;
                         double &m_ = pmx[size_t(th) * mrow + size_t(t) * nh + h];
-                        for (int k = 0; k < 4 && s0 + k < St; ++k) pr[s0 + k] = svaddv_f64(pd, acc[a][k]) * scale, m_ = std::max(m_, pr[s0 + k]);
+                        for (int k = 0; k < 4 && s0 + k < St; ++k) pr[s0 + k] = hs[4 * a + k] * scale, m_ = std::max(m_, pr[s0 + k]);
+                    }
+                }
+            });
+        } else
+#endif
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+        // a long pass beyond the selection size: per item one token x 3 heads x 4 positions, over GATHER_PB (4)
+        // consecutive position blocks: each gathered cache row feeds 3 heads' dots in registers and the 3 query rows
+        // stay in L1 across the blocks (the item below loaded both for every dot: 9 loads per 8 FMAs). Each dot as
+        // below: 8 latent lanes in order over i, then svaddv. STRATA_RUNNER_GATHER_BLOCK=0: the item below
+        if (gather_block_on() && !prefix && !attn_f32() && lat % 8 == 0 && T > 4) {
+            constexpr int HG = 3, PB = 4;
+            const int ng = (nh + HG - 1) / HG;
+            std::vector<long> goff(T + 1, 0);   // items per token: position groups x head groups
+            for (int t = 0; t < T; ++t) goff[t + 1] = goff[t] + long((S[t] + 4 * PB - 1) / (4 * PB)) * ng;
+            team_run([&] {
+                typedef svfloat64_t vf64 __attribute__((arm_sve_vector_bits(512)));
+                const svbool_t pd = svptrue_b64();
+                const int th = omp_get_thread_num();
+#pragma omp for schedule(static) nowait
+                for (long gi = 0; gi < goff[T]; ++gi) {
+                    const int t = int(std::upper_bound(goff.begin(), goff.end(), gi) - goff.begin()) - 1;
+                    const long bi = gi - goff[t], St = S[t];
+                    const int h0 = int(bi % ng) * HG, hn = std::min(HG, nh - h0);
+                    const float *ap[HG];
+                    for (int j = 0; j < HG; ++j) ap[j] = aq_all.data() + (size_t(h0 + std::min(j, hn - 1)) * T + t) * lat;
+                    for (long s0 = (bi / ng) * 4 * PB, s1 = std::min(St, s0 + 4 * PB); s0 < s1; s0 += 4) {
+                        const int cnt = int(std::min<long>(4, St - s0));
+                        const float *cp[4];
+                        for (int k = 0; k < 4; ++k) cp[k] = cbase(t) + size_t(ids[t][std::min(s0 + k, St - 1)]) * lat;
+                        vf64 acc[HG][4];
+                        for (int j = 0; j < HG; ++j) for (int k = 0; k < 4; ++k) acc[j][k] = svdup_n_f64(0);
+                        for (int i = 0; i < lat; i += 8) {
+                            vf64 cv[4];
+                            for (int k = 0; k < 4; ++k) cv[k] = svcvt_f64_f32_x(pd, svreinterpret_f32_u64(svld1uw_u64(pd, reinterpret_cast<const uint32_t *>(cp[k] + i))));
+#pragma GCC unroll 3
+                            for (int j = 0; j < HG; ++j) {
+                                const svfloat64_t qv = svcvt_f64_f32_x(pd, svreinterpret_f32_u64(svld1uw_u64(pd, reinterpret_cast<const uint32_t *>(ap[j] + i))));
+#pragma GCC unroll 4
+                                for (int k = 0; k < 4; ++k) acc[j][k] = svmla_f64_x(pd, acc[j][k], qv, cv[k]);
+                            }
+                        }
+                        double hs[16];
+                        if (tree_sum_on()) {   // dots (j, k) at 4 j + k: heads 0-1, then head 2 (its 4 sums twice)
+                            vf64t v[8];
+                            for (int j = 0; j < 8; ++j) v[j] = acc[j / 4][j % 4];
+                            svst1_f64(pd, hs, hsum8_f64(v));
+                            for (int j = 0; j < 8; ++j) v[j] = acc[2][j % 4];
+                            svst1_f64(pd, hs + 8, hsum8_f64(v));
+                        } else
+                            for (int j = 0; j < HG; ++j) for (int k = 0; k < 4; ++k) hs[4 * j + k] = svaddv_f64(pd, acc[j][k]);
+                        for (int j = 0; j < hn; ++j) {
+                            const int h = h0 + j;
+                            double *pr = prob.data() + poff[t] + size_t(h) * St;
+                            double &m_ = pmx[size_t(th) * mrow + size_t(t) * nh + h];
+                            for (int k = 0; k < cnt; ++k) pr[s0 + k] = hs[4 * j + k] * scale, m_ = std::max(m_, pr[s0 + k]);
+                        }
                     }
                 }
             });
@@ -3386,7 +4205,7 @@ struct Runner {
                 const int cnt = int(std::min<long>(8, St - s0));
                 const float *cp[8];
                 const float *ap = aq_all.data() + (size_t(h) * T + t) * lat;
-                for (int k = 0; k < 8; ++k) cp[k] = M.cache.data() + size_t(ids[t][std::min(s0 + k, St - 1)]) * lat;
+                for (int k = 0; k < 8; ++k) cp[k] = cbase(t) + size_t(ids[t][std::min(s0 + k, St - 1)]) * lat;
                 double *pr = prob.data() + poff[t] + size_t(h) * St;
 #if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
                 if (attn_f32() && lat % 16 == 0) {   // approximate: fp32 dots, 16 latent values per vector
@@ -3520,6 +4339,47 @@ struct Runner {
                 }
             });
         } else
+        // the prefix average with each cache row segment shared by 2 heads (STRATA_RUNNER_AVG_HEADS=2, default):
+        // 4 tokens x 2 heads x 16 latents per item (16 accumulators as 4 x 32), each chain as below
+        if (prefix && avg_block && lat % 16 == 0 && avg_heads() == 2) {
+            const int ntg = (T + 3) / 4, nhp = (nh + 1) / 2, nb16 = lat / 16;
+            team_run([&] {
+                typedef svfloat64_t vf64 __attribute__((arm_sve_vector_bits(512)));
+                const svbool_t pd = svptrue_b64();
+#pragma omp for schedule(static) nowait
+                for (int it = 0; it < ntg * nhp * nb16; ++it) {
+                    const int tg = it / (nhp * nb16), h0 = ((it / nb16) % nhp) * 2, i0 = (it % nb16) * 16;
+                    const int t0 = 4 * tg, tn = std::min(4, T - t0), hn = std::min(2, nh - h0);
+                    vf64 acc[4][2][2];
+                    for (int a = 0; a < 4; ++a) for (int j = 0; j < 2; ++j) acc[a][j][0] = acc[a][j][1] = svdup_n_f64(0);
+                    const long smax = S[t0 + tn - 1];
+                    const double *ph[4][2];
+                    for (int a = 0; a < tn; ++a)
+                        for (int j = 0; j < 2; ++j) ph[a][j] = prob.data() + poff[t0 + a] + size_t(h0 + std::min(j, hn - 1)) * S[t0 + a];
+                    for (long si = 0; si < smax; ++si) {
+                        const float *c = M.cache.data() + size_t(si) * lat + i0;
+                        const vf64 c0 = svcvt_f64_f32_x(pd, svreinterpret_f32_u64(svld1uw_u64(pd, reinterpret_cast<const uint32_t *>(c))));
+                        const vf64 c1 = svcvt_f64_f32_x(pd, svreinterpret_f32_u64(svld1uw_u64(pd, reinterpret_cast<const uint32_t *>(c + 8))));
+                        for (int a = 0; a < tn; ++a) {
+                            if (si >= S[t0 + a]) continue;
+#pragma GCC unroll 2
+                            for (int j = 0; j < 2; ++j) {
+                                const svfloat64_t pr = svdup_n_f64(ph[a][j][si]);
+                                acc[a][j][0] = svmla_f64_x(pd, acc[a][j][0], pr, c0);
+                                acc[a][j][1] = svmla_f64_x(pd, acc[a][j][1], pr, c1);
+                            }
+                        }
+                    }
+                    for (int a = 0; a < tn; ++a)
+                        for (int j = 0; j < hn; ++j) {
+                            const int t = t0 + a, h = h0 + j;
+                            double sum[16];
+                            svst1_f64(pd, sum, acc[a][j][0]), svst1_f64(pd, sum + 8, acc[a][j][1]);
+                            for (int i = 0; i < 16; ++i) av_all[(size_t(t) * nh + h) * lat + i0 + i] = float(sum[i] / total[size_t(t) * nh + h]);
+                        }
+                }
+            });
+        } else
         if (prefix && avg_block && lat % 32 == 0) {
             const int ntg = (T + 3) / 4, nb32 = lat / 32;
             team_run([&] {
@@ -3553,6 +4413,43 @@ struct Runner {
                 }
             });
         } else
+        if (gather_block_on() && !prefix && !attn_f32() && lat % 32 == 0 && T > 4) {
+            // beyond the selection size: per item one token x 3 heads x 32 latents over the token's positions, each
+            // gathered row segment read once for the 3 heads (the item below read it per head: ~4 bytes per MAC). Per
+            // (token, head, latent) the chain below: fused multiply-adds over the positions in order
+            constexpr int HG = 3;
+            const int ng = (nh + HG - 1) / HG, nb32 = lat / 32;
+            team_run([&] {
+                typedef svfloat64_t vf64 __attribute__((arm_sve_vector_bits(512)));
+                const svbool_t pd = svptrue_b64();
+#pragma omp for schedule(static) nowait
+                for (int it = 0; it < T * ng * nb32; ++it) {
+                    const int t = it / (ng * nb32), h0 = ((it / nb32) % ng) * HG, i0 = (it % nb32) * 32, hn = std::min(HG, nh - h0);
+                    const long St = S[t];
+                    const double *ph[HG];
+                    for (int j = 0; j < HG; ++j) ph[j] = prob.data() + poff[t] + size_t(h0 + std::min(j, hn - 1)) * St;
+                    vf64 acc[HG][4];
+                    for (int j = 0; j < HG; ++j) for (int v = 0; v < 4; ++v) acc[j][v] = svdup_n_f64(0);
+                    for (long si = 0; si < St; ++si) {
+                        const float *c = cbase(t) + size_t(ids[t][si]) * lat + i0;
+                        if (si + 8 < St) __builtin_prefetch(cbase(t) + size_t(ids[t][si + 8]) * lat + i0, 0, 3);
+                        vf64 cv[4];
+                        for (int v = 0; v < 4; ++v) cv[v] = svcvt_f64_f32_x(pd, svreinterpret_f32_u64(svld1uw_u64(pd, reinterpret_cast<const uint32_t *>(c + 8 * v))));
+#pragma GCC unroll 3
+                        for (int j = 0; j < HG; ++j) {
+                            const svfloat64_t pr = svdup_n_f64(ph[j][si]);
+                            for (int v = 0; v < 4; ++v) acc[j][v] = svmla_f64_x(pd, acc[j][v], pr, cv[v]);
+                        }
+                    }
+                    for (int j = 0; j < hn; ++j) {
+                        const int h = h0 + j;
+                        double sum[32];
+                        for (int v = 0; v < 4; ++v) svst1_f64(pd, sum + 8 * v, acc[j][v]);
+                        for (int i = 0; i < 32; ++i) av_all[(size_t(t) * nh + h) * lat + i0 + i] = float(sum[i] / total[size_t(t) * nh + h]);
+                    }
+                }
+            });
+        } else
 #endif
         team_run([&] {
 #pragma omp for schedule(static) nowait
@@ -3565,8 +4462,8 @@ struct Runner {
                     const svbool_t pw = svptrue_b32();
                     vf32 a0 = svdup_n_f32(0), a1 = a0, a2 = a0, a3 = a0;
                     for (long si = 0; si < S[t]; ++si) {
-                        const float *c = M.cache.data() + size_t(ids[t][si]) * lat + i0;
-                        if (si + 8 < S[t]) __builtin_prefetch(M.cache.data() + size_t(ids[t][si + 8]) * lat + i0, 0, 3);
+                        const float *c = cbase(t) + size_t(ids[t][si]) * lat + i0;
+                        if (si + 8 < S[t]) __builtin_prefetch(cbase(t) + size_t(ids[t][si + 8]) * lat + i0, 0, 3);
                         const float pr = float(ph[si]);
                         a0 = svmla_n_f32_x(pw, a0, svld1_f32(pw, c), pr), a1 = svmla_n_f32_x(pw, a1, svld1_f32(pw, c + 16), pr);
                         a2 = svmla_n_f32_x(pw, a2, svld1_f32(pw, c + 32), pr), a3 = svmla_n_f32_x(pw, a3, svld1_f32(pw, c + 48), pr);
@@ -3577,8 +4474,8 @@ struct Runner {
                 } else
 #endif
                 for (long si = 0; si < S[t]; ++si) {
-                    const float *c = M.cache.data() + size_t(ids[t][si]) * lat + i0;
-                    if (si + 8 < S[t]) __builtin_prefetch(M.cache.data() + size_t(ids[t][si + 8]) * lat + i0, 0, 3);   // random rows: misses overlap
+                    const float *c = cbase(t) + size_t(ids[t][si]) * lat + i0;
+                    if (si + 8 < S[t]) __builtin_prefetch(cbase(t) + size_t(ids[t][si + 8]) * lat + i0, 0, 3);   // random rows: misses overlap
                     const double pr = ph[si];
                     for (int i = 0; i < 64; ++i) sum[i] += pr * c[i];
                 }
@@ -3586,18 +4483,34 @@ struct Runner {
             }
         });
         lap(tl, "mla.avg");
+        const double te0 = now();
         std::vector<Job> expand;
+        fill(avs, [&](int t, int h) { return av_all.data() + (size_t(t) * nh + h) * lat; }, lat);
         for (int h = 0; h < nh; ++h) {
             Job j{&M.vb[h], nullptr, val_all.data() + size_t(h) * hd, T, nh * hd};
-            for (int t = 0; t < T; ++t) {
-                avs[size_t(t) * nh + h].set(av_all.data() + (size_t(t) * nh + h) * lat, lat, false);
-                j.as[t] = &avs[size_t(t) * nh + h];
-            }
-            expand.push_back(j);
+            for (int t = 0; t < T; ++t) j.as[t] = &avs[size_t(t) * nh + h];
+            expand.push_back(std::move(j));
         }
-        gemv_multi(expand);
+        const double te1 = now();
+        {
+            GemvPlan plan(expand);
+            timers["mla.ex_plan"] += now() - te1;
+            const double te2 = now();
+            team_run([&] { plan.run(omp_get_thread_num(), omp_get_num_threads()); });
+            timers["mla.ex_run"] += now() - te2;
+            timers["mla.ex_split"] += 1e-3 * plan.any_split;   // calls with a K split (count)
+        }
+        const double te3 = now();
         values.resize(T);
-        for (int t = 0; t < T; ++t) values[t].assign(val_all.begin() + size_t(t) * nh * hd, val_all.begin() + size_t(t + 1) * nh * hd);
+        auto copy_out = [&](int t) { values[t].assign(val_all.begin() + size_t(t) * nh * hd, val_all.begin() + size_t(t + 1) * nh * hd); };
+        if (acts_par && T > 4)
+            team_run([&] {
+#pragma omp for schedule(static) nowait
+                for (int t = 0; t < T; ++t) copy_out(t);
+            });
+        else
+            for (int t = 0; t < T; ++t) copy_out(t);
+        timers["mla.ex_jobs"] += te1 - te0, timers["mla.ex_copy"] += now() - te3, timers["mla.ex_calls"] += 1e-3;
         lap(tl, "mla.expand");
     }
     // mla_attention with the hybrid cache, for passes reaching beyond the ring: positions from hot_lo on are read from
@@ -4212,11 +5125,56 @@ struct Runner {
             for (int t = 0; t < T; ++t) a[t].set(xs[t].data(), n, quant, group);
             return a;
         }
-        // a prefill chunk: every token's copy and int8 blocks in one team region (Activation::set's per-block
-        // quantization, one dispatch instead of one per token)
+        // a prefill chunk: every token's buffers, copy and int8 blocks in one team region, a contiguous block of tokens
+        // per thread (Activation::set's per-block quantization; the buffers were allocated and zero-filled on the main
+        // thread: ~2 us per token and layer; token t on thread t % team scattered the 3-4 tokens a kernel group
+        // reads over the CMGs: the GEMVs slowed down more than this saved)
+        const int nb = n / 64;
+        // STRATA_RUNNER_ACTS_PAR=1: each thread allocates its block of tokens (opt-in: the setup drops 0.16 -> 0.05 ms
+        // per prompt token, but the GEMVs reading those buffers slow down more: 198.2 vs 200.1 tok/s at 2K)
+        static const bool par = std::getenv("STRATA_RUNNER_ACTS_PAR") && std::string(std::getenv("STRATA_RUNNER_ACTS_PAR")) == "1";
+        if (!par) {
+            for (auto &v : a) {
+                v.x.resize(n);
+                if (quant) v.group = group, v.q.resize(n), v.qs.resize(n / group);
+            }
+            team_run([&] {
+#pragma omp for schedule(static) nowait
+                for (int i = 0; i < T * nb; ++i) {
+                    const int t = i / nb, b = i % nb;
+                    std::copy(xs[t].begin() + 64 * b, xs[t].begin() + 64 * b + 64, a[t].x.begin() + 64 * b);
+                    if (quant) gf4_quantize_q8g(a[t].x.data() + 64 * b, 64, group, a[t].q.data() + 64 * b, a[t].qs.data() + 64 * b / group);
+                }
+            });
+            return a;
+        }
+        team_run([&] {
+            const int th = omp_get_thread_num(), nth = omp_get_num_threads();
+            for (int t = int(int64_t(T) * th / nth); t < int(int64_t(T) * (th + 1) / nth); ++t) {
+                auto &v = a[t];
+                v.x.assign(xs[t].begin(), xs[t].begin() + n);
+                if (!quant) continue;
+                v.group = group, v.q.resize(n), v.qs.resize(n / group);
+                for (int b = 0; b < nb; ++b) gf4_quantize_q8g(v.x.data() + 64 * b, 64, group, v.q.data() + 64 * b, v.qs.data() + 64 * b / group);
+            }
+        });
+        return a;
+    }
+    // acts_of into a persistent per-call-site pool (long passes): the buffers are allocated (on the main thread) once,
+    // then only copied and quantized over the team; acts_of allocated and zero-filled T buffers on the main thread per
+    // call (~0.16 ms per prompt token over the MoE and KDA layers). A site's pool is used only inside its function.
+    // STRATA_RUNNER_ACTS_POOL=0: acts_of
+    std::array<std::vector<Activation>, 8> act_pool;
+    std::vector<Activation> &acts_pool(int site, const std::vector<Vec> &xs, int n, bool quant, int group = 64) {
+        static const bool on = !(std::getenv("STRATA_RUNNER_ACTS_POOL") && std::string(std::getenv("STRATA_RUNNER_ACTS_POOL")) == "0");
+        auto &a = act_pool[site];
+        const int T = int(xs.size());
+        if (!on || T <= 4 || n % 64) { a = acts_of(xs, n, quant, group); return a; }
+        if (a.size() != size_t(T)) a.resize(T);
         for (auto &v : a) {
-            v.x.resize(n);
+            if (v.x.size() != size_t(n)) v.x.resize(n);
             if (quant) v.group = group, v.q.resize(n), v.qs.resize(n / group);
+            else v.q.clear(), v.qs.clear();   // an empty q selects the float kernels
         }
         const int nb = n / 64;
         team_run([&] {
@@ -4236,41 +5194,59 @@ struct Runner {
     }
     std::array<Vec, 3> km_raw;
     Vec km_decay, km_gate;
+    Vec km_fa, km_ga, km_beta, km_out;              // kda_multi's work arrays (each element is written before it is read)
+    std::vector<Activation> km_afa, km_aga, km_ay;  // its activations (allocated per call: ~0.13 ms per generated token at 16 contexts)
+    static void act_rows(std::vector<Activation> &v, int T, int n, bool q8) {   // T activations of n values (q8: the Q8 form too)
+        if (v.size() < size_t(T)) v.resize(T);
+        for (int t = 0; t < T; ++t) {
+            Activation &a = v[t];
+            if (a.x.size() != size_t(n)) a.x.resize(n);
+            if (q8) {
+                if (a.q.size() != size_t(n)) a.q.resize(n), a.qs.resize(n / 64);
+                a.group = 64;
+            } else a.q.clear(), a.qs.clear();
+        }
+    }
     std::vector<Vec> kda_multi(KdaLayer &K, const std::vector<Vec> &xs) {
         const double t_in = now();
         const int T = int(xs.size()), D = m.linear_dim, nh = heads.size(), n = nh * D, Kc = m.conv_kernel, H = m.hidden;
         // one activation array: an int8 kernel reads q / qs, a float kernel x (the second, float-only copy was the same)
-        auto ax = acts_of(xs, H, trunk_q8 || q8_act(K.q, int(xs.size())));
+        auto &ax = acts_pool(0, xs, H, trunk_q8 || q8_act(K.q, int(xs.size())));
         auto &af = ax;
         const double t_acts = now();
         double t_p1 = 0, t_p2 = 0;
         const int fr = K.f_a.rows, gr = K.g_a.rows, br = K.beta.rows;
         auto &raw_all = km_raw;   // persistent buffers (every element is written before it is read)
-        Vec fa_all(size_t(T) * fr), ga_all(size_t(T) * gr), beta_all(size_t(T) * br);
+        auto &fa_all = km_fa, &ga_all = km_ga, &beta_all = km_beta;
+        if (fa_all.size() < size_t(T) * fr) fa_all.resize(size_t(T) * fr);
+        if (ga_all.size() < size_t(T) * gr) ga_all.resize(size_t(T) * gr);
+        if (beta_all.size() < size_t(T) * br) beta_all.resize(size_t(T) * br);
         for (auto &v : raw_all) if (v.size() < size_t(T) * n) v.resize(size_t(T) * n);
         // the whole layer in one team region, as kda_fused: the projections for all tokens, then conv, recurrence,
         // output norm and gate token by token, then o_proj for all tokens
         GemvPlan p1({{&K.q, ax.data(), raw_all[0].data(), T, n}, {&K.k, ax.data(), raw_all[1].data(), T, n},
                      {&K.v, ax.data(), raw_all[2].data(), T, n}, {&K.f_a, af.data(), fa_all.data(), T, fr},
                      {&K.g_a, af.data(), ga_all.data(), T, gr}, {&K.beta, af.data(), beta_all.data(), T, br}});
-        std::vector<Activation> afa(T), aga(T);
-        for (int t = 0; t < T; ++t) afa[t].x.resize(fr), aga[t].x.resize(gr);
+        const double t_s1 = now();
+        auto &afa = km_afa, &aga = km_aga;
+        act_rows(afa, T, fr, false), act_rows(aga, T, gr, false);
         auto &decay_all = km_decay, &gate_all = km_gate;
         if (decay_all.size() < size_t(T) * n) decay_all.resize(size_t(T) * n), gate_all.resize(size_t(T) * n);
         GemvPlan p2({{&K.f_b, afa.data(), decay_all.data(), T, n}, {&K.g_b, aga.data(), gate_all.data(), T, n}});
+        const double t_s2 = now();
         double t_mid = 0, t_o = 0;
         const bool oq = q8_act(K.o, T);
-        std::vector<Activation> ay(T);
-        for (auto &a : ay) {
-            a.x.resize(n);
-            if (oq) a.q.resize(n), a.qs.resize(n / 64), a.group = 64;
-        }
+        auto &ay = km_ay;
+        act_rows(ay, T, n, oq);
         std::array<Vec, 3> qkv;
         for (auto &v : qkv) v.resize(n);
         Vec y(n), beta(nh);
         std::vector<float> inv(nh);
-        Vec out_all(size_t(T) * K.o.rows);
+        auto &out_all = km_out;
+        if (out_all.size() < size_t(T) * K.o.rows) out_all.resize(size_t(T) * K.o.rows);
+        const double t_s3 = now();
         GemvPlan p3({{&K.o, ay.data(), out_all.data(), T, K.o.rows}});
+        const double t_s4 = now();
         static const bool kda_batch = !(std::getenv("STRATA_RUNNER_KDA_BATCH") && std::string(std::getenv("STRATA_RUNNER_KDA_BATCH")) == "0");
         // the contexts of the pass (pass_groups; else one group, the active context): each group's tokens chain through
         // its context's state, conv histories and rollback buffers; the projections run over every token at once
@@ -4332,9 +5308,55 @@ struct Runner {
         if (kda_batch) {   // the same per-element arithmetic, phase by phase for all tokens (6 barriers, not ~7 per token)
             const int groups = D / KDA_GROUP;
             const bool fx = fast_exp(1) && n % 64 == 0;
+            // several contexts: conv items per (part, context, channel), so a thread walks one context's histories
+            // contiguously (items per channel over every context interleaved 16 contexts' misses)
+            // STRATA_RUNNER_KDA_CONV_CTX=0: per (part, channel)
+            static const bool conv_ctx = !(std::getenv("STRATA_RUNNER_KDA_CONV_CTX") && std::string(std::getenv("STRATA_RUNNER_KDA_CONV_CTX")) == "0");
+            const int ncg = conv_ctx && kg.size() > 1 ? int(kg.size()) : 1;
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+            // fast exp, a 4-tap conv: items of 16 channels, the same multiply and fused multiply-adds per lane
+            // (svld3 / svld4 the stride-3 histories and stride-4 weights). STRATA_RUNNER_KDA_CONV_VEC=0: per channel
+            static const bool conv_vec = !(std::getenv("STRATA_RUNNER_KDA_CONV_VEC") && std::string(std::getenv("STRATA_RUNNER_KDA_CONV_VEC")) == "0");
+            if (conv_vec && fx && Kc == 4 && n % 16 == 0 && D % 16 == 0) {
+                const int nb = n / 16;
+                const svbool_t pw = svptrue_b32();
 #pragma omp for schedule(static) nowait
-            for (int pi = 0; pi < 4 * n; ++pi) {   // conv (each channel's tokens in order) and the decay
-                const int part = pi / n, i = pi % n;
+                for (int pi2 = 0; pi2 < 3 * ncg * nb + nb; ++pi2) {
+                    const bool dec = pi2 >= 3 * ncg * nb;
+                    const int part = dec ? 3 : pi2 / (ncg * nb), gq = dec ? 0 : (pi2 / nb) % ncg, i0 = 16 * (dec ? pi2 - 3 * ncg * nb : pi2 % nb);
+                    if (part == 3) {   // the sigmoid's argument, -a * (decay + dt)
+                        const svfloat32_t na = svdup_n_f32(-K.a_neg[i0 / D]), dt = svld1_f32(pw, K.dt.data() + i0);
+                        for (int tk = 0; tk < T; ++tk) {
+                            float *dc = decay_all.data() + size_t(tk) * n + i0;
+                            svst1_f32(pw, dc, svmul_f32_x(pw, na, svadd_f32_x(pw, svld1_f32(pw, dc), dt)));
+                        }
+                        continue;
+                    }
+                    const svfloat32x4_t wv = svld4_f32(pw, K.conv[part].data() + size_t(i0) * 4);
+                    const svfloat32_t w0 = svget4_f32(wv, 0), w1 = svget4_f32(wv, 1), w2 = svget4_f32(wv, 2), w3 = svget4_f32(wv, 3);
+                    for (size_t gk = ncg > 1 ? size_t(gq) : 0; gk < (ncg > 1 ? size_t(gq) + 1 : kg.size()); ++gk) {
+                        const auto &g = kg[gk];
+                        float *hp = g.hist[part].data() + size_t(i0) * 3;
+                        const svfloat32x3_t hv = svld3_f32(pw, hp);
+                        svfloat32_t h0 = svget3_f32(hv, 0), h1 = svget3_f32(hv, 1), h2 = svget3_f32(hv, 2);
+                        for (int tk = g.g0; tk < g.g1; ++tk) {
+                            const svfloat32_t r = svld1_f32(pw, raw_all[part].data() + size_t(tk) * n + i0);
+                            svfloat32_t sum = svmul_f32_x(pw, r, w3);
+                            sum = svmla_f32_x(pw, sum, h0, w0), sum = svmla_f32_x(pw, sum, h1, w1), sum = svmla_f32_x(pw, sum, h2, w2);
+                            h0 = h1, h1 = h2, h2 = r;
+                            svst1_f32(pw, kb_qkv.data() + (size_t(tk) * 3 + part) * n + i0, sum);
+                            if (g.sink && tk + 1 < g.g1)   // the conv history after this token, for a rollback to it
+                                svst3_f32(pw, kb_hist[tk].data() + size_t(part) * g.hist[part].size() + size_t(i0) * 3, svcreate3_f32(h0, h1, h2));
+                        }
+                        svst3_f32(pw, hp, svcreate3_f32(h0, h1, h2));
+                    }
+                }
+            } else
+#endif
+#pragma omp for schedule(static) nowait
+            for (int pi2 = 0; pi2 < 3 * ncg * n + n; ++pi2) {   // conv (each channel's tokens in order) and the decay
+                const bool dec = pi2 >= 3 * ncg * n;
+                const int part = dec ? 3 : pi2 / (ncg * n), gq = dec ? 0 : (pi2 / n) % ncg, i = dec ? pi2 - 3 * ncg * n : pi2 % n;
                 if (part == 3) {
                     for (int tk = 0; tk < T; ++tk) {
                         float &dc = decay_all[size_t(tk) * n + i];
@@ -4344,7 +5366,8 @@ struct Runner {
                     continue;
                 }
                 const auto &w = K.conv[part];
-                for (const auto &g : kg) {   // each context's tokens through its own history
+                for (size_t gk = ncg > 1 ? size_t(gq) : 0; gk < (ncg > 1 ? size_t(gq) + 1 : kg.size()); ++gk) {   // each context's tokens through its own history
+                    const auto &g = kg[gk];
                     auto &hist = g.hist[part];
                     for (int tk = g.g0; tk < g.g1; ++tk) {
                         const float r = raw_all[part][size_t(tk) * n + i];
@@ -4359,6 +5382,7 @@ struct Runner {
                 }
             }
             team_barrier();
+            if (th == 0) kb_tp[5] = now();
             if (fx) {   // fast exp: SiLU of the conv outputs, the decay, its exp, the output gates' sigmoid, 64 values per item
                 const int bq = T * 3 * n / 64, bd = T * n / 64;
 #pragma omp for schedule(static) nowait
@@ -4399,11 +5423,33 @@ struct Runner {
             team_barrier();
             if (th == 0) kb_tp[2] = now();
             const bool halves = kda_halves() && nh * groups > nth;   // 48 groups on 47 threads: 96 halves (opt-in)
+            // several contexts: items per (column group, context), each walking only its context's tokens (the
+            // contexts are independent; one item walking every context's tokens chained ~34 state loads in a row).
+            // STRATA_RUNNER_KDA_REC_CTX=0: items per column group over all tokens
+            static const bool rec_ctx = !(std::getenv("STRATA_RUNNER_KDA_REC_CTX") && std::string(std::getenv("STRATA_RUNNER_KDA_REC_CTX")) == "0");
+            const int ngr = rec_ctx && kg.size() > 1 ? int(kg.size()) : 1;
+            // G column groups of a head per item, their chains interleaved (kda_groups_step): G from the rounds of
+            // items per thread times a group step's cost at G (1, 1.1, 1.3 add-latency units; STRATA_RUNNER_KDA_REC_G:
+            // fixed 1, 2 or 4)
+            static const int rec_g = std::getenv("STRATA_RUNNER_KDA_REC_G") ? std::atoi(std::getenv("STRATA_RUNNER_KDA_REC_G")) : 0;
+            int G = 1;
+            if (!halves) {
+                double best = 1e30;
+                for (int g : {1, 2, 4}) {
+                    if (groups % g || (rec_g && g != rec_g)) continue;
+                    const int items = nh * (groups / g) * ngr;
+                    const double cost = double((items + nth - 1) / nth) * (g == 1 ? 1.0 : g == 2 ? 1.1 : 1.3);
+                    if (cost < best) best = cost, G = g;
+                }
+            }
+            const int gpi = groups / G;   // items per head
 #pragma omp for schedule(static) nowait
-            for (int it = 0; it < (halves ? 2 : 1) * nh * groups; ++it) {   // each column group's tokens in order
-                const int hg = halves ? it / 2 : it, lo = halves ? 8 * (it % 2) : 0;
+            for (int it2 = 0; it2 < (halves ? 2 : 1) * nh * gpi * ngr; ++it2) {   // each column group's tokens in order
+                const int it = it2 / ngr, gq = it2 % ngr;
+                const int hg = halves ? it / 2 : (it / gpi) * groups + (it % gpi) * G, lo = halves ? 8 * (it % 2) : 0;
                 const int h = hg / groups, j0 = (hg % groups) * KDA_GROUP;
-                for (int tk = 0; tk < T; ++tk) {
+                const int tk0 = ngr > 1 ? kg[gq].g0 : 0, tk1 = ngr > 1 ? kg[gq].g1 : T;
+                for (int tk = tk0; tk < tk1; ++tk) {
                     const float *S0 = sin[tk] + size_t(hg) * D * KDA_GROUP;
                     float *S = sout[tk] + size_t(hg) * D * KDA_GROUP;
                     const float *kh = kb_nk.data() + size_t(tk) * n + h * D, *qh = kb_nq.data() + size_t(tk) * n + h * D, *eh = kb_ed.data() + size_t(tk) * n + h * D;
@@ -4411,6 +5457,8 @@ struct Runner {
                     float *oy = kb_y.data() + size_t(tk) * n + h * D + j0;
                     const float sb = ref::sigmoid(kb_beta[tk * nh + h]);
                     if (halves) kda_half_step(S0, S, kh, qh, eh, vv, sb, oy, D, lo);
+                    else if (G == 4) kda_groups_step<4>(S0, S, kh, qh, eh, vv, sb, oy, D);
+                    else if (G == 2) kda_groups_step<2>(S0, S, kh, qh, eh, vv, sb, oy, D);
                     else kda_group_step(S0, S, kh, qh, eh, vv, sb, oy, D);
                 }
             }
@@ -4506,12 +5554,15 @@ struct Runner {
         timers["kda_proj"] += (t_mid - t_in) + (t_out - t_o);
         timers["kdap.acts"] += t_acts - t_in, timers["kdap.setup"] += t_setup - t_acts, timers["kdap.p1"] += t_p1 - t_setup;
         timers["kdap.copy"] += t_p2 - t_p1, timers["kdap.p2"] += t_mid - t_p2, timers["kdap.o"] += t_out - t_o;
+        timers["kdap.s_p1"] += t_s1 - t_acts, timers["kdap.s_p2"] += t_s2 - t_s1, timers["kdap.s_bufs"] += t_s3 - t_s2;
+        timers["kdap.s_p3"] += t_s4 - t_s3, timers["kdap.s_state"] += t_setup - t_s4;
         timers["kda_small"] += t_o - t_mid;
         if (kda_batch) {
             static const char *nm[5] = {"kdam.conv", "kdam.sums", "kdam.norm", "kdam.rec", "kdam.inv"};
             double prev = t_mid;
             for (int i = 0; i < 5; ++i) timers[nm[i]] += kb_tp[i] - prev, prev = kb_tp[i];
             timers["kdam.gate"] += t_o - prev;
+            timers["kdam.conv_loop"] += kb_tp[5] - t_mid;
         }
         return split_rows(out_all, T, K.o.rows, K.o.rows);
     }
@@ -4530,7 +5581,7 @@ struct Runner {
         const double t = now();
         const int T = int(xs.size()), H = m.hidden;
         Fr.T = T, Fr.async = async;
-        auto ax = acts_of(xs, H, trunk_q8);
+        auto &ax = acts_pool(1, xs, H, trunk_q8);
         auto &aq_x = ax;   // float kernels read the x of the same activations (the front stays exact: K-split matrices)
         // the indexer projections are BF16 in the main layers (float activations) but FP8 in the draft block, which
         // fast mode requantizes to int8: those take the int8 activations
@@ -4584,7 +5635,7 @@ struct Runner {
             qr[tk] = norm(Vec(qa.begin() + size_t(tk) * qa_r, qa.begin() + size_t(tk + 1) * qa_r), M.q_a_norm);
             row[tk] = norm(Vec(kva.begin() + size_t(tk) * kv_r, kva.begin() + size_t(tk + 1) * kv_r), M.kv_a_norm);
         }
-        auto aqr = acts_of(qr, int(qr[0].size()), trunk_q8 || q8_act(M.q_b, T));
+        auto &aqr = acts_pool(2, qr, int(qr[0].size()), trunk_q8 || q8_act(M.q_b, T));
         auto &aqrf = aqr;
         const int qb_r = M.q_b.rows, iq_r = M.full[5];
         auto &q = F.q, &iq = F.iq;
@@ -4634,33 +5685,108 @@ struct Runner {
             }
         };
         for (int tk = 0; tk < T; ++tk) qs[tk] = Vec(q.begin() + size_t(tk) * qb_r, q.begin() + size_t(tk + 1) * qb_r), qp[tk] = &qs[tk];
-        if (pass_groups.size() > 1 && cur_layer < int(L.size()) && &M == &L[cur_layer].ml) {
+        const bool mtp_grouped = mtp.on && &M == &mtp.layer.ml && mtp_cells.size() == pass_groups.size();
+        if (pass_groups.size() > 1 && ((cur_layer < int(L.size()) && &M == &L[cur_layer].ml) || mtp_grouped)) {
             // several contexts: selection and attention per context, with that context's index tails, pools and caches
-            // swapped into this layer and its own positions; the projections above and below ran over every token
+            // swapped into this layer and its own positions; the projections above and below ran over every token.
+            // The MTP block's layer (mtp_forward_ctx): each context's draft layer state and its own first cell
             if (!(select_multi && ik_r == m.index_dim && ig_r == m.index_dim)) throw std::runtime_error("runner: several contexts need the batched indexer");
             values.resize(T);
+            // the groups' attention in one mla_attention call (STRATA_RUNNER_GROUP_ATTN=0: one call per group): the
+            // per-group calls cost ~190 us each for ~2 tokens (their team regions); a cache row's address is the
+            // context's own (each context's cache keeps its buffer when swapped out)
+            static const bool group_attn = !(std::getenv("STRATA_RUNNER_GROUP_ATTN") && std::string(std::getenv("STRATA_RUNNER_GROUP_ATTN")) == "0");
+            std::vector<int> ga_tok;
+            std::vector<std::vector<int>> ga_ids;
+            std::vector<const float *> ga_cache;
+            // every context's selection at once, one group per item, when no group needs a team region of its own
+            // (at most 8 tokens, within the selection size: no pool scores, no hybrid cache) and the attention is
+            // grouped: each group with its own context's state (STRATA_RUNNER_GROUP_SELECT=0: one after another)
+            static const bool group_select = !(std::getenv("STRATA_RUNNER_GROUP_SELECT") && std::string(std::getenv("STRATA_RUNNER_GROUP_SELECT")) == "0");
+            bool par_sel = group_select && group_attn && !M.ring && index_skip();
+            for (size_t gi = 0; gi < pass_groups.size() && par_sel; ++gi) {
+                const auto [c, len] = pass_groups[gi];
+                const int pc = mtp_grouped ? mtp_cells[gi] : c == active_ctx ? position : ctx_store[c].position;
+                if (len > 8 || pc + len > int(m.index_top_k)) par_sel = false;
+            }
+            if (par_sel) {
+                std::vector<std::vector<std::vector<int>>> sgs(pass_groups.size());
+                std::vector<int> gstart(pass_groups.size() + 1, 0);
+                for (size_t gi = 0; gi < pass_groups.size(); ++gi) gstart[gi + 1] = gstart[gi] + pass_groups[gi].second;
+                const double tsel = now();
+                team_run([&] {
+                    lap_off = true;
+#pragma omp for schedule(dynamic, 1) nowait
+                    for (int gi = 0; gi < int(pass_groups.size()); ++gi) {
+                        const auto [c, len] = pass_groups[gi];
+                        const int g0 = gstart[gi], g1 = g0 + len;
+                        LayerState *ls = c == active_ctx ? nullptr : mtp_grouped ? &ctx_store[c].mtp_layer : &ctx_store[c].layers[cur_layer];
+                        const int pc = mtp_grouped ? mtp_cells[gi] : ls ? ctx_store[c].position : position;
+                        auto sub = [&](const Vec &all, int rows) { return Vec(all.begin() + size_t(g0) * rows, all.begin() + size_t(g1) * rows); };
+                        std::vector<Vec> rg(row.begin() + g0, row.begin() + g1);
+                        std::vector<MainState> *sink = group_snaps && !mtp_grouped ? &(*group_snaps)[c] : nullptr;
+                        const Vec &gk = ls ? ls->keys : M.keys, &gg = ls ? ls->gates : M.gates;
+                        auto snap_g = [&](int j) {
+                            if (sink && j + 1 < len) { auto &st = snap_in(*sink, j); st.mla_keys[cur_layer] = gk, st.mla_gates[cur_layer] = gg; }
+                        };
+                        sgs[gi] = mla_select_multi(M, sub(iq, iq_r), sub(iw, iw_r), sub(ik, ik_r), sub(gate, ig_r), rg, pc,
+                                                   sink ? std::function<void(int)>(snap_g) : std::function<void(int)>(), ls);
+                    }
+                    lap_off = false;
+                });
+                timers["mla.index"] += now() - tsel;
+                for (size_t gi = 0; gi < pass_groups.size(); ++gi) {
+                    const auto [c, len] = pass_groups[gi];
+                    LayerState *ls = c == active_ctx ? nullptr : mtp_grouped ? &ctx_store[c].mtp_layer : &ctx_store[c].layers[cur_layer];
+                    for (int t2 = 0; t2 < len; ++t2)
+                        ga_tok.push_back(gstart[gi] + t2), ga_ids.push_back(std::move(sgs[gi][t2])), ga_cache.push_back(ls ? ls->cache.data() : M.cache.data());
+                }
+            }
             int g0 = 0;
-            for (const auto &[c, len] : pass_groups) {
+            for (size_t gi = 0; gi < pass_groups.size() && !par_sel; ++gi) {
+                const auto [c, len] = pass_groups[gi];
                 const int g1 = g0 + len;
-                LayerState *ls = c == active_ctx ? nullptr : &ctx_store[c].layers[cur_layer];
-                if (ls) swap_layer(L[cur_layer], *ls);
-                const int pc = ls ? ctx_store[c].position : position;
+                LayerState *ls = c == active_ctx ? nullptr : mtp_grouped ? &ctx_store[c].mtp_layer : &ctx_store[c].layers[cur_layer];
+                Layer &LY = mtp_grouped ? mtp.layer : L[cur_layer];
+                if (ls) swap_layer(LY, *ls);
+                const int pc = mtp_grouped ? mtp_cells[gi] : ls ? ctx_store[c].position : position;
                 auto sub = [&](const Vec &all, int rows) { return Vec(all.begin() + size_t(g0) * rows, all.begin() + size_t(g1) * rows); };
                 std::vector<Vec> rg(row.begin() + g0, row.begin() + g1);
-                std::vector<MainState> *sink = group_snaps ? &(*group_snaps)[c] : nullptr;
+                std::vector<MainState> *sink = group_snaps && !mtp_grouped ? &(*group_snaps)[c] : nullptr;
                 auto snap_g = [&](int j) {
                     if (sink && j + 1 < len) { auto &st = snap_in(*sink, j); st.mla_keys[cur_layer] = M.keys, st.mla_gates[cur_layer] = M.gates; }
                 };
-                auto sg = mla_select_multi(M, sub(iq, iq_r), sub(iw, iw_r), sub(ik, ik_r), sub(gate, ig_r), rg, pc, snap_g);
-                std::vector<const Vec *> qg(qp.begin() + g0, qp.begin() + g1);
-                std::vector<Vec> vg;
-                if (M.ring && pc + len > M.ring) mla_attention_hybrid(M, qg, sg, vg, pc + len - M.ring);
-                else mla_attention(M, qg, sg, vg);
-                for (int t2 = 0; t2 < len; ++t2) values[g0 + t2] = std::move(vg[t2]);
-                if (ls) swap_layer(L[cur_layer], *ls);
+                // (the callback only when snapshots are taken: an empty one lets the keys go over the team)
+                auto sg = mla_select_multi(M, sub(iq, iq_r), sub(iw, iw_r), sub(ik, ik_r), sub(gate, ig_r), rg, pc,
+                                           sink ? std::function<void(int)>(snap_g) : std::function<void(int)>());
+                if (M.ring && pc + len > M.ring) {   // the hybrid cache: this group's attention on its own
+                    std::vector<const Vec *> qg(qp.begin() + g0, qp.begin() + g1);
+                    std::vector<Vec> vg;
+                    mla_attention_hybrid(M, qg, sg, vg, pc + len - M.ring);
+                    for (int t2 = 0; t2 < len; ++t2) values[g0 + t2] = std::move(vg[t2]);
+                } else if (group_attn) {   // the attention of every such group in one call below, per-token caches
+                    for (int t2 = 0; t2 < len; ++t2) ga_tok.push_back(g0 + t2), ga_ids.push_back(std::move(sg[t2])), ga_cache.push_back(M.cache.data());
+                } else {
+                    std::vector<const Vec *> qg(qp.begin() + g0, qp.begin() + g1);
+                    std::vector<Vec> vg;
+                    mla_attention(M, qg, sg, vg);
+                    for (int t2 = 0; t2 < len; ++t2) values[g0 + t2] = std::move(vg[t2]);
+                }
+                if (ls) swap_layer(LY, *ls);
                 g0 = g1;
             }
-        } else if (select_multi && ik_r == m.index_dim && ig_r == m.index_dim) sel = mla_select_multi(M, iq, iw, ik, gate, row, pos0, snapshot);
+            if (!ga_tok.empty()) {   // one attention call for the groups' tokens, each reading its own context's cache
+                std::vector<const Vec *> qg;
+                for (int t2 : ga_tok) qg.push_back(qp[t2]);
+                std::vector<Vec> vg;
+                mla_tcache = ga_cache.data();
+                mla_attention(M, qg, ga_ids, vg);
+                mla_tcache = nullptr;
+                for (size_t i = 0; i < ga_tok.size(); ++i) values[ga_tok[i]] = std::move(vg[i]);
+            }
+        } else if (select_multi && ik_r == m.index_dim && ig_r == m.index_dim)
+            sel = mla_select_multi(M, iq, iw, ik, gate, row, pos0,
+                                   snap_sink && cur_layer < int(L.size()) && &M == &L[cur_layer].ml ? std::function<void(int)>(snapshot) : std::function<void(int)>());
         else
             for (int tk = 0; tk < T; ++tk) {   // index steps and cache rows in position order, then attention for all tokens
                 auto slice = [&](const Vec &all, int rows) { return Vec(all.begin() + size_t(tk) * rows, all.begin() + size_t(tk + 1) * rows); };
@@ -4684,7 +5810,7 @@ struct Runner {
         }
         timers["mla_attn"] += now() - t;
         t = now();
-        auto av = acts_of(values, int(values[0].size()), q8_act(M.o, T));
+        auto &av = acts_pool(5, values, int(values[0].size()), q8_act(M.o, T));
         Vec out(size_t(T) * M.o.rows);
         gemv_multi({{&M.o, av.data(), out.data(), T, M.o.rows}});
         timers["mla_proj"] += now() - t;
@@ -4693,14 +5819,14 @@ struct Runner {
     std::vector<Vec> dense_multi(FfnDense &F, const std::vector<Vec> &xs, float limit) {
         const double t = now();
         const int T = int(xs.size()), gr = F.gate.rows;
-        auto ax = acts_of(xs, m.hidden, trunk_q8 || q8_act(F.gate, T));
+        auto &ax = acts_pool(4, xs, m.hidden, trunk_q8 || q8_act(F.gate, T));
         Vec g(size_t(T) * gr), u(size_t(T) * gr);
         gemv_multi({{&F.gate, ax.data(), g.data(), T, gr}, {&F.up, ax.data(), u.data(), T, gr}});
         team_run([&] {
 #pragma omp for schedule(static) nowait
             for (size_t i = 0; i < g.size(); ++i) g[i] = ref::swiglu(g[i], u[i], limit);
         });
-        auto ag = acts_of(split_rows(g, T, gr, gr), gr, q8_act(F.down, T));
+        auto &ag = acts_pool(6, split_rows(g, T, gr, gr), gr, q8_act(F.down, T));
         Vec out(size_t(T) * F.down.rows);
         gemv_multi({{&F.down, ag.data(), out.data(), T, F.down.rows}});
         timers["dense"] += now() - t;
@@ -4715,19 +5841,25 @@ struct Runner {
         std::unique_ptr<float[]> p; size_t n = 0;
         float *get(size_t want) { if (want > n) p.reset(new float[want]), n = want; return p.get(); }
     };
-    FlatBuf moe_fg, moe_fu, moe_fy;   // long passes: every (use, token) row of gate, up and down outputs
+    FlatBuf moe_fg, moe_fu, moe_fy;
+    std::vector<int> moe_cnt, moe_flat_tok, moe_slice_of, moe_fill;   // the long-pass plan's counting sort   // long passes: every (use, token) row of gate, up and down outputs
     std::vector<Activation> moe_fact;
     std::vector<int> moe_row_off;
     std::vector<MoeUse> moe_use_pool;
     std::vector<int> moe_use_of, moe_block_off;   // long passes: slice -> use, each use's first SwiGLU block
+    AlignedBuf<int8_t> moe_xt, moe_xtd;   // long passes: the uses' transposed activations for gate / up and for down
+    AlignedBuf<float> moe_xs, moe_xsd;
+    std::vector<size_t> moe_xblk;         // each use's first 16-token block in them (gf4_w4a8_gemm_blocks of its tokens)
     // moe_multi in one team region (as moe_fused for one token): every GEMV share, the routing on one thread, SwiGLU
     // and the weighted sums over the team; the same arithmetic per token as moe_multi
     std::vector<Vec> moe_multi_fused(MoeLayer &E, const std::vector<Vec> &xs, const strata::core::LayerDescriptor &desc) {
         const double t_in = now();
         const int T = int(xs.size()), H = m.hidden;
         const bool quant = moe_quant(E);
-        auto ax = acts_of(xs, H, quant, g_act_group);
+        auto &ax = acts_pool(3, xs, H, quant, g_act_group);
         auto &af = ax;   // the router's float kernel reads x
+        const double t_acts = now();
+        double t_gemv = 0;   // thread 0 after the first GEMVs (router, shared gate / up)
         const int er = m.experts, sr = E.sgate.rows;
         const bool rsh = E.router.rows != m.experts;
         Vec logits(size_t(T) * er + 16, 0.f), sg(size_t(T) * std::max(sr, 1)), su(size_t(T) * std::max(sr, 1)), rscore(size_t(T) * er), rkey(size_t(T) * er);
@@ -4742,7 +5874,8 @@ struct Runner {
         std::vector<Activation> sact(T);
         Vec ys(size_t(T) * H, 0.f);
         std::vector<std::vector<const float *>> yk(T);
-        double t_route = 0, t_plan = 0, t_pl[3] = {0, 0, 0};
+        double t_route = 0, t_plan = 0, t_pl[3] = {0, 0, 0}, te[6] = {0, 0, 0, 0, 0, 0}, t_pu[2] = {0, 0}, t_xd = 0;
+        std::vector<double> th_busy(2 * size_t(omp_get_max_threads()), 0.0);   // per thread: its gate/up, down GEMV time
         int flat_w = 0;   // long passes: values per gate/up row of the flat buffers
         // passes of at least this many tokens plan over the team into the flat buffers (STRATA_RUNNER_PLAN_TEAM_MIN,
         // default 2: verification passes too; the plan only builds lists, the arithmetic is the same)
@@ -4750,6 +5883,7 @@ struct Runner {
         team_run([&] {
             const int th = omp_get_thread_num(), nth = omp_get_num_threads();
             gemv_share(first, th, nth);
+            if (th == 0) t_gemv = now();
             if (rsh) {
                 team_barrier();
                 if (th == 0) {
@@ -4786,35 +5920,54 @@ struct Runner {
                 if (th == 0) {   // the uses in slice order (as the map below), their tokens in token order
                     for (int tk = 0; tk < T; ++tk) route_ids.insert(route_ids.end(), ids[tk].begin(), ids[tk].end());
                     t_pl[0] = now();
+                    // a counting sort into one array (each use's tokens in token order): per-use push_backs into
+                    // separately allocated vectors cost ~0.1 ms per call in cache misses on this thread
                     auto &use_of = moe_use_of;
-                    use_of.assign(E.slices.size(), -1);
+                    const int ns = int(E.slices.size());
+                    use_of.assign(ns, -1);
+                    auto &cnt = moe_cnt, &flat = moe_flat_tok, &slice_of = moe_slice_of;
+                    cnt.assign(ns, 0);
                     for (int tk = 0; tk < T; ++tk)
-                        for (int i : mine[tk]) use_of[E.owner_index[ids[tk][i]]] = 0;
-                    for (size_t si = 0; si < use_of.size(); ++si)   // marked 0: numbered in slice order
-                        if (use_of[si] == 0) use_of[si] = n_uses++;
+                        for (int i : mine[tk]) ++cnt[E.owner_index[ids[tk][i]]];
+                    slice_of.clear();
+                    for (int si = 0; si < ns; ++si)   // numbered in slice order
+                        if (cnt[si]) use_of[si] = n_uses++, slice_of.push_back(si);
                     if (pool.size() < size_t(n_uses)) pool.resize(n_uses);
-                    for (size_t si = 0; si < use_of.size(); ++si)
-                        if (use_of[si] >= 0) pool[use_of[si]].slice = int(si), pool[use_of[si]].tokens.clear();
-                    for (int tk = 0; tk < T; ++tk)
-                        for (int i : mine[tk]) pool[use_of[E.owner_index[ids[tk][i]]]].tokens.push_back(tk);
                     moe_row_off.assign(size_t(n_uses) + 1, 0);
-                    for (int ui = 0; ui < n_uses; ++ui) moe_row_off[ui + 1] = moe_row_off[ui] + int(pool[ui].tokens.size());
+                    for (int ui = 0; ui < n_uses; ++ui) moe_row_off[ui + 1] = moe_row_off[ui] + cnt[slice_of[ui]];
                     const size_t rows_all = size_t(moe_row_off[n_uses]);
-                    for (int ui = 0; ui < n_uses; ++ui) flat_w = std::max(flat_w, E.slices[pool[ui].slice].gate.rows);
+                    flat.resize(rows_all);
+                    moe_fill.assign(moe_row_off.begin(), moe_row_off.end() - 1);
+                    for (int tk = 0; tk < T; ++tk)
+                        for (int i : mine[tk]) flat[moe_fill[use_of[E.owner_index[ids[tk][i]]]]++] = tk;
+                    t_pu[0] = now();
+                    for (int ui = 0; ui < n_uses; ++ui) flat_w = std::max(flat_w, E.slices[slice_of[ui]].gate.rows);
                     moe_fg.get(rows_all * flat_w), moe_fu.get(rows_all * flat_w), moe_fy.get(rows_all * H);
                     if (moe_fact.size() < rows_all) moe_fact.resize(rows_all);
+                    t_pu[1] = now();
                     up.resize(2 * size_t(n_uses)), down.resize(size_t(n_uses) + (sr ? 1 : 0));
                     moe_block_off.assign(size_t(n_uses) + 2, 0);
                     for (int ui = 0; ui < n_uses; ++ui)
-                        moe_block_off[ui + 1] = moe_block_off[ui] + int(pool[ui].tokens.size()) * (E.slices[pool[ui].slice].gate.rows / 64);
+                        moe_block_off[ui + 1] = moe_block_off[ui] + (moe_row_off[ui + 1] - moe_row_off[ui]) * (E.slices[moe_slice_of[ui]].gate.rows / 64);
                     moe_block_off[n_uses + 1] = moe_block_off[n_uses] + (sr ? T * (sr / 64) : 0);
                     blocks.resize(moe_block_off[n_uses + 1]);
+                    if (T > 4 && w4a8_xt_on()) {   // the transposed activations' blocks (gate / up: H values, down: flat_w)
+                        moe_xblk.assign(size_t(n_uses) + 1, 0);
+                        for (int ui = 0; ui < n_uses; ++ui) {
+                            const int nt = moe_row_off[ui + 1] - moe_row_off[ui];
+                            moe_xblk[ui + 1] = moe_xblk[ui] + (nt >= w4a8_gemm_min() ? gf4_w4a8_gemm_blocks(nt) : 0);
+                        }
+                        const size_t nb = moe_xblk[n_uses];
+                        moe_xt.get(nb * 16 * H), moe_xs.get(nb * H), moe_xtd.get(nb * 16 * flat_w), moe_xsd.get(nb * flat_w);
+                    }
                     t_pl[1] = now();
                 }
                 team_barrier();
 #pragma omp for schedule(dynamic, 4) nowait
                 for (int ui = 0; ui < n_uses; ++ui) {   // each use's buffers, jobs and SwiGLU blocks (the code below, per use)
                     MoeUse &us = pool[ui];
+                    us.slice = moe_slice_of[ui];
+                    us.tokens.assign(moe_flat_tok.begin() + moe_row_off[ui], moe_flat_tok.begin() + moe_row_off[ui + 1]);
                     const auto &sl = E.slices[us.slice];
                     const int nt = int(us.tokens.size());
                     // rows [moe_row_off[ui], + nt) of the flat buffers (flat_w values per gate/up row: the widest slice)
@@ -4830,8 +5983,19 @@ struct Runner {
                     }
                     Job jg{&sl.gate, nullptr, us.gp, nt, sl.gate.rows}, ju{&sl.up, nullptr, us.upp, nt, sl.up.rows};
                     for (int k = 0; k < nt; ++k) jg.as[k] = ju.as[k] = &ax[us.tokens[k]];
-                    up[2 * ui] = std::move(jg), up[2 * ui + 1] = std::move(ju);
                     down[ui] = {&sl.down, us.ap, us.yp, nt, H};
+                    if (T > 4 && w4a8_xt_on() && moe_xblk[ui + 1] > moe_xblk[ui]) {   // (the uses of 8+ tokens)
+                        const size_t bk = moe_xblk[ui];
+                        if (sl.gate.kind == Kind::NvQ && sl.up.kind == Kind::NvQ && sl.gate.cols == H && sl.up.cols == H && ax[0].group == g_act_group) {
+                            int8_t *xt = moe_xt.get(0) + bk * 16 * H;
+                            float *xs = moe_xs.get(0) + bk * H;
+                            w4a8_xt_prep(jg.as, nt, H, xt, xs);
+                            jg.xt = ju.xt = xt, jg.xs = ju.xs = xs;
+                        }
+                        if (sl.down.kind == Kind::NvQ && sl.down.cols <= flat_w)   // filled after the SwiGLU blocks
+                            down[ui].xt = moe_xtd.get(0) + bk * 16 * flat_w, down[ui].xs = moe_xsd.get(0) + bk * flat_w;
+                    }
+                    up[2 * ui] = std::move(jg), up[2 * ui + 1] = std::move(ju);
                     int b = moe_block_off[ui];
                     for (int k = 0; k < nt; ++k)
                         for (int j0 = 0; j0 < sl.gate.rows; j0 += 64) blocks[b++] = {ui, k, j0};
@@ -4921,9 +6085,14 @@ struct Runner {
                 t_plan = now();
             }
             team_barrier();
+            if (th == 0) te[0] = now();
+            const double tu0 = now();
             prefetch_share(down, th, nth);
-            gemv_share(up, th, nth);
+            if (T > 4) gemv_share_cmg(up, th, nth); else gemv_share(up, th, nth);   // (decode passes: the placement split)
+            th_busy[2 * th] = now() - tu0;
+            if (th == 0) te[1] = now();
             team_barrier();
+            if (th == 0) te[2] = now();
 #pragma omp for schedule(static) nowait
             for (size_t bi = 0; bi < blocks.size(); ++bi) {
                 const auto [ui, k, j0] = blocks[bi];
@@ -4944,8 +6113,49 @@ struct Runner {
                 }
             }
             team_barrier();
-            gemv_share(down, th, nth);
+            if (th == 0) te[3] = now();
+            if (T > 4 && w4a8_xt_on() && T >= plan_team_min) {   // each use's SwiGLU rows transposed once for down
+#pragma omp for schedule(dynamic, 4) nowait
+                for (int ui = 0; ui < n_uses; ++ui)
+                    if (down[ui].xt) {
+                        const MoeUse &us = pool[ui];
+                        const int nt = down[ui].nt, cols = down[ui].m->cols;
+                        thread_local std::vector<gf4_q8act> q;
+                        q.resize(nt);
+                        for (int k = 0; k < nt; ++k)
+                            q[k] = gf4_q8act{cols, us.ap[k].q.data(), us.ap[k].qs.data(), us.ap[k].group};
+                        gf4_w4a8_gemm_prep(q.data(), nt, cols, const_cast<int8_t *>(down[ui].xt), const_cast<float *>(down[ui].xs));
+                    }
+                team_barrier();
+                if (th == 0) t_xd = now() - te[3], te[3] = now();
+            }
+            const double td0 = now();
+            if (T > 4) gemv_share_cmg(down, th, nth); else gemv_share(down, th, nth);
+            th_busy[2 * th + 1] = now() - td0;
+            if (th == 0) te[4] = now();
             team_barrier();
+            if (th == 0) te[5] = now();
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+            if (H % 1024 == 0) {   // (token, 1024 values) items, 16 lanes: the same zero start, one fused multiply-add
+                                   // per routed expert in order, then + ys (the scalar loop's contracted arithmetic)
+                const int nq = H / 1024;
+                const svbool_t pw = svptrue_b32();
+#pragma omp for schedule(static) nowait
+                for (int it = 0; it < T * nq; ++it) {
+                    const int tk = it / nq, d0 = (it % nq) * 1024, nk = int(yk[tk].size());
+                    float rk[16];
+                    for (int k = 0; k < nk && k < 16; ++k) rk[k] = routing[tk][mine[tk][k]];
+                    if (nk > 16) std::abort();
+                    const float *ysr = ys.data() + size_t(tk) * H;
+                    float *out = sum[tk].data();
+                    for (int d = d0; d < d0 + 1024; d += 16) {
+                        svfloat32_t v = svdup_n_f32(0);
+                        for (int k = 0; k < nk; ++k) v = svmla_f32_x(pw, v, svdup_n_f32(rk[k]), svld1_f32(pw, yk[tk][k] + d));
+                        svst1_f32(pw, out + d, svadd_f32_x(pw, v, svld1_f32(pw, ysr + d)));
+                    }
+                }
+            } else
+#endif
 #pragma omp for schedule(static) nowait
             for (int td = 0; td < T * H; ++td) {
                 const int tk = td / H, d = td % H;
@@ -4955,10 +6165,23 @@ struct Runner {
             }
         });
         timers["router"] += t_route - t_in;
-        timers["experts"] += now() - t_route;
+        timers["router.acts"] += t_acts - t_in, timers["router.gemv"] += t_gemv - t_acts, timers["router.rest"] += t_route - t_gemv;
+        const double t_end = now();
+        timers["experts"] += t_end - t_route;
+        // thread 0: gate/up GEMVs (its own share, then the barrier wait), SwiGLU, down (own, wait), weighted sum
+        timers["experts.up"] += te[1] - te[0], timers["experts.up_wait"] += te[2] - te[1], timers["experts.act"] += te[3] - te[2];
+        timers["experts.down"] += te[4] - te[3], timers["experts.down_wait"] += te[5] - te[4], timers["experts.sum"] += t_end - te[5];
+        timers["experts.xt_down"] += t_xd;
+        {   // the slowest thread and the mean (balance of the expert GEMVs)
+            const int nth = omp_get_max_threads();
+            double mu = 0, md = 0, xu = 0, xd = 0;
+            for (int i = 0; i < nth; ++i) mu += th_busy[2 * i], md += th_busy[2 * i + 1], xu = std::max(xu, th_busy[2 * i]), xd = std::max(xd, th_busy[2 * i + 1]);
+            timers["experts.up_max"] += xu, timers["experts.up_mean"] += mu / nth, timers["experts.down_max"] += xd, timers["experts.down_mean"] += md / nth;
+        }
         timers["experts.plan"] += t_plan - t_route;   // thread 0's routing and job list (the others wait)
         timers["experts.plan_route"] += t_pl[0] - t_route, timers["experts.plan_uses"] += t_pl[1] - t_pl[0];
         timers["experts.plan_jobs"] += t_pl[2] - t_pl[1], timers["experts.plan_rows"] += t_plan - t_pl[2];
+        if (t_pu[0] > 0) timers["experts.pu_lists"] += t_pu[0] - t_pl[0], timers["experts.pu_bufs"] += t_pu[1] - t_pu[0], timers["experts.pu_jobs"] += t_pl[1] - t_pu[1];
         return sum;
     }
     std::vector<Vec> moe_multi(MoeLayer &E, const std::vector<Vec> &xs, const strata::core::LayerDescriptor &desc) {
@@ -5121,22 +6344,46 @@ struct Runner {
         std::vector<Vec> cur(T, Vec(H, 0.f));
         for (int t = 0; t < T; ++t) std::copy(part.begin() + size_t(t) * rows, part.begin() + size_t(t + 1) * rows, cur[t].begin() + mtp.eh_rows.begin);
         allreduce_rows(cur);   // the other ranks' rows are zero here: the sum is the row vector itself
+        const double t_front = now();
+        // STRATA_RUNNER_MTP_DETAIL=1: the shared timers' growth inside the draft block's attention and MoE, as mtpa.* / mtpm.*
+        static const bool mtp_detail = std::getenv("STRATA_RUNNER_MTP_DETAIL") && std::string(std::getenv("STRATA_RUNNER_MTP_DETAIL")) == "1";
+        std::map<std::string, double> snap;
+        auto diff_into = [&](const char *pre) {
+            for (const auto &[k, v] : timers)
+                if (k.compare(0, 3, "mtp") && k.compare(0, 3, "mhs")) {
+                    const auto it = snap.find(k);
+                    const double d = v - (it == snap.end() ? 0 : it->second);
+                    if (d > 0) timers[pre + k] += d;   // new keys only start with the prefix: no rehash of k's iterator
+                }
+        };
+        if (mtp_detail) snap = timers;
         std::vector<Vec> x(T);
         for (int t = 0; t < T; ++t) x[t] = norm(cur[t], Y.attn_norm);
         auto y = mla_multi(Y.ml, x, cell);
         allreduce_rows(y);
+        const double t_attn = now();
+        if (mtp_detail) diff_into("mtpa."), snap = timers;
         for (int t = 0; t < T; ++t) {
             for (int d = 0; d < H; ++d) cur[t][d] += y[t][d];
             x[t] = norm(cur[t], Y.ffn_norm);
         }
         y = moe_multi(Y.moe, x, m.draft_layers.at(0));
         allreduce_rows(y);
+        const double t_moe = now();
+        if (mtp_detail) diff_into("mtpm.");
+        timers["mtp.front"] += t_front - t0, timers["mtp.attn"] += t_attn - t_front, timers["mtp.moe"] += t_moe - t_attn;
+        timers["mtp.calls"] += 1e-3, timers["mtp.tokens"] += 1e-3 * T;
         std::vector<Vec> h(T);
         for (int t = 0; t < T; ++t) {
             for (int d = 0; d < H; ++d) cur[t][d] += y[t][d];
             h[t] = norm(cur[t], mtp.head_norm);
         }
-        mtp.position = cell + T;
+        if (mtp_cells.size() == pass_groups.size() && pass_groups.size() > 1)   // mtp_forward_ctx: each context's next cell
+            for (size_t gi = 0; gi < pass_groups.size(); ++gi) {
+                const auto [c, len] = pass_groups[gi];
+                (c == active_ctx ? mtp.position : ctx_store[c].mtp_position) = mtp_cells[gi] + len;
+            }
+        else mtp.position = cell + T;
         if (logits) {
             const Matrix &dh = draft_head.rows ? draft_head : head;
             auto ah = acts_of(h, H, needs_q8(dh));
@@ -5145,6 +6392,7 @@ struct Runner {
             logits->clear();
             if (!full_logits) {   // this rank's rows only: argmax_last() picks the drafts
                 last_part = split_rows(hp, T, head.rows, head.rows);
+                timers["mtp.head"] += now() - t_moe;
                 timers["mtp"] += now() - t0;
                 return h;
             }
@@ -5161,16 +6409,21 @@ struct Runner {
 
     bool head_last = false;   // step_multi without full logits: the head for the pass's last token only (prefill)
     // the pass: rank 0 gets each token's logits (nothing when the model is truncated); dumps[t] as step()'s dump
-    // A prefill pass in two halves whose all-reduces overlap the other half's compute (STRATA_RUNNER_PREFILL_PIPE=1):
+    // A prefill pass in two halves whose all-reduces overlap the other half's compute (default; STRATA_RUNNER_PREFILL_PIPE=0: off):
     // per layer the attention of half A then B (A's tokens come first: the KDA states and MLA caches see the same
     // order), each half's output all-reduced by the comm thread while the next half computes, then the FFN site and
     // FFN of A then B the same way. The arithmetic per token is step_multi's, so the bits are the same.
-    std::array<Vec, 4> pipe_buf;
+    std::array<Vec, 8> pipe_buf;
+    std::array<std::vector<Vec>, 8> pipe_y;
     std::vector<Vec> step_multi_pipe(const std::vector<int> &tokens, const std::vector<std::filesystem::path> &dumps = {}) {
-        const int T = int(tokens.size()), H = m.hidden, nA = T / 2, base = position;
-        const int off[2] = {0, nA}, len[2] = {nA, T - nA};
-        std::vector<Vec> rh[2];
-        for (int h = 0; h < 2; ++h) {
+        // K parts (STRATA_RUNNER_PIPE_PARTS, 2..4, default 2): each part's all-reduces overlap the other parts' work
+        static const int KP = std::getenv("STRATA_RUNNER_PIPE_PARTS") ? std::clamp(std::atoi(std::getenv("STRATA_RUNNER_PIPE_PARTS")), 2, 4) : 2;
+        const int T = int(tokens.size()), H = m.hidden, base = position, K = std::min(KP, std::max(2, T / 16));
+        int off[4], len[4];
+        for (int h = 0; h < K; ++h) off[h] = int(int64_t(T) * h / K), len[h] = int(int64_t(T) * (h + 1) / K) - off[h];
+        const double busy0 = comm.ar_thread_busy;
+        std::vector<Vec> rh[4];
+        for (int h = 0; h < K; ++h) {
             rh[h].resize(len[h]);
             team_run([&] {   // first touched by each token's owner in site_tokens
                 const int th = omp_get_thread_num(), nth = omp_get_num_threads();
@@ -5188,8 +6441,37 @@ struct Runner {
                 }
             }
         }
-        auto stage = [&](std::vector<Vec> &ys, Vec &buf) {   // rows into the buffer, the all-reduce posted
+        // staged all-reduces (STRATA_RUNNER_AR_STAGED=0: off): the team writes the rows straight into the bank's
+        // send slots (shard by shard) and reads the sums from its result slots; the comm thread only sums and Puts
+        // (its copies in and out were most of its 1.45 ms per prompt token, memory-bound on one core)
+        static const bool staged_on = !(std::getenv("STRATA_RUNNER_AR_STAGED") && std::string(std::getenv("STRATA_RUNNER_AR_STAGED")) == "0");
+        std::vector<int> soff[8];
+        bool staged[8] = {false, false, false, false, false, false, false, false};
+        // f(t, d, i0, i1): row t's elements [i0, i1) belong to shard d (element t * H + i)
+        auto rows_by_shard = [&](const std::vector<int> &off, int t, auto &&f) {
+            const int e0 = t * H, e1 = e0 + H;
+            int d = int(std::upper_bound(off.begin(), off.end(), e0) - off.begin()) - 1;
+            for (int e = e0; e < e1; ++d) {
+                const int stop = std::min(e1, off[d + 1]);
+                f(d, e - e0, stop - e0, e - off[d]);
+                e = stop;
+            }
+        };
+        auto stage = [&](std::vector<Vec> &ys, Vec &buf, int slot) {   // rows into the buffer, the all-reduce posted
             const int n = int(ys.size());
+            staged[slot] = staged_on && comm.staged_ok(n * H) && slot < comm.nbanks;
+            if (staged[slot]) {
+                comm.staged_shards(n * H, soff[slot]);
+                const auto &off = soff[slot];
+                team_run([&] {
+#pragma omp for schedule(static) nowait
+                    for (int t = 0; t < n; ++t)
+                        rows_by_shard(off, t, [&](int d, int i0, int i1, int o) {
+                            std::copy(ys[t].begin() + i0, ys[t].begin() + i1, comm.staged_send(slot, d) + o);
+                        });
+                });
+                return comm.allreduce_staged(slot, n * H);
+            }
             if (buf.size() < size_t(n) * H) buf.resize(size_t(n) * H);
             team_run([&] {
 #pragma omp for schedule(static) nowait
@@ -5197,15 +6479,33 @@ struct Runner {
             });
             return comm.allreduce_async(buf.data(), n * H);
         };
-        auto unstage = [&](long tk, std::vector<Vec> &ys, Vec &buf) {
+        // the summed rows go to persistent per-token vectors first touched by the token's owner in site_tokens
+        // (thread t % team): the sublayer outputs were allocated on the main thread's CMG, so the other CMGs' threads
+        // read them remotely in every site
+        auto unstage = [&](long tk, int n, Vec &buf, int slot) -> std::vector<Vec> & {
             const double tw = now();
             comm.ar_wait(tk);
-            timers["comm.wait"] += now() - tw;
-            const int n = int(ys.size());
+            const double dw = now() - tw;
+            timers["comm.wait"] += dw;
+            // by output (attention / FFN, part) and the layer kind whose output it is
+            const bool ffn = slot >= K;
+            const int lk = ffn ? cur_layer - 1 : cur_layer;   // an FFN output is waited for at the next layer
+            timers[std::string("comm.w_") + (lk >= 0 && lk < int(L.size()) && !L[lk].kda ? "mla_" : "kda_") + (ffn ? "ffn" : "att") + char('A' + slot % K)] += dw;
+            auto &own = pipe_y[slot];
+            if (own.size() != size_t(n)) own.resize(n);
             team_run([&] {
-#pragma omp for schedule(static) nowait
-                for (int t = 0; t < n; ++t) std::copy(buf.begin() + size_t(t) * H, buf.begin() + size_t(t + 1) * H, ys[t].begin());
+                const int th = omp_get_thread_num(), nth = omp_get_num_threads();
+                for (int t = th; t < n; t += nth) {
+                    if (own[t].size() != size_t(H)) own[t].assign(H, 0.f);
+                    if (staged[slot])
+                        rows_by_shard(soff[slot], t, [&](int d, int i0, int i1, int o) {
+                            const float *src = comm.staged_result(slot, d) + o;
+                            std::copy(src, src + (i1 - i0), own[t].begin() + i0);
+                        });
+                    else std::copy(buf.begin() + size_t(t) * H, buf.begin() + size_t(t + 1) * H, own[t].begin());
+                }
             });
+            return own;
         };
         auto save = [&](const char *kind, int l, int h) {   // step_multi's residual dumps
             if (dumps.empty() || comm.rank) return;
@@ -5215,17 +6515,17 @@ struct Runner {
                 o.write(reinterpret_cast<const char *>(rh[h][t].data()), rh[h][t].size() * 4);
             }
         };
-        std::vector<Vec> c_ffn[2], y_ffn[2];
-        long tk_ffn[2] = {0, 0};
+        std::vector<Vec> c_ffn[4], y_ffn[4];
+        long tk_ffn[4] = {0, 0, 0, 0};
         for (int l = 0; l < layers_run; ++l) {
             auto &Y = L[l];
             cur_layer = l;
-            std::vector<Vec> c[2], ya[2];
-            long tk_att[2] = {0, 0};
-            MlaFront fr[2];
-            for (int h = 0; h < 2; ++h) {
-                if (l) unstage(tk_ffn[h], y_ffn[h], pipe_buf[2 + h]);
-                auto st = site_multi(rh[h], l ? &c_ffn[h] : nullptr, l ? &y_ffn[h] : nullptr, Y.hc_attn, Y.hc_attn_base, Y.hc_attn_scale, Y.attn_norm);
+            std::vector<Vec> c[4], ya[4];
+            long tk_att[4] = {0, 0, 0, 0};
+            MlaFront fr[4];
+            for (int h = 0; h < K; ++h) {
+                std::vector<Vec> *yf = l ? &unstage(tk_ffn[h], len[h], pipe_buf[K + h], K + h) : nullptr;
+                auto st = site_multi(rh[h], l ? &c_ffn[h] : nullptr, yf, Y.hc_attn, Y.hc_attn_base, Y.hc_attn_scale, Y.attn_norm);
                 if (l) save("layer", l - 1, h);
                 std::vector<Vec> x(len[h]);
                 c[h].resize(len[h]);
@@ -5233,38 +6533,39 @@ struct Runner {
                 position = base + off[h];
                 if (Y.kda) {
                     ya[h] = kda_multi(Y.kd, x);
-                    tk_att[h] = stage(ya[h], pipe_buf[h]);
+                    tk_att[h] = stage(ya[h], pipe_buf[h], h);
                 } else
                     mla_front1(Y.ml, x, fr[h], true);   // the fronts' all-reduces each overlap the other half's work
             }
             if (!Y.kda) {
-                for (int h = 0; h < 2; ++h) mla_front2(Y.ml, fr[h]);
-                for (int h = 0; h < 2; ++h) {
+                for (int h = 0; h < K; ++h) mla_front2(Y.ml, fr[h]);
+                for (int h = 0; h < K; ++h) {
                     position = base + off[h];
                     ya[h] = mla_back(Y.ml, fr[h]);
-                    tk_att[h] = stage(ya[h], pipe_buf[h]);
+                    tk_att[h] = stage(ya[h], pipe_buf[h], h);
                 }
             }
-            for (int h = 0; h < 2; ++h) {
-                unstage(tk_att[h], ya[h], pipe_buf[h]);
-                auto st = site_multi(rh[h], &c[h], &ya[h], Y.hc_ffn, Y.hc_ffn_base, Y.hc_ffn_scale, Y.ffn_norm);
+            for (int h = 0; h < K; ++h) {
+                auto &yo = unstage(tk_att[h], len[h], pipe_buf[h], h);
+                auto st = site_multi(rh[h], &c[h], &yo, Y.hc_ffn, Y.hc_ffn_base, Y.hc_ffn_scale, Y.ffn_norm);
                 save("attn", l, h);
                 std::vector<Vec> x(len[h]);
                 c_ffn[h].resize(len[h]);
                 for (int t = 0; t < len[h]; ++t) x[t] = std::move(st[t].first), c_ffn[h][t] = std::move(st[t].second);
                 y_ffn[h] = ffn_multi(l, x);
-                tk_ffn[h] = stage(y_ffn[h], pipe_buf[2 + h]);
+                tk_ffn[h] = stage(y_ffn[h], pipe_buf[K + h], K + h);
             }
         }
-        for (int h = 0; h < 2; ++h) {
-            unstage(tk_ffn[h], y_ffn[h], pipe_buf[2 + h]);
-            for (int t = 0; t < len[h]; ++t) write(rh[h][t], c_ffn[h][t], y_ffn[h][t]);
+        for (int h = 0; h < K; ++h) {
+            auto &yf = unstage(tk_ffn[h], len[h], pipe_buf[K + h], K + h);
+            for (int t = 0; t < len[h]; ++t) write(rh[h][t], c_ffn[h][t], yf[t]);
             save("layer", layers_run - 1, h);
         }
         position = base + T;
+        timers["comm.thread"] += comm.ar_thread_busy - busy0;   // the comm thread's all-reduce time in this pass
         std::vector<Vec> r;
         r.reserve(T);
-        for (int h = 0; h < 2; ++h) for (auto &v : rh[h]) r.push_back(std::move(v));
+        for (int h = 0; h < K; ++h) for (auto &v : rh[h]) r.push_back(std::move(v));
         last_hash = 1469598103934665603ull;   // as step_multi
         for (float v : r[T - 1]) {
             uint32_t u;
@@ -5427,9 +6728,10 @@ int generate(Runner &runner, Comm &comm, const std::vector<int> &prompt, int cou
     };
     std::vector<Vec> hid;
     double t0 = now();
-    // STRATA_RUNNER_PREFILL_CHUNK=N: the prompt in multi-token passes of N positions (default 128; 1: one step() per
-    // token); the tokens and states are the same (a pass is bitwise equal to its single steps)
-    const size_t chunk = std::getenv("STRATA_RUNNER_PREFILL_CHUNK") ? std::clamp(std::atoi(std::getenv("STRATA_RUNNER_PREFILL_CHUNK")), 1, MAX_PASS) : 128;
+    // STRATA_RUNNER_PREFILL_CHUNK=N: the prompt in multi-token passes of N positions (default 1024: 2K 245.5 / 8K 216.7
+    // tok/s against 215.4 at 128, 2026-10-25; 1: one step() per token); the tokens and states are the same (a pass
+    // is bitwise equal to its single steps)
+    const size_t chunk = std::getenv("STRATA_RUNNER_PREFILL_CHUNK") ? std::clamp(std::atoi(std::getenv("STRATA_RUNNER_PREFILL_CHUNK")), 1, MAX_PASS) : 1024;
     if (chunk == 1)
         for (int tok : prompt) {
             runner.step(tok, {});
@@ -5439,8 +6741,8 @@ int generate(Runner &runner, Comm &comm, const std::vector<int> &prompt, int cou
         for (size_t q0 = 0; q0 < prompt.size(); q0 += chunk) {
             const std::vector<int> tk(prompt.begin() + q0, prompt.begin() + std::min(prompt.size(), q0 + chunk));
             runner.head_last = true;
-            // STRATA_RUNNER_PREFILL_PIPE=1: the pass in two halves with overlapped all-reduces (passes of 64+ tokens)
-            static const bool pipe = std::getenv("STRATA_RUNNER_PREFILL_PIPE") && std::string(std::getenv("STRATA_RUNNER_PREFILL_PIPE")) == "1";
+            // the pass in two halves with overlapped all-reduces (passes of 64+ tokens; STRATA_RUNNER_PREFILL_PIPE=0: off)
+            static const bool pipe = prefill_pipe();
             if (pipe && tk.size() >= 64) runner.step_multi_pipe(tk);
             else runner.step_multi(tk, {});
             runner.head_last = false;
@@ -5468,6 +6770,10 @@ int generate(Runner &runner, Comm &comm, const std::vector<int> &prompt, int cou
         o << "RUNNER_PREFILL_TIMERS chunk=" << chunk << " main_s=" << prefill_main_s << " ms_per_token";
         for (const auto &[k, v] : runner.timers) o << ' ' << k << '=' << v / double(prompt.size()) * 1e3;
         std::cout << o.str() << '\n';
+        std::ostringstream m;   // every thread's mHC site time, ms per prompt token
+        m << "RUNNER_MHC_THREADS";
+        for (int i = 0; i < omp_get_max_threads() && i < 64; ++i) m << ' ' << runner.mhc_thr_total[i] / double(prompt.size()) * 1e3;
+        std::cout << m.str() << '\n';
     }
     runner.timers.clear();   // decode only
     comm.argmax_local_s = comm.argmax_comm_s = 0;
@@ -5503,6 +6809,11 @@ int generate(Runner &runner, Comm &comm, const std::vector<int> &prompt, int cou
     };
     double phase[4] = {0, 0, 0, 0};   // draft, verify, rollback, resync
     Vec h_last = depth ? hid.back() : Vec();
+    // the re-sync joins the next depth-1 draft (as generate_multi; STRATA_RUNNER_MTP_FUSE_RS=0: its own pass)
+    static const bool fuse_rs = !(std::getenv("STRATA_RUNNER_MTP_FUSE_RS") && std::string(std::getenv("STRATA_RUNNER_MTP_FUSE_RS")) == "0");
+    std::vector<int> pend_tok;
+    std::vector<Vec> pend_prev;
+    int pend_cell = 0;
     t0 = now();
     while (int(out.size()) < count) {
         if (depth == 0) {
@@ -5516,13 +6827,21 @@ int generate(Runner &runner, Comm &comm, const std::vector<int> &prompt, int cou
         double tr = now();
         std::vector<int> win{t};
         std::vector<Vec> lg;
-        auto hd = runner.mtp_forward({t}, {h_last}, p1, &lg);
+        int di = 0;   // the draft's row in the call's logits (the last; after a pending re-sync's cells)
+        std::vector<Vec> hd;
+        if (!pend_tok.empty()) {
+            pend_tok.push_back(t), pend_prev.push_back(h_last);
+            hd = runner.mtp_forward(pend_tok, pend_prev, pend_cell, &lg);
+            di = int(pend_tok.size()) - 1, hd = {hd.back()};
+            pend_tok.clear(), pend_prev.clear();
+        } else hd = runner.mtp_forward({t}, {h_last}, p1, &lg);
         const auto anchor = runner.mtp_save();
         auto draft = [&](double tau) {   // the draft token, or -1 when its MTP probability is under tau
             double prob = 1;
             const double ta = now();
-            const int tk = tau > 0 ? comm.argmax_prob(runner.last_part[0].data(), runner.vocab.end - runner.vocab.begin, runner.vocab.begin, prob)
-                                   : runner.argmax_last().at(0);
+            const int tk = tau > 0 ? comm.argmax_prob(runner.last_part[di].data(), runner.vocab.end - runner.vocab.begin, runner.vocab.begin, prob)
+                                   : runner.argmax_last().at(di);
+            di = 0;
             runner.timers["glue.argmax"] += now() - ta;
             return prob >= tau ? tk : -1;
         };
@@ -5556,6 +6875,10 @@ int generate(Runner &runner, Comm &comm, const std::vector<int> &prompt, int cou
         phase[2] += now() - tr, tr = now();
         if (lazy && acc > 0) {   // only the last accepted draft's cell is missing (it was never drafted from)
             if (acc == drafts) runner.mtp_forward({win[acc]}, {hid_win[acc - 1]}, p1 + acc, nullptr);
+        } else if (acc > 0 && fuse_rs) {
+            pend_tok.assign(win.begin() + 1, win.begin() + 1 + acc);
+            pend_prev.assign(hid_win.begin(), hid_win.begin() + acc);
+            pend_cell = p1 + 1;
         } else if (acc > 0) {
             std::vector<int> tk(win.begin() + 1, win.begin() + 1 + acc);
             std::vector<Vec> pv(hid_win.begin(), hid_win.begin() + acc);
@@ -5664,12 +6987,58 @@ int generate_multi(Runner &runner, Comm &comm, const std::vector<int> &ids, int 
     };
     std::vector<std::vector<Runner::MainState>> gsnap(C);
     int passes = 0;
+    // a context's MTP re-sync (its accepted drafts' cells) joins its next depth-1 draft: the cells follow on, so one
+    // draft-block pass instead of two (a call streams the block's weights: ~2.6 ms at C = 16); a context that is done
+    // needs none. STRATA_RUNNER_MTP_FUSE_RS=0: a re-sync pass after each verify
+    static const bool fuse_rs = !(std::getenv("STRATA_RUNNER_MTP_FUSE_RS") && std::string(std::getenv("STRATA_RUNNER_MTP_FUSE_RS")) == "0");
+    std::vector<std::vector<int>> pend_tok(C);
+    std::vector<std::vector<Vec>> pend_prev(C);
+    std::vector<int> pend_cell(C, 0);
     t0 = now();
     for (;;) {
         std::vector<int> all;
         std::vector<std::vector<int>> win(C);
         std::vector<Runner::MtpState> anchor(C);
         std::vector<std::pair<int, int>> groups;
+        // the drafts of every unfinished context, depth by depth, one draft-block pass per depth over all contexts
+        // still drafting (mtp_forward_ctx; each context's MTP state sees its own calls in their order: the same
+        // drafts as one context at a time). STRATA_RUNNER_MTP_BATCH=0: one context at a time
+        static const bool mtp_batch = !(std::getenv("STRATA_RUNNER_MTP_BATCH") && std::string(std::getenv("STRATA_RUNNER_MTP_BATCH")) == "0");
+        if (mtp_batch && depth) {
+            std::vector<int> act, dn(C, 0);
+            std::vector<Vec> hd(C);
+            for (int c = 0; c < C; ++c)
+                if (int(sq[c].out.size()) < count) act.push_back(c), sq[c].p1 = runner.position_ctx(c), win[c] = {sq[c].t}, dn[c] = choose_depth(sq[c]);
+            for (int k = 1; !act.empty(); ++k) {
+                std::vector<int> tok, cells;
+                std::vector<Vec> prev;
+                std::vector<std::pair<int, int>> g;
+                for (int c : act)
+                    if (dn[c] >= k) {
+                        if (k == 1 && !pend_tok[c].empty()) {   // the pending re-sync first, then the draft's cell
+                            tok.insert(tok.end(), pend_tok[c].begin(), pend_tok[c].end());
+                            prev.insert(prev.end(), pend_prev[c].begin(), pend_prev[c].end());
+                            cells.push_back(pend_cell[c]), g.push_back({c, int(pend_tok[c].size()) + 1});
+                            pend_tok[c].clear(), pend_prev[c].clear();
+                        } else cells.push_back(sq[c].p1 + k - 1), g.push_back({c, 1});
+                        tok.push_back(win[c].back()), prev.push_back(k == 1 ? sq[c].h_last : hd[c]);
+                    }
+                if (g.empty()) break;
+                std::vector<Vec> lg;
+                const auto h = runner.mtp_forward_ctx(tok, prev, g, cells, &lg);
+                const double ta = now();
+                const auto am = runner.argmax_last();
+                runner.timers["mtp.argmax"] += now() - ta;
+                for (size_t i = 0, e = 0; i < g.size(); ++i) {   // each group's last token is the draft
+                    const int c = g[i].first;
+                    e += g[i].second;
+                    hd[c] = h[e - 1];
+                    win[c].push_back(am.at(e - 1));
+                    if (k == 1) anchor[c] = runner.mtp_save_ctx(c);
+                }
+            }
+            for (int c : act) all.insert(all.end(), win[c].begin(), win[c].end()), groups.push_back({c, int(win[c].size())});
+        } else
         for (int c = 0; c < C; ++c) {
             if (int(sq[c].out.size()) >= count) continue;
             runner.switch_ctx(c);
@@ -5701,6 +7070,9 @@ int generate_multi(Runner &runner, Comm &comm, const std::vector<int> &ids, int 
         }
         const auto hid_all = runner.last_hidden;
         const auto best = runner.argmax_last();
+        std::vector<int> rs_tok, rs_cells;
+        std::vector<Vec> rs_prev;
+        std::vector<std::pair<int, int>> rs_g;
         int off = 0;
         for (const auto &[c, n] : groups) {
             runner.switch_ctx(c);
@@ -5711,7 +7083,19 @@ int generate_multi(Runner &runner, Comm &comm, const std::vector<int> &ids, int 
             for (int j = 0; j < drafts && j <= acc; ++j) q.acc_rate[j] = 0.9 * q.acc_rate[j] + 0.1 * (j < acc ? 1.0 : 0.0);
             for (int j = 0; j <= acc; ++j) q.out.push_back(win[c][j]);
             if (acc < drafts) runner.restore(gsnap[c][acc]);
-            if (depth) {
+            if (depth && mtp_batch) {   // the MTP re-syncs of every context in one pass below
+                runner.mtp_restore_ctx(c, anchor[c]);
+                if (acc > 0 && fuse_rs) {
+                    pend_tok[c].assign(win[c].begin() + 1, win[c].begin() + 1 + acc);
+                    pend_prev[c].assign(hid_all.begin() + off, hid_all.begin() + off + acc);
+                    pend_cell[c] = q.p1 + 1;
+                } else if (acc > 0) {
+                    rs_tok.insert(rs_tok.end(), win[c].begin() + 1, win[c].begin() + 1 + acc);
+                    rs_prev.insert(rs_prev.end(), hid_all.begin() + off, hid_all.begin() + off + acc);
+                    rs_g.push_back({c, acc}), rs_cells.push_back(q.p1 + 1);
+                }
+                q.h_last = hid_all[off + acc];
+            } else if (depth) {
                 runner.mtp_restore(anchor[c]);
                 if (acc > 0) {
                     std::vector<int> tk(win[c].begin() + 1, win[c].begin() + 1 + acc);
@@ -5724,6 +7108,7 @@ int generate_multi(Runner &runner, Comm &comm, const std::vector<int> &ids, int 
             q.drafted += drafts, q.accepted += acc;
             off += n;
         }
+        if (!rs_g.empty()) runner.mtp_forward_ctx(rs_tok, rs_prev, rs_g, rs_cells, nullptr);
         ++passes;
     }
     const double decode_s = now() - t0;
@@ -5828,6 +7213,7 @@ int bench_gemv() {
                           {"expert_up_nvp", Kind::NvP, 192, 4096, 16}, {"expert_down_nvp", Kind::NvP, 4096, 192, 8},
                           {"kda_qkv_mx", Kind::Mx, 768, 4096, 3},      {"big_nvp", Kind::NvP, 2048, 4096, 1},
                           {"expert_up_nvq", Kind::NvQ, 192, 4096, 16}, {"kda_o_mx", Kind::Mx, 4096, 768, 1},
+                          {"expert_down_nvq", Kind::NvQ, 4096, 192, 8},
                           {"huge_mx", Kind::Mx, 16384, 4096, 1},       {"huge_nvp", Kind::NvP, 16384, 4096, 1},
                           {"huge_nvq", Kind::NvQ, 16384, 4096, 1}};
     const char *only = std::getenv("STRATA_BENCH_ONLY");
@@ -6147,7 +7533,7 @@ int main(int argc, char **argv) {
                     }
                     comm.barrier();
                     const double t = now();
-                    static const bool pipe = std::getenv("STRATA_RUNNER_PREFILL_PIPE") && std::string(std::getenv("STRATA_RUNNER_PREFILL_PIPE")) == "1";
+                    static const bool pipe = prefill_pipe();
                     with_team([&] { pending = pipe && chunk.size() >= 64 ? runner.step_multi_pipe(chunk, dumps) : runner.step_multi(chunk, dumps); });
                     comm.barrier();
                     pass_dt = (now() - t) / double(chunk.size());

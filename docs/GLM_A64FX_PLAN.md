@@ -1,5 +1,7 @@
 # GLM-5.3-Flash on A64FX: simulated decode and prefill at 6 and 12 nodes, and a runner proposal
 
+The NVIDIA FP4-Local checkpoint (NVFP4 experts, FP8 trunk) on 12 nodes, with measured FP4 kernels: [GLM_A64FX_FP4_LOCAL.md](GLM_A64FX_FP4_LOCAL.md).
+
 Written 2026-10-18. Everything below that is not marked "measured" is a simulator output: an estimate with a stated
 calibration band and a printed list of hypotheses. The first version ran nothing on the cluster; on 2026-10-18 one-node
 and 12-node probes measured the expert kernels, barriers, HBM stream and the collectives at 6/8/12 ranks, and the

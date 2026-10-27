@@ -149,7 +149,9 @@ static int rsag_init(int rank, int world, int max_count)
     return 0;
 }
 
-static int rsag_allreduce(float *x, int count)
+/* staged: the payload is already in the send slots (shard d in send slot d, this rank's own in send slot me), and
+   the results stay in the region (this rank's shard in gsend, shard s in grecv slot s): no copies in or out */
+static int rsag_run(float *x, int count, int staged)
 {
     const int n = rs_n, nt = rs_nt, me = rs_me;
     if (count < 1 || count > C->max) return -1;
@@ -163,7 +165,7 @@ static int rsag_allreduce(float *x, int count)
         const int d = (me + j) % n, len = off[d + 1] - off[d], k = idx % nt;
         const size_t pl = ((size_t) len * sizeof(float) + 7) & ~(size_t) 7;
         char *sb = C->region + send_off(d);
-        memcpy(sb, x + off[d], (size_t) len * sizeof(float));
+        if (!staged) memcpy(sb, x + off[d], (size_t) len * sizeof(float));
         *(volatile uint64_t *) (sb + pl) = tok;
         if (put(k, d, send_off(d), recv_off(me), pl + 8)) return -1;
         issued[k]++;
@@ -179,7 +181,7 @@ static int rsag_allreduce(float *x, int count)
         const svbool_t pg = svwhilelt_b32(i, mylen);
         svfloat32_t acc = svdup_f32(0);
         for (int r = 0; r < n; ++r) {
-            const float *src = r == me ? x + off[me] : (const float *) (C->region + recv_off(r));
+            const float *src = r == me ? (staged ? (const float *) (C->region + send_off(me)) : x + off[me]) : (const float *) (C->region + recv_off(r));
             acc = svadd_f32_x(pg, acc, svld1_f32(pg, src + i));
         }
         svst1_f32(pg, red + i, acc);
@@ -187,7 +189,7 @@ static int rsag_allreduce(float *x, int count)
 #else
     for (int i = 0; i < mylen; ++i) {
         float acc = 0;
-        for (int r = 0; r < n; ++r) acc += (r == me ? x + off[me] : (const float *) (C->region + recv_off(r)))[i];
+        for (int r = 0; r < n; ++r) acc += (r == me ? (staged ? (const float *) (C->region + send_off(me)) : x + off[me]) : (const float *) (C->region + recv_off(r)))[i];
         red[i] = acc;
     }
 #endif
@@ -202,15 +204,71 @@ static int rsag_allreduce(float *x, int count)
         if (put(k, d, gsend_off(), grecv_off(me), mypl + 8)) return -1;
         issued[k]++;
     }
-    memcpy(x + off[me], red, (size_t) mylen * sizeof(float));
+    if (!staged) memcpy(x + off[me], red, (size_t) mylen * sizeof(float));
     for (int s = 0; s < n; ++s) trl[s] = (((size_t) (off[s + 1] - off[s]) * sizeof(float)) + 7) & ~(size_t) 7;
     if (wait_all(grecv_off, trl, tok)) return -1;
-    for (int s = 0; s < n; ++s)
-        if (s != me) memcpy(x + off[s], C->region + grecv_off(s), (size_t) (off[s + 1] - off[s]) * sizeof(float));
+    if (!staged)
+        for (int s = 0; s < n; ++s)
+            if (s != me) memcpy(x + off[s], C->region + grecv_off(s), (size_t) (off[s + 1] - off[s]) * sizeof(float));
     if (drain_tcq(issued)) return -1;
     if (!rs_late_drain) drain_mrq();
     return 0;
 }
+
+static int rsag_allreduce(float *x, int count) { return rsag_run(x, count, 0); }
+
+/* banks: further regions for staged all-reduces (one per pipelined pass slot: an all-reduce in flight or queued never
+   shares slots with another), registered on the same VCQs (stags RS_STAG + 2 + bank) */
+enum { RS_MAXB = 8 };
+static struct rs_region_t rs_bank[RS_MAXB];
+static int rs_nbank;
+static int region_init(struct rs_region_t *R, int max, int stag)
+{
+    R->max = max;
+    const size_t shard = ((size_t) max / rs_n + 1) * sizeof(float);
+    R->slot = (shard + 16 + 255) & ~(size_t) 255;
+    R->rsize = (size_t) (3 * rs_n + 1) * R->slot;
+    if (posix_memalign((void **) &R->region, 256, R->rsize)) return -1;
+    memset(R->region, 0, R->rsize);
+    for (size_t off = 0; off < R->rsize; off += 256) __asm__ __volatile__("dc civac, %0" ::"r"(R->region + off) : "memory");
+    __asm__ __volatile__("dsb sy" ::: "memory");
+    for (int k = 0; k < rs_nt; ++k) {
+        if (utofu_reg_mem_with_stag(rs_vcq[k], R->region, R->rsize, stag, 0, &R->base[k]) != UTOFU_SUCCESS) return -2;
+        MPI_Allgather(&R->base[k], (int) sizeof R->base[k], MPI_BYTE, R->pbase[k], (int) sizeof R->base[k], MPI_BYTE, MPI_COMM_WORLD);
+    }
+    return 0;
+}
+/* collective: nb banks of max floats each; 0 on success */
+int cpu_utofu_banks(int nb, int max)
+{
+    if (mode_tree || nb > RS_MAXB) return -1;
+    for (int b = 0; b < nb; ++b)
+        if (region_init(&rs_bank[b], max, RS_STAG + 2 + b)) return -2;
+    MPI_Barrier(MPI_COMM_WORLD);
+    rs_nbank = nb;
+    return 0;
+}
+int cpu_utofu_bank_max(void) { return rs_nbank ? rs_bank[0].max : 0; }
+/* the shard bounds of a count-float vector (off[0..n]) and the bank's slot pointers for staging and results */
+void cpu_utofu_shards(int count, int *off)
+{
+    off[0] = 0;
+    for (int r = 0; r < rs_n; ++r) off[r + 1] = off[r] + count / rs_n + (r < count % rs_n);
+}
+/* (the slot addresses from the bank itself: these run on the main thread while the comm thread's call holds C) */
+float *cpu_utofu_bank_send(int bank, int d) { return (float *) (rs_bank[bank].region + (size_t) d * rs_bank[bank].slot); }
+const float *cpu_utofu_bank_result(int bank, int d)
+{
+    const struct rs_region_t *R = &rs_bank[bank];
+    return (const float *) (R->region + (size_t) (d == rs_me ? 2 * rs_n : 2 * rs_n + 1 + d) * R->slot);
+}
+void cpu_utofu_bank_allreduce(int bank, int count)
+{
+    C = &rs_bank[bank];
+    if (rsag_run(NULL, count, 1)) { fprintf(stderr, "RUNNER uTofu staged all-reduce failed\n"); MPI_Abort(MPI_COMM_WORLD, 3); }
+}
+int cpu_utofu_world(void) { return rs_n; }
+int cpu_utofu_rank(void) { return rs_me; }
 
 /* ------------------------------------------------------------------------------------------------ entry points */
 /* 0 on success, a negative step number otherwise */

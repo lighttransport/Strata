@@ -870,74 +870,187 @@ void gf4_bf16k(const uint8_t *m, int cols, int t0, int t1, const float *const *x
     gf4_bf16k_part(m, cols, 0, cols, t0, t1, x, nt, y, ldy);
 }
 
-enum { W4M_SLAB = 8, W4M_MAXT = 2048 };
-static _Thread_local int8_t w4m_w[W4M_SLAB * 16 * 64] __attribute__((aligned(256)));   /* [sb][g][j]: 64 int8 */
-static _Thread_local float w4m_s[W4M_SLAB * 4 * 16] __attribute__((aligned(256)));     /* [sb][g]: 16 scales */
-static _Thread_local float w4m_acc[W4M_MAXT * 16] __attribute__((aligned(256)));
+/* gf4_w4a8_gemm: tokens in the lanes. Per block of up to 32 tokens their activations are transposed once (zips) to
+   [token block][4-column chunk][16 tokens x 4 bytes], their scales to [block][scale][16]; per tile and slab of 8
+   superblocks the codes are decoded once to int8 ([sb][g][j] vectors) and F32 row scales. A row's 4 weight bytes go as a
+   broadcast (ld1rw) against the token vector, so per (row, token) the integer dots, scale products and fused
+   multiply-adds are w4a8_tile's, in its order */
+enum { W4G_SLAB = 8, W4G_TB = 2 };
+static _Thread_local int8_t w4g_w[W4G_SLAB * 16 * 64] __attribute__((aligned(256)));   /* [sb][g][j][row]: 4 bytes */
+static _Thread_local float w4g_s[W4G_SLAB * 4 * 16] __attribute__((aligned(256)));     /* [sb][g][row] */
+static _Thread_local float w4g_acc[16 * W4G_TB * 16] __attribute__((aligned(256)));    /* [row][block][token] */
+static _Thread_local int8_t *w4g_x;
+static _Thread_local float *w4g_xs;
+static _Thread_local size_t w4g_xcap, w4g_scap;
 
-/* tokens n0 (and n0 + 1 when two) over the decoded slab of nsb superblocks starting at superblock sb0 */
-INL void w4m_tokens(const gf4_q8act *act, int n0, const int two, int sb0, int nsb)
+/* 16 x 16 words: four rounds of zips transpose (v[k] lane i <- v[i] lane k) */
+INL void w4g_transpose(vs32 v[16])
 {
-    const svbool_t pw = svptrue_b32(), pb = svptrue_b8();
-    svfloat32_t f0 = svld1_f32(pw, w4m_acc + 16 * n0), f1 = two ? svld1_f32(pw, w4m_acc + 16 * (n0 + 1)) : f0;
-    const int g16a = act[n0].group == 16, g16b = two ? act[n0 + 1].group == 16 : 0;
-    for (int sl = 0; sl < nsb; ++sl) {
-        const int sb = sb0 + sl;
-        const int8_t *xa = act[n0].q + 64 * sb, *xb = two ? act[n0 + 1].q + 64 * sb : xa;
-        svfloat32_t b0 = svdup_n_f32(0), b1 = svdup_n_f32(0);
-        for (int g = 0; g < 4; ++g) {
-            const int8_t *wp = w4m_w + (size_t) (sl * 16 + g * 4) * 64;
-            const svint8_t w0 = svld1_s8(pb, wp), w1 = svld1_s8(pb, wp + 64), w2 = svld1_s8(pb, wp + 128), w3 = svld1_s8(pb, wp + 192);
-            const svfloat32_t s = svld1_f32(pw, w4m_s + (size_t) (sl * 4 + g) * 16);
-            int32_t xw[4];
-            memcpy(xw, xa + 16 * g, 16);
-            svint32_t d = svdup_n_s32(0);
-            d = svdot_s32(d, w0, svreinterpret_s8_s32(svdup_n_s32(xw[0])));
-            d = svdot_s32(d, w1, svreinterpret_s8_s32(svdup_n_s32(xw[1])));
-            d = svdot_s32(d, w2, svreinterpret_s8_s32(svdup_n_s32(xw[2])));
-            d = svdot_s32(d, w3, svreinterpret_s8_s32(svdup_n_s32(xw[3])));
-            b0 = svmla_f32_x(pw, b0, svcvt_f32_s32_x(pw, d), g16a ? svmul_n_f32_x(pw, s, act[n0].scale[4 * sb + g]) : s);
-            if (two) {
-                memcpy(xw, xb + 16 * g, 16);
-                svint32_t e = svdup_n_s32(0);
-                e = svdot_s32(e, w0, svreinterpret_s8_s32(svdup_n_s32(xw[0])));
-                e = svdot_s32(e, w1, svreinterpret_s8_s32(svdup_n_s32(xw[1])));
-                e = svdot_s32(e, w2, svreinterpret_s8_s32(svdup_n_s32(xw[2])));
-                e = svdot_s32(e, w3, svreinterpret_s8_s32(svdup_n_s32(xw[3])));
-                b1 = svmla_f32_x(pw, b1, svcvt_f32_s32_x(pw, e), g16b ? svmul_n_f32_x(pw, s, act[n0 + 1].scale[4 * sb + g]) : s);
-            }
-        }
-        f0 = g16a ? svadd_f32_x(pw, f0, b0) : svmla_n_f32_x(pw, f0, b0, act[n0].scale[sb]);
-        if (two) f1 = g16b ? svadd_f32_x(pw, f1, b1) : svmla_n_f32_x(pw, f1, b1, act[n0 + 1].scale[sb]);
+    for (int round = 0; round < 4; ++round) {
+        vs32 o[16];
+        for (int i = 0; i < 8; ++i) o[2 * i] = svzip1_s32(v[i], v[i + 8]), o[2 * i + 1] = svzip2_s32(v[i], v[i + 8]);
+        for (int i = 0; i < 16; ++i) v[i] = o[i];
     }
-    svst1_f32(pw, w4m_acc + 16 * n0, f0);
-    if (two) svst1_f32(pw, w4m_acc + 16 * (n0 + 1), f1);
 }
 
-void gf4_w4a8_many(const uint8_t *m, int cols, float global, const gf4_q8act *act, int nt, float *y, int ldy)
+/* rows 4 rb .. 4 rb + 3 over the decoded slab (ns superblocks from sb0), token block xa (scales sa), and xb / sb2
+   when two */
+INL void w4g_rows(int rb, int sb0, int ns, const int two, const int g16, const int8_t *xa, const int8_t *xb, const float *sa,
+                  const float *sb2)
 {
-    const svbool_t pw = svptrue_b32();
-    const svint8_t tbl = e2m1_table();
-    const int nsb = cols / 64;
-    if (nt > W4M_MAXT) abort();
-    for (int n = 0; n < nt; ++n) svst1_f32(pw, w4m_acc + 16 * n, svdup_n_f32(0));
-    for (int sb0 = 0; sb0 < nsb; sb0 += W4M_SLAB) {
-        const int ns = nsb - sb0 < W4M_SLAB ? nsb - sb0 : W4M_SLAB;
-        for (int sl = 0; sl < ns; ++sl) {   /* decode the slab once */
-            const uint8_t *o = m + (size_t) (sb0 + sl) * GF4_SB_BYTES;
-            for (int g = 0; g < 4; ++g) {
-                vs8 w[4];
-                decode_group_q(o + 128 * g, tbl, w);
-                for (int j = 0; j < 4; ++j) svst1_s8(svptrue_b8(), w4m_w + (size_t) (sl * 16 + g * 4 + j) * 64, w[j]);
-                svst1_f32(pw, w4m_s + (size_t) (sl * 4 + g) * 16, scale16(o + 512 + 16 * g));
+    const svbool_t pw = svptrue_b32(), pb = svptrue_b8();
+    const int32_t *w32 = (const int32_t *) w4g_w;
+    vf32 f[4][2];
+    for (int r = 0; r < 4; ++r) {
+        f[r][0] = svld1_f32(pw, w4g_acc + (4 * rb + r) * W4G_TB * 16);
+        if (two) f[r][1] = svld1_f32(pw, w4g_acc + (4 * rb + r) * W4G_TB * 16 + 16);
+    }
+    for (int sl = 0; sl < ns; ++sl) {
+        const int sb = sb0 + sl;
+        vf32 b[4][2];
+        for (int r = 0; r < 4; ++r) b[r][0] = b[r][1] = svdup_n_f32(0);
+        for (int g = 0; g < 4; ++g) {
+            vs32 d[4][2];
+            for (int r = 0; r < 4; ++r) d[r][0] = d[r][1] = svdup_n_s32(0);
+            for (int j = 0; j < 4; ++j) {
+                const size_t c = (size_t) (16 * sb + 4 * g + j) * 64;
+                const svint8_t a0 = svld1_s8(pb, xa + c), a1 = two ? svld1_s8(pb, xb + c) : a0;
+                for (int r = 0; r < 4; ++r) {
+                    const svint8_t w = svreinterpret_s8_s32(svdup_n_s32(w32[(sl * 16 + 4 * g + j) * 16 + 4 * rb + r]));
+                    d[r][0] = svdot_s32(d[r][0], a0, w);
+                    if (two) d[r][1] = svdot_s32(d[r][1], a1, w);
+                }
+            }
+            for (int r = 0; r < 4; ++r) {
+                const float ws = w4g_s[(sl * 4 + g) * 16 + 4 * rb + r];
+                const svfloat32_t s0 = g16 ? svmul_n_f32_x(pw, svld1_f32(pw, sa + (4 * sb + g) * 16), ws) : svdup_n_f32(ws);
+                b[r][0] = svmla_f32_x(pw, b[r][0], svcvt_f32_s32_x(pw, d[r][0]), s0);
+                if (two) {
+                    const svfloat32_t s1 = g16 ? svmul_n_f32_x(pw, svld1_f32(pw, sb2 + (4 * sb + g) * 16), ws) : s0;
+                    b[r][1] = svmla_f32_x(pw, b[r][1], svcvt_f32_s32_x(pw, d[r][1]), s1);
+                }
             }
         }
-        int n = 0;
-        for (; n + 1 < nt; n += 2) w4m_tokens(act, n, 1, sb0, ns);
-        if (n < nt) w4m_tokens(act, n, 0, sb0, ns);
+        for (int r = 0; r < 4; ++r) {
+            f[r][0] = g16 ? svadd_f32_x(pw, f[r][0], b[r][0]) : svmla_f32_x(pw, f[r][0], b[r][0], svld1_f32(pw, sa + 16 * sb));
+            if (two) f[r][1] = g16 ? svadd_f32_x(pw, f[r][1], b[r][1]) : svmla_f32_x(pw, f[r][1], b[r][1], svld1_f32(pw, sb2 + 16 * sb));
+        }
     }
-    const float G = global * 128.f;
-    for (int n = 0; n < nt; ++n) svst1_f32(pw, y + (size_t) n * ldy, svmul_n_f32_x(pw, svld1_f32(pw, w4m_acc + 16 * n), G));
+    for (int r = 0; r < 4; ++r) {
+        svst1_f32(pw, w4g_acc + (4 * rb + r) * W4G_TB * 16, f[r][0]);
+        if (two) svst1_f32(pw, w4g_acc + (4 * rb + r) * W4G_TB * 16 + 16, f[r][1]);
+    }
+}
+
+int gf4_w4a8_gemm_blocks(int nt) { return ((nt % 16 && nt % 16 <= 8 ? nt - nt % 16 : nt) + 15) / 16; }
+
+/* token blocks [tb0, tb1) of act (tokens past nt zero): xt + tb * cols * 16 bytes, xs + tb * (cols / group) * 16 */
+static void w4g_prep(const gf4_q8act *act, int nt, int cols, int tb0, int tb1, int8_t *xt, float *xs)
+{
+    const svbool_t pw = svptrue_b32();
+    const int nch = cols / 4, nsc = cols / act[0].group;
+    for (int tb = tb0; tb < tb1; ++tb) {
+        for (int c16 = 0; c16 < nch / 16; ++c16) {   /* 16 tokens x 16 words */
+            vs32 v[16];
+            for (int i = 0; i < 16; ++i) {
+                const int tok = 16 * tb + i;
+                v[i] = tok < nt ? svld1_s32(pw, (const int32_t *) act[tok].q + 16 * c16) : svdup_n_s32(0);
+            }
+            w4g_transpose(v);
+            for (int k = 0; k < 16; ++k) svst1_s32(pw, (int32_t *) (xt + ((size_t) tb * nch + 16 * c16 + k) * 64), v[k]);
+        }
+        for (int k = 0; k < nsc; ++k)
+            for (int i = 0; i < 16; ++i) {
+                const int tok = 16 * tb + i;
+                xs[((size_t) tb * nsc + k) * 16 + i] = tok < nt ? act[tok].scale[k] : 0.f;
+            }
+    }
+}
+
+void gf4_w4a8_gemm_prep(const gf4_q8act *act, int nt, int cols, int8_t *xt, float *xs)
+{
+    const int nb = gf4_w4a8_gemm_blocks(nt);
+    w4g_prep(act, 16 * nb < nt ? 16 * nb : nt, cols, 0, nb, xt, xs);
+}
+
+/* tiles [t0, t1) for the nn (<= 32) tokens of blocks xa (and xb when there are more than 16), rows of token n at
+   y + n * ldy */
+static void w4g_group(const uint8_t *m, int cols, float G, int t0, int t1, const int8_t *xa, const int8_t *xb, const float *sa,
+                      const float *sb2, int g16, int nn, float *y, int ldy)
+{
+    const svbool_t pw = svptrue_b32(), pb = svptrue_b8();
+    const int nsb = cols / 64, ntb = (nn + 15) / 16;
+    const svint8_t tbl = e2m1_table();
+    for (int t = t0; t < t1; ++t) {
+        const uint8_t *mt = m + (size_t) t * nsb * GF4_SB_BYTES;
+        for (int i = 0; i < 16 * W4G_TB; ++i) svst1_f32(pw, w4g_acc + 16 * i, svdup_n_f32(0));
+        for (int sb0 = 0; sb0 < nsb; sb0 += W4G_SLAB) {
+            const int ns = nsb - sb0 < W4G_SLAB ? nsb - sb0 : W4G_SLAB;
+            for (int sl = 0; sl < ns; ++sl) {   /* decode the slab once */
+                const uint8_t *o = mt + (size_t) (sb0 + sl) * GF4_SB_BYTES;
+                for (int g = 0; g < 4; ++g) {
+                    vs8 w[4];
+                    decode_group_q(o + 128 * g, tbl, w);
+                    for (int j = 0; j < 4; ++j) svst1_s8(pb, w4g_w + (size_t) (sl * 16 + g * 4 + j) * 64, w[j]);
+                    svst1_f32(pw, w4g_s + (size_t) (sl * 4 + g) * 16, scale16(o + 512 + 16 * g));
+                }
+            }
+            for (int rb = 0; rb < 4; ++rb) {
+                if (ntb == 2) {
+                    if (g16) w4g_rows(rb, sb0, ns, 1, 1, xa, xb, sa, sb2); else w4g_rows(rb, sb0, ns, 1, 0, xa, xb, sa, sb2);
+                } else {
+                    if (g16) w4g_rows(rb, sb0, ns, 0, 1, xa, xb, sa, sb2); else w4g_rows(rb, sb0, ns, 0, 0, xa, xb, sa, sb2);
+                }
+            }
+        }
+        for (int tb = 0; tb < ntb; ++tb) {   /* back to a row vector per token (scalar stores at ldy = 4096 floats all
+                                               fell in one L1 set: the down slices ran at 3.7 MAC/cycle) */
+            vs32 v[16];
+            for (int r = 0; r < 16; ++r) v[r] = svreinterpret_s32_f32(svmul_n_f32_x(pw, svld1_f32(pw, w4g_acc + (r * W4G_TB + tb) * 16), G));
+            w4g_transpose(v);
+            for (int i = 0; i < 16 && 16 * tb + i < nn; ++i) svst1_f32(pw, y + (size_t) (16 * tb + i) * ldy + 16 * t, svreinterpret_f32_s32(v[i]));
+        }
+    }
+}
+
+/* the tokens past the blocks (a remainder of 1-8) through gf4_w4a8; returns the tokens in blocks */
+static int w4g_rest(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, float *y, int ldy)
+{
+    const int nm = nt % 16 && nt % 16 <= 8 ? nt - nt % 16 : nt;
+    for (int g = nm; g < nt; g += 4) gf4_w4a8(m, cols, global, t0, t1, act + g, nt - g < 4 ? nt - g : 4, y + (size_t) g * ldy, ldy);
+    return nm;
+}
+
+void gf4_w4a8_gemm_t(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, const int8_t *xt,
+                     const float *xs, float *y, int ldy)
+{
+    const int nch = cols / 4, nsc = cols / act[0].group, g16 = act[0].group == 16;
+    nt = w4g_rest(m, cols, global, t0, t1, act, nt, y, ldy);
+    for (int n0 = 0; n0 < nt; n0 += 16 * W4G_TB) {
+        const size_t tb = (size_t) n0 / 16;
+        w4g_group(m, cols, global * 128.f, t0, t1, xt + tb * nch * 64, xt + (tb + 1) * nch * 64, xs + tb * nsc * 16, xs + (tb + 1) * nsc * 16, g16,
+                  nt - n0 < 16 * W4G_TB ? nt - n0 : 16 * W4G_TB, y + (size_t) n0 * ldy, ldy);
+    }
+}
+
+void gf4_w4a8_gemm(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, float *y, int ldy)
+{
+    const int nch = cols / 4, grp = act[0].group;
+    for (int n = 1; n < nt; ++n)
+        if (act[n].group != grp) {   /* (one scale layout per call) */
+            for (int g = 0; g < nt; g += 4) gf4_w4a8(m, cols, global, t0, t1, act + g, nt - g < 4 ? nt - g : 4, y + (size_t) g * ldy, ldy);
+            return;
+        }
+    const int nsc = cols / grp;
+    nt = w4g_rest(m, cols, global, t0, t1, act, nt, y, ldy);
+    if (w4g_xcap < (size_t) W4G_TB * nch * 64) free(w4g_x), w4g_xcap = (size_t) W4G_TB * nch * 64, w4g_x = aligned_alloc(256, w4g_xcap);
+    if (w4g_scap < (size_t) W4G_TB * nsc * 16) free(w4g_xs), w4g_scap = (size_t) W4G_TB * nsc * 16, w4g_xs = aligned_alloc(256, (w4g_scap * 4 + 255) & ~(size_t) 255);
+    for (int n0 = 0; n0 < nt; n0 += 16 * W4G_TB) {   /* 32 tokens at a time through the thread's buffers */
+        const int nn = nt - n0 < 16 * W4G_TB ? nt - n0 : 16 * W4G_TB;
+        w4g_prep(act + n0, nn, cols, 0, (nn + 15) / 16, w4g_x, w4g_xs);
+        w4g_group(m, cols, global * 128.f, t0, t1, w4g_x, w4g_x + (size_t) nch * 64, w4g_xs, w4g_xs + (size_t) nsc * 16, grp == 16, nn,
+                  y + (size_t) n0 * ldy, ldy);
+    }
 }
 
 /* gf4_tile_many: a slab's weights as F32 columns of 16 rows (column k at 16 k), its block scales, the token sums */
@@ -1243,9 +1356,26 @@ void gf4_vswiglu(float *y, const float *g, const float *u, int n, float limit)
     }
 }
 void gf4_vexp_f64(double *y, const double *x, long n) { for (long i = 0; i < n; ++i) y[i] = exp(x[i]); }
-void gf4_w4a8_many(const uint8_t *m, int cols, float global, const gf4_q8act *act, int nt, float *y, int ldy)
+void gf4_w4a8_gemm(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, float *y, int ldy)
 {
-    for (int g = 0; g < nt; g += 4) gf4_w4a8_ref(m, cols, global, 0, 1, act + g, nt - g < 4 ? nt - g : 4, y + (size_t) g * ldy, ldy);
+    for (int g = 0; g < nt; g += 4) gf4_w4a8_ref(m, cols, global, t0, t1, act + g, nt - g < 4 ? nt - g : 4, y + (size_t) g * ldy, ldy);
+}
+int gf4_w4a8_gemm_blocks(int nt) { return ((nt % 16 && nt % 16 <= 8 ? nt - nt % 16 : nt) + 15) / 16; }
+void gf4_w4a8_gemm_prep(const gf4_q8act *act, int nt, int cols, int8_t *xt, float *xs)
+{
+    const int nb = gf4_w4a8_gemm_blocks(nt), nch = cols / 4, nsc = cols / act[0].group;
+    for (int tb = 0; tb < nb; ++tb)
+        for (int i = 0; i < 16; ++i) {
+            const int tok = 16 * tb + i;
+            for (int c = 0; c < nch; ++c) memcpy(xt + ((size_t) tb * nch + c) * 64 + 4 * i, tok < nt ? act[tok].q + 4 * c : (const int8_t *) "\0\0\0", 4);
+            for (int k = 0; k < nsc; ++k) xs[((size_t) tb * nsc + k) * 16 + i] = tok < nt ? act[tok].scale[k] : 0.f;
+        }
+}
+void gf4_w4a8_gemm_t(const uint8_t *m, int cols, float global, int t0, int t1, const gf4_q8act *act, int nt, const int8_t *xt,
+                     const float *xs, float *y, int ldy)
+{
+    (void) xt, (void) xs;
+    gf4_w4a8_gemm(m, cols, global, t0, t1, act, nt, y, ldy);
 }
 void gf4_tile_many(int kind, const uint8_t *m, int cols, const float *const *x, int nt, float *y, int ldy)
 {

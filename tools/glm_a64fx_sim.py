@@ -7,12 +7,16 @@
     python3 tools/glm_a64fx_sim.py memory --nodes 6 --pack q23_fp8
     python3 tools/glm_a64fx_sim.py report                        # the markdown tables of docs/GLM_A64FX_PLAN.md
     python3 tools/glm_a64fx_sim.py estimate --nodes 12 --set node.q2k_core_gbps=4 --set profile.mhc_site_us=[40,40]
+    python3 tools/glm_a64fx_sim.py report --pack fp4_local              # FP4-Local (NVFP4 experts, census trunk) tables
+    python3 tools/glm_a64fx_sim.py estimate --pack fp4_local --profile redesign --numerics exact
+    python3 tools/glm_a64fx_sim.py sweep --pack fp4_local --profile redesign --grid profile.expert_nvfp4_w4a8_gbps=160,250,504
 
 The model is tools/sim/a64fx.py; every constant there names its measurement or says it is a hypothesis, and
 `report` prints the hypothesis list of each profile.
 """
 import argparse
 import dataclasses
+import itertools
 import json
 import sys
 from pathlib import Path
@@ -41,11 +45,16 @@ def apply_sets(args, node, tofu, profile):
         setattr(target, field, value)
 
 
+def trunk_for(args, pack=None):
+    """--trunk, defaulting to the census trunk for FP4-Local and Q8_0 otherwise."""
+    return args.trunk or ("fp4l" if (pack or args.pack) == "fp4_local" else "q8")
+
+
 def parts_from(args):
     return dict(nodes=args.nodes, trunk_tp=args.trunk_tp or args.nodes * args.ranks_per_node,
                 expert_layout=args.layout, parts=args.parts, ranks_per_node=args.ranks_per_node,
-                trunk_format=args.trunk, pack=args.pack, context=args.context, mtp_depth=args.mtp,
-                acceptance=args.acceptance, prefill_chunk=args.chunk, bf16_collectives=args.bf16)
+                trunk_format=trunk_for(args), pack=args.pack, context=args.context, mtp_depth=args.mtp,
+                acceptance=args.acceptance, prefill_chunk=args.chunk, bf16_collectives=args.bf16, numerics=args.numerics)
 
 
 def add_layout_args(ap, nodes_list=False):
@@ -57,7 +66,8 @@ def add_layout_args(ap, nodes_list=False):
     ap.add_argument("--layout", default="ep_parts", choices=["ep", "ep_parts", "tp_parts"])
     ap.add_argument("--parts", type=int, default=4)
     ap.add_argument("--ranks-per-node", type=int, default=1, choices=[1, 4])
-    ap.add_argument("--trunk", default="q8", choices=list(a64fx.TRUNK_SCALE))
+    ap.add_argument("--trunk", default=None, choices=list(a64fx.TRUNK_FORMATS), help="default: fp4l for fp4_local, else q8")
+    ap.add_argument("--numerics", default="fast", choices=["fast", "exact"], help="FP4-Local kernels: fast (W4A8, Q8_0 trunk) or exact")
     ap.add_argument("--pack", default="q23_fp8")
     ap.add_argument("--context", type=int, default=8192)
     ap.add_argument("--mtp", type=int, default=0)
@@ -118,12 +128,13 @@ def cmd_validate(args):
     return 1 if bad else 0
 
 
-def layout_grid(nodes, pack, trunk):
+def layout_grid(nodes, pack, trunk, numerics="fast"):
     for rpn in (1, 4):
         for name, layout, parts in (("sliced over 4 ranks (runner today)", "ep_parts", 4), ("sliced over every rank", "tp_parts", 0),
                                     ("whole experts (EP)", "ep", 1), ("sliced over 2 ranks", "ep_parts", 2)):
             yield name + (" x4 CMG ranks" if rpn == 4 else ""), a64fx.Layout(nodes=nodes, trunk_tp=nodes * rpn, expert_layout=layout,
-                                                                             parts=parts, ranks_per_node=rpn, pack=pack, trunk_format=trunk)
+                                                                             parts=parts, ranks_per_node=rpn, pack=pack, trunk_format=trunk,
+                                                                             numerics=numerics)
 
 
 def cmd_layouts(args):
@@ -132,9 +143,9 @@ def cmd_layouts(args):
         for pname in a64fx.PROFILES:
             profile = a64fx.PROFILES[pname]()
             apply_sets(args, node, tofu, profile)
-            print(f"\n{nodes} nodes, pack {args.pack}, {args.trunk} trunk, profile {pname}, context {args.context}")
+            print(f"\n{nodes} nodes, pack {args.pack}, {trunk_for(args)} trunk, profile {pname}, context {args.context}")
             print(f"{'layout':<44}{'GiB':>6}{'fit':>5}{'plain':>7}{'mtp2 best':>10}{'mtp2 sweep':>11}{'prefill 8K':>11}{'prefill 128':>12}")
-            for name, L in layout_grid(nodes, args.pack, args.trunk):
+            for name, L in layout_grid(nodes, args.pack, trunk_for(args), args.numerics):
                 L.context = args.context
                 d = a64fx.decode(L, node, tofu, profile)
                 m1 = a64fx.decode(dataclasses.replace(L, mtp_depth=2, acceptance="a64fx_best512"), node, tofu, profile)
@@ -147,11 +158,12 @@ def cmd_layouts(args):
 
 def cmd_memory(args):
     node, _, _ = context_for(args)
-    for pack in ([args.pack] if args.pack != "all" else ["q23_fp8", "q23", "q22", "ud_q4kxl", "reap224_q23"]):
+    for pack in ([args.pack] if args.pack != "all" else ["q23_fp8", "q23", "q22", "ud_q4kxl", "reap224_q23", "fp4_local"]):
+        trunk = trunk_for(args, pack)
         for rpn in (1, 4):
-            L = a64fx.Layout(nodes=args.nodes, trunk_tp=args.nodes * rpn, ranks_per_node=rpn, pack=pack, trunk_format=args.trunk,
-                             context=args.context)
-            print(f"{pack:<12} {args.nodes:2} nodes x{rpn} {args.trunk} trunk: {describe_fit(a64fx.memory_fit(L, node))}")
+            L = a64fx.Layout(nodes=args.nodes, trunk_tp=args.nodes * rpn, ranks_per_node=rpn, pack=pack, trunk_format=trunk,
+                             context=args.context, numerics=args.numerics)
+            print(f"{pack:<12} {args.nodes:2} nodes x{rpn} {trunk} trunk: {describe_fit(a64fx.memory_fit(L, node))}")
 
 
 def md_table(header, rows):
@@ -160,9 +172,68 @@ def md_table(header, rows):
     return "\n".join(out)
 
 
-def cmd_report(args):
+FP4_SWEEP_RATES = (120, 160, 250, 330, 504)
+
+
+def report_fp4(args):
+    """FP4-Local: memory at 6/8/12 nodes, decode and prefill per profile and numerics at 8 and 12 nodes (experts sliced
+    over 4 ranks and over every rank), and the decode sensitivity to the NVFP4 kernel rate."""
     node, tofu, _ = context_for(args)
-    pack, trunk = args.pack, args.trunk
+    pk = a64fx.pack("fp4_local")
+    c = a64fx._FP4L
+    print(f"Pack fp4_local ({pk.routed_total_bytes() / 1e9:.1f} GB routed experts with expanded scales, "
+          f"{pk.routed_bytes_per_token() / 1e9:.2f} GB per token), census trunk {c['main_fixed_matrix_bytes'] / 1e9:.2f} GB "
+          f"+ head {c['head']['bytes'] / 1e9:.3f} GB. Simulator outputs, not measurements.\n")
+    print("### Memory per rank (GiB), 32K context\n")
+    rows = []
+    for nodes in REPORT_NODES:
+        for numerics in ("fast", "exact"):
+            L = a64fx.Layout(nodes=nodes, trunk_tp=nodes, pack="fp4_local", trunk_format="fp4l", context=32768, numerics=numerics)
+            f = a64fx.memory_fit(L, node)
+            rows.append([f"{nodes}", numerics, f"{f['expert_gib']:.1f}", f"{f['trunk_gib']:.2f}", f"{f['replicated_gib']:.2f}",
+                         f"{f['kv_gib']:.2f}", f"{f['mtp_gib']:.2f}", f"{f['total_gib']:.1f}", "yes" if f["fits"] else "**no**"])
+    print(md_table(["nodes", "numerics", "experts", "trunk", "replicated", "KV 32K", "MTP", "total", "fits"], rows))
+    for pname in a64fx.PROFILES:
+        profile = a64fx.PROFILES[pname]()
+        apply_sets(args, node, tofu, profile)
+        print(f"\n### Decode and prefill, profile `{pname}` (tok/s)\n")
+        rows = []
+        for nodes in (12, 8):
+            for numerics in ("fast", "exact"):
+                for name, L in list(layout_grid(nodes, "fp4_local", "fp4l", numerics))[:2]:
+                    cells = [f"{nodes}", numerics, name]
+                    for _, ctx in WORKLOADS:
+                        Lc = dataclasses.replace(L, context=ctx)
+                        d = a64fx.decode(Lc, node, tofu, profile)
+                        m = a64fx.decode(dataclasses.replace(Lc, mtp_depth=2, acceptance="a64fx_best512"), node, tofu, profile)
+                        cells.append(f"{d.tok_s:.1f} / {m.tok_s:.1f}")
+                    p1 = a64fx.prefill(L, node, tofu, profile, 128)
+                    p8 = a64fx.prefill(L, node, tofu, profile, 8192)
+                    cells.append(f"{p1.tok_s:.0f} / {p8.tok_s:.0f}")
+                    d = a64fx.decode(dataclasses.replace(L, context=8192), node, tofu, profile)
+                    cells.append(f"{d.step_ms:.1f} = trunk {d.trunk_ms:.1f} + experts {d.experts_ms:.1f} + coll {d.comm_ms:.1f} + mHC {d.mhc_ms:.1f}"
+                                 f" + ctx {d.ctx_ms:.1f} + head {d.head_ms:.1f} + rest {d.step_ms - d.trunk_ms - d.experts_ms - d.comm_ms - d.mhc_ms - d.ctx_ms - d.head_ms:.1f}")
+                    rows.append(cells)
+        print(md_table(["nodes", "numerics", "experts", "128 ctx plain / MTP2", "8K", "32K", "prefill 128 / 8K", "8K step ms"], rows))
+        print(f"\nFP4-Local hypotheses in `{pname}`: " + "; ".join(profile.fp4l_hypotheses))
+    profile = a64fx.redesign()
+    apply_sets(args, node, tofu, profile)
+    print("\n### 12 nodes, `redesign`, fast: decode at 8K vs the NVFP4 W4A8 kernel rate (GB/s per node)\n")
+    rows = []
+    for rate in FP4_SWEEP_RATES:
+        prof = dataclasses.replace(profile, expert_nvfp4_w4a8_gbps=float(rate))
+        L = a64fx.Layout(nodes=12, trunk_tp=12, pack="fp4_local", trunk_format="fp4l", context=8192)
+        d = a64fx.decode(L, node, tofu, prof)
+        m = a64fx.decode(dataclasses.replace(L, mtp_depth=2), node, tofu, prof)
+        rows.append([f"{rate}", f"{d.experts_ms:.2f}", f"{d.tok_s:.1f}", f"{m.tok_s:.1f}"])
+    print(md_table(["W4A8 GB/s", "experts ms", "plain", "MTP2 best"], rows))
+
+
+def cmd_report(args):
+    if args.pack == "fp4_local":
+        return report_fp4(args)
+    node, tofu, _ = context_for(args)
+    pack, trunk = args.pack, trunk_for(args)
     print(f"Pack {pack} ({a64fx.pack(pack).routed_total_bytes() / 1e9:.1f} GB routed experts), {trunk} trunk. Simulator outputs, not measurements.\n")
     print("### Memory per rank (GiB)\n")
     rows = []
@@ -206,6 +277,39 @@ def cmd_report(args):
         print(f"\nHypotheses in `{pname}`: " + "; ".join(profile.hypotheses))
 
 
+def cmd_sweep(args):
+    """Cartesian product of --grid KEY=V1,V2,... (layout fields, or node./tofu./profile. fields) on top of the layout args."""
+    grid = [(k, v.split(",")) for k, v in (g.split("=", 1) for g in args.grid or [])]
+    rows = []
+    for combo in itertools.product(*[vals for _, vals in grid]):
+        node, tofu, profile = context_for(args)
+        base = parts_from(args)
+        sets = []
+        for (key, _), value in zip(grid, combo):
+            if "." in key:
+                sets.append(f"{key}={value}")
+            else:
+                cur = base[key]
+                base[key] = value.lower() in ("1", "true", "yes") if isinstance(cur, bool) else type(cur)(value)
+        apply_sets(argparse.Namespace(set=sets), node, tofu, profile)
+        if not args.trunk_tp:
+            base["trunk_tp"] = base["nodes"] * base["ranks_per_node"]
+        L = a64fx.Layout(**base)
+        d = a64fx.decode(L, node, tofu, profile)
+        m = a64fx.decode(dataclasses.replace(L, mtp_depth=2), node, tofu, profile)
+        p = a64fx.prefill(L, node, tofu, profile, args.prompt)
+        rows.append(dict(zip([k for k, _ in grid], combo), plain=round(d.tok_s, 2), mtp2=round(m.tok_s, 2), step_ms=round(d.step_ms, 3),
+                         prefill=round(p.tok_s, 1), gib=round(d.fit["total_gib"], 2), fits=d.fit["fits"]))
+    if args.json:
+        print(json.dumps(rows, indent=1))
+        return
+    keys = [k for k, _ in grid]
+    print("  ".join(f"{k:>24}" for k in keys) + f"{'plain':>8}{'mtp2':>8}{'step ms':>9}{'prefill':>9}{'GiB':>7}{'fits':>6}")
+    for r in rows:
+        print("  ".join(f"{r[k]:>24}" for k in keys) + f"{r['plain']:>8.1f}{r['mtp2']:>8.1f}{r['step_ms']:>9.2f}{r['prefill']:>9.0f}"
+              f"{r['gib']:>7.1f}{'yes' if r['fits'] else 'NO':>6}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -213,7 +317,10 @@ def main(argv=None):
     p = sub.add_parser("validate", help="predicted vs measured 12-node rows"); add_layout_args(p); p.add_argument("--records"); p.set_defaults(func=cmd_validate)
     p = sub.add_parser("layouts", help="every layout x profile for the given node counts"); add_layout_args(p, nodes_list=True); p.set_defaults(func=cmd_layouts)
     p = sub.add_parser("memory", help="memory fit per pack"); add_layout_args(p); p.set_defaults(func=cmd_memory)
-    p = sub.add_parser("report", help="markdown tables for docs/GLM_A64FX_PLAN.md"); add_layout_args(p); p.set_defaults(func=cmd_report)
+    p = sub.add_parser("report", help="markdown tables for docs/GLM_A64FX_PLAN.md (docs/GLM_A64FX_FP4_LOCAL.md with --pack fp4_local)"); add_layout_args(p); p.set_defaults(func=cmd_report)
+    p = sub.add_parser("sweep", help="decode/prefill over a grid of layout or constant values"); add_layout_args(p)
+    p.add_argument("--grid", action="append", help="KEY=V1,V2,... (layout field or node./tofu./profile. field)"); p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_sweep)
     args = ap.parse_args(argv)
     return args.func(args) or 0
 

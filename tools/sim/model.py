@@ -18,6 +18,7 @@ BLOCK_BYTES = {
     "Q8_0": (32, 34), "Q4_K": (256, 144), "Q5_K": (256, 176), "Q6_K": (256, 210),
     "Q2_K": (256, 84), "Q3_K": (256, 110), "IQ2_XS": (256, 74), "IQ3_XXS": (256, 98), "IQ4_XS": (256, 136),
     "EXL3": (1, 0.25153),  # 6.035 MiB per expert / 3 x 4096 x 2048 elements (bytes-only format)
+    "NVFP4": (16, 9),      # E2M1 codes + one E4M3 scale per 16 (FP4-Local experts with the CSF32 scales expanded)
 }
 
 # Effective quantized-dot throughput of one core relative to its FP32 FMA peak (MAC/s over MAC/s), for the
@@ -26,6 +27,7 @@ BLOCK_BYTES = {
 KERNEL_EFFICIENCY = {
     "Q2_K": 0.63, "Q3_K": 0.63, "Q4_K": 0.63, "Q5_K": 0.6, "Q6_K": 0.6, "Q8_0": 0.7,
     "IQ2_XS": 0.30, "IQ3_XXS": 0.31, "IQ4_XS": 0.45, "EXL3": 0.0,
+    "NVFP4": 0.45,   # hypothesis: no 1950X measurement of this kernel family in this table
 }
 
 
