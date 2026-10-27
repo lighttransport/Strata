@@ -74,11 +74,35 @@ void ck(cudaError_t e, const char* what) {
     if (e != cudaSuccess) throw std::runtime_error(std::string("ds41: ") + what + ": " + cudaGetErrorString(e));
 }
 
+// STRATA_DS41_DESKTOP_MIB (2048): VRAM this process leaves free for the desktop. Every device allocation checks it
+// and refuses with a message instead of starving the compositor (a shared desktop loses its session when VRAM runs out).
+size_t vram_reserve = [] {
+    const char* v = std::getenv("STRATA_DS41_DESKTOP_MIB");
+    return size_t(v ? std::max(0, std::atoi(v)) : 2048) << 20;
+}();
+
 struct Dev {
     void* p = nullptr;
     size_t bytes = 0;
     Dev() = default;
-    explicit Dev(size_t n) : bytes(n) { ck(cudaMalloc(&p, std::max<size_t>(n, 16)), "cudaMalloc"); }
+    explicit Dev(size_t n) : bytes(n) {
+        static const bool probe = std::getenv("STRATA_DS41_ALLOC_PROBE") != nullptr;
+        if (vram_reserve > 0) {   // STRATA_DS41_DESKTOP_MIB: never take VRAM the desktop needs
+            size_t f = 0, t = 0;
+            cudaMemGetInfo(&f, &t);
+            if (n + vram_reserve > f)
+                throw std::runtime_error("ds41: cudaMalloc of " + std::to_string(n >> 20) + " MiB would leave " +
+                                         std::to_string((f > n ? f - n : 0) >> 20) + " MiB free, below the " +
+                                         std::to_string(vram_reserve >> 20) + " MiB desktop reserve (STRATA_DS41_DESKTOP_MIB); " +
+                                         "lower STRATA_DS41_PROMPT_BATCH or a tile size");
+        }
+        if (probe) {
+            size_t f = 0, t = 0;
+            cudaMemGetInfo(&f, &t);
+            std::fprintf(stderr, "DS41 alloc %zu MiB (free %zu MiB)\n", n >> 20, f >> 20);
+        }
+        ck(cudaMalloc(&p, std::max<size_t>(n, 16)), "cudaMalloc");
+    }
     Dev(const Dev&) = delete;
     Dev& operator=(const Dev&) = delete;
     Dev(Dev&& o) noexcept : p(o.p), bytes(o.bytes) { o.p = nullptr; }
@@ -1222,7 +1246,7 @@ public:
         if (const char* v = std::getenv("STRATA_DS41_STREAM_MIN")) stream_min_ = std::max(2, std::atoi(v));
         {
             const char* v = std::getenv("STRATA_DS41_STAGE_MIB");
-            stage_bytes_ = size_t(v ? std::atoi(v) : 256) << 20;
+            stage_bytes_ = size_t(v ? std::atoi(v) : 128) << 20;   // (128: the slot ring fits beside the desktop reserve)
             if (const char* t = std::getenv("STRATA_DS41_STAGE_THREADS")) stage_threads_ = std::max(1, std::atoi(t));
             for (int i = 0; i < 2; ++i) {
                 ck(cudaEventCreateWithFlags(&stage_uploaded_[i], cudaEventDisableTiming), "stage event");
@@ -1415,7 +1439,7 @@ public:
         g_h_ = Dev(size_t(c.ff) * 4);
         g_h_q8_ = Dev(k::native_q8_1_bytes(c.ff, 1));
         g_out_ = Dev(size_t(c.hidden) * 4);
-        const size_t keep = size_t(env("STRATA_DS41_GPU_RESERVE_MIB", 1024)) << 20;
+        const size_t keep = std::max<size_t>(size_t(env("STRATA_DS41_GPU_RESERVE_MIB", 1024)) << 20, vram_reserve + (128 << 20));
         size_t free0 = 0, total0 = 0;
         ck(cudaMemGetInfo(&free0, &total0), "memory info");
         size_t budget0 = free0 > keep ? free0 - keep : 0, budget1 = 0;
@@ -1777,8 +1801,19 @@ public:
         const auto& c = cfg_;
         const size_t T = size_t(tokens), H = size_t(c.hidden);
         chunk_ = tokens;
-        // the window ring: slot = position % ring; re-laid when its size changes
-        const int ring = c.window + tokens;
+        // STRATA_DS41_MIX_TILE=n: the hyper-connection mixes run n tokens at a time (flat_ / mixes_ hold n rows)
+        mix_tile_ = std::getenv("STRATA_DS41_MIX_TILE") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_MIX_TILE"))) : 0;
+        // STRATA_DS41_PREFILL_HALVES=1 with STRATA_DS41_PREFILL_TILE (4096): a prompt pass wider than the tile runs each
+        // layer's trunk over the tiles and its FFN once over the whole pass (one expert stream per pass). The
+        // attention-local buffers hold A = tile rows; the residual / FFN arrays stay at the pass's T.
+        halves_ = std::getenv("STRATA_DS41_PREFILL_HALVES") && std::string(std::getenv("STRATA_DS41_PREFILL_HALVES")) == "1";
+        pftile_ = std::getenv("STRATA_DS41_PREFILL_TILE") ? std::max(256, std::atoi(std::getenv("STRATA_DS41_PREFILL_TILE"))) : 4096;
+        halves_skip_from_ = std::getenv("STRATA_DS41_HALVES_SKIP_FROM") ? std::atoi(std::getenv("STRATA_DS41_HALVES_SKIP_FROM")) : -1;
+        const size_t A = halves_ && size_t(pftile_) < T ? size_t(pftile_) : T;
+        (void) A;
+        // the window ring: slot = position % ring; re-laid when its size changes. A prompt pass writes one attention
+        // batch (STRATA_DS41_ATTN_SUB, 256) at a time, so it needs window + that many rows, not window + the pass.
+        const int ring = c.window + int(std::min<size_t>(T, size_t(attn_sub_)));
         std::vector<Dev> windows(size_t(c.layers));
         for (auto& w : windows) {   // zeroed: enc-skip's dropped tokens may read slots never written
             w = Dev(size_t(ring) * c.head_dim * 4);
@@ -1795,7 +1830,7 @@ public:
         windows_ = std::move(windows);
         ring_ = ring;
         // free first, then allocate (VRAM is tight)
-        for (Dev* d : {&h_, &h2_, &x_, &xn_, &flat_, &mixes_, &coeff_attn_, &coeff_ffn_, &qa_, &qr_, &q_, &kv_, &kvn_, &att_, &oa_, &oa_part_, &y_,
+        for (Dev* d : {&h_, &h2_, &ht_, &h2t_, &yt_, &xnt_, &coeff_ffn_full_, &x_, &xn_, &flat_, &mixes_, &coeff_attn_, &coeff_ffn_, &qa_, &qr_, &q_, &kv_, &kvn_, &att_, &oa_, &oa_part_, &y_,
                        &q8_, &q8g_, &cs_, &comp_v_, &comp_s_, &iq_, &iw_, &logits_, &sh_gate_, &sh_up_, &sh_h_, &moe_, &scores_,
                        &engram_rows_, &engram_kv_, &xh_, &g_sum_, &stage_[0], &stage_[1], &s_x_, &s_xq_, &s_gate_, &s_up_, &s_h_, &s_hq_,
                        &s_out_, &s_idx_, &s_w_, &s_bound_, &m_xq_, &s_gu_, &s_hf_, &m_hq_, &s_dout_, &s_iota_})
@@ -1806,45 +1841,57 @@ public:
         pinned_bufs_.clear();
         h_ = Dev(T * 4 * H * 4);
         h2_ = Dev(T * 4 * H * 4);
+        if (A < T) {   // the trunk's views: swapped in for one tile at a time
+            ht_ = Dev(A * 4 * H * 4);
+            h2t_ = Dev(A * 4 * H * 4);
+            yt_ = Dev(A * H * 4);
+            xnt_ = Dev(A * H * 4);
+        }
         x_ = Dev(T * H * 4);
         xn_ = Dev(T * H * 4);
-        flat_ = Dev(T * 4 * H * 4);
-        mixes_ = Dev(T * 24 * 4);
-        coeff_attn_ = Dev(T * 24 * 4);
-        coeff_ffn_ = Dev(T * 24 * 4);
-        qa_ = Dev(T * size_t(c.q_rank) * 4);
-        qr_ = Dev(T * size_t(c.q_rank) * 4);
-        q_ = Dev(T * size_t(c.heads) * c.head_dim * 4);
-        kv_ = Dev(T * size_t(c.head_dim) * 4);
-        kvn_ = Dev(T * size_t(c.head_dim) * 4);
-        att_ = Dev(T * size_t(c.heads) * c.head_dim * 4);
-        oa_ = Dev(T * size_t(c.out_groups) * c.out_rank * 4);
-        oa_part_ = Dev(T * size_t(c.out_rank) * 4);
+        flat_ = Dev(std::min(A, mix_tile_ > 0 ? size_t(mix_tile_) : A) * 4 * H * 4);
+        mixes_ = Dev(std::min(A, mix_tile_ > 0 ? size_t(mix_tile_) : A) * 24 * 4);
+        coeff_attn_ = Dev(A * 24 * 4);
+        coeff_ffn_ = Dev(A * 24 * 4);
+        if (A < T) coeff_ffn_full_ = Dev(T * 24 * 4);   // the FFN post runs over the whole pass
+        qa_ = Dev(A * size_t(c.q_rank) * 4);
+        qr_ = Dev(A * size_t(c.q_rank) * 4);
+        q_ = Dev(A * size_t(c.heads) * c.head_dim * 4);
+        kv_ = Dev(A * size_t(c.head_dim) * 4);
+        kvn_ = Dev(A * size_t(c.head_dim) * 4);
+        att_ = Dev(A * size_t(c.heads) * c.head_dim * 4);
+        oa_ = Dev(A * size_t(c.out_groups) * c.out_rank * 4);
+        oa_part_ = Dev(A * size_t(c.out_rank) * 4);
         y_ = Dev(T * H * 4);
-        q8_ = Dev(k::native_q8_1_bytes(std::max(c.heads * c.head_dim, 5 * c.hidden), 1) * T);
-        q8x_ = Dev(k::native_q8_1_bytes(c.hidden, 1) * T);
-        q8g_ = Dev(k::native_q8_1_bytes(c.heads / c.out_groups * c.head_dim, 1) * T);
+        // q8_ only holds passes shorter than gemm_min (all other widths go through xh_), so a wide pass does not size it
+        q8_ = Dev(k::native_q8_1_bytes(std::max(c.heads * c.head_dim, 5 * c.hidden), 1) * std::min<size_t>(T, std::max(64, gemm_min_)));
+        q8x_ = Dev(k::native_q8_1_bytes(c.hidden, 1) * A);
+        q8g_ = Dev(k::native_q8_1_bytes(c.heads / c.out_groups * c.head_dim, 1) * A);
         cs_ = Dev(T * kTables * 64 * 4);
         rope_host_.assign(T * kTables * 64, 0.0f);
-        comp_v_ = Dev(T * size_t(c.head_dim) * 4);
-        comp_s_ = Dev(T * size_t(c.head_dim) * 4);
-        iq_ = Dev(T * size_t(c.index_heads) * c.index_dim * 4);
-        iw_ = Dev(T * size_t(c.index_heads) * 4);
+        comp_v_ = Dev(A * size_t(c.head_dim) * 4);
+        comp_s_ = Dev(A * size_t(c.head_dim) * 4);
+        iq_ = Dev(A * size_t(c.index_heads) * c.index_dim * 4);
+        iw_ = Dev(A * size_t(c.index_heads) * 4);
         logits_ = Dev(std::max(T * size_t(c.experts), size_t(c.vocab)) * 4);   // the router's, or one position's logits (more on request)
-        sh_gate_ = Dev(T * size_t(c.ff) * 4);
-        sh_up_ = Dev(T * size_t(c.ff) * 4);
-        sh_h_ = Dev(T * size_t(c.ff) * 4);
+        // STRATA_DS41_SHEXP_TILE=n: the shared expert's intermediates hold n rows (a 8192-token pass saves 0.2 GiB at 1024)
+        shexp_tile_ = std::getenv("STRATA_DS41_SHEXP_TILE") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_SHEXP_TILE"))) : 0;
+        const size_t SH = std::min(A, shexp_tile_ > 0 ? std::min<size_t>(A, size_t(shexp_tile_)) : A);
+        sh_rows_ = SH;
+        sh_gate_ = Dev(SH * size_t(c.ff) * 4);
+        sh_up_ = Dev(SH * size_t(c.ff) * 4);
+        sh_h_ = Dev(SH * size_t(c.ff) * 4);
         moe_ = Dev(T * H * 4);
         // the indexer's scores: score_tile_ tokens at a time (STRATA_DS41_SCORE_MIB, 1024: a pass of T tokens at a long
         // context would need T x context floats, 17 GB for 4096 tokens at 1M)
         {
             const size_t budget = size_t(std::getenv("STRATA_DS41_SCORE_MIB") ? std::max(16, std::atoi(std::getenv("STRATA_DS41_SCORE_MIB"))) : 1024) << 20;
-            score_tile_ = int(std::max<size_t>(16, std::min<size_t>(T, budget / (size_t(score_stride_) * 4))));
+            score_tile_ = int(std::max<size_t>(16, std::min<size_t>(A, budget / (size_t(score_stride_) * 4))));
             scores_ = Dev(size_t(score_tile_) * size_t(score_stride_) * 4);
         }
         if (kv_half_) {
-            const size_t rw = size_t(row_width()), g = std::min<size_t>(T, kGatherTokens);
-            kv_rows_ = Dev(T * rw * 4);
+            const size_t rw = size_t(row_width()), g = std::min<size_t>(A, kGatherTokens);
+            kv_rows_ = Dev(A * rw * 4);
             kv_sel_ = Dev(g * size_t(c.index_top_k) * rw * 4);
             std::vector<int> io(g * size_t(c.index_top_k));
             for (size_t i = 0; i < io.size(); ++i) io[i] = int(i);
@@ -1852,16 +1899,16 @@ public:
             ck(cudaMemcpy(sel_iota_.p, io.data(), io.size() * 4, cudaMemcpyHostToDevice), "sel iota");
         }
         sel_.resize(size_t(c.layers));
-        sel_count_.assign(size_t(c.layers), std::vector<int>(T, 0));
+        sel_count_.assign(size_t(c.layers), std::vector<int>(halves_ ? T : A, 0));
         for (int l = 0; l < c.layers; ++l)
-            if (c.topk_src[size_t(l)] == l) sel_[size_t(l)] = Dev(T * size_t(c.index_top_k) * 4);
+            if (c.topk_src[size_t(l)] == l) sel_[size_t(l)] = Dev((halves_ ? T : A) * size_t(c.index_top_k) * 4);
         sel_cnt_.resize(size_t(c.layers));
         sel_on_gpu_.assign(size_t(c.layers), 0);
         for (int l = 0; l < c.layers; ++l)
             if (c.topk_src[size_t(l)] == l) sel_cnt_[size_t(l)] = Dev(T * 4);
         cand_stride_ = c.candidate_block > 0 ? (score_stride_ + c.candidate_block - 1) / c.candidate_block : 1;
-        cand_dev_ = Dev(T * size_t(cand_stride_));
-        candidates_.assign(T, {});
+        cand_dev_ = Dev(A * size_t(cand_stride_));
+        candidates_.assign(A, {});
         if (!c.engram_layers.empty()) {
             engram_rows_ = Dev(c.engram_layers.size() * T * c.engram_cols() * c.engram_dim * 4);
             if (engram_host_pinned_) { cudaHostUnregister(engram_host_.data()); engram_host_pinned_ = false; }
@@ -1869,12 +1916,22 @@ public:
             // STRATA_DS41_ENGRAM_PINNED=1: the rows' host buffer pinned, so their uploads do not wait for the stream
             if (std::getenv("STRATA_DS41_ENGRAM_PINNED") && std::string(std::getenv("STRATA_DS41_ENGRAM_PINNED")) == "1")
                 engram_host_pinned_ = cudaHostRegister(engram_host_.data(), engram_host_.size() * 4, 0) == cudaSuccess || ((void)cudaGetLastError(), false);
-            engram_kv_ = Dev(T * 5 * H * 4);
+            // STRATA_DS41_ENGRAM_TILE=n: the e-th Engram's projection runs n tokens at a time (its scratch is n rows
+            // instead of the pass's; a 8192-token pass saves 0.75 GiB at n = 256)
+            engram_tile_ = std::getenv("STRATA_DS41_ENGRAM_TILE") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_ENGRAM_TILE"))) : 0;
+            engram_kv_ = Dev((engram_tile_ > 0 ? std::min(A, size_t(engram_tile_)) : A) * 5 * H * 4);
         }
-        if (tokens >= gemm_min_) xh_ = Dev(T * size_t(c.heads) * c.head_dim * 2 + T * size_t(c.heads / c.out_groups) * c.head_dim * 2);
+        // STRATA_DS41_OUTA_TILE=n: the attention output projection's activation conversion (T x heads x head_dim halves,
+        // 0.5 GiB at 8192) runs n rows at a time, so xh_ holds the widest single call instead of the whole pass.
+        outa_tile_ = std::getenv("STRATA_DS41_OUTA_TILE") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_OUTA_TILE"))) : 0;
+        if (tokens >= gemm_min_) {
+            const size_t wide = std::max(T * H, (outa_tile_ > 0 ? std::min<size_t>(T, size_t(outa_tile_)) : T) *
+                                                   (size_t(c.heads) * c.head_dim + size_t(c.heads / c.out_groups) * c.head_dim));
+            xh_ = Dev(wide * 2);
+        }
         g_sum_ = Dev(T * H * 4);
-        attn_info_dev_ = Dev(T * 16);
-        attn_info_ = reinterpret_cast<int*>(pinned(T * 16));
+        attn_info_dev_ = Dev(A * 16);
+        attn_info_ = reinterpret_cast<int*>(pinned(A * 16));
         pinned_[0] = pinned(T * H * 4);
         pinned_[1] = pinned(T * H * 4);
         pinned_[2] = pinned(T * H * 4);
@@ -1921,7 +1978,7 @@ public:
             s_hidx_ = reinterpret_cast<int*>(pinned(T * size_t(c.top_k) * 8 + (size_t(c.experts) * 2 + 8) * 4));
             s_hw_ = reinterpret_cast<float*>(s_hidx_ + T * size_t(c.top_k));
             s_hbound_ = reinterpret_cast<int32_t*>(s_hw_ + T * size_t(c.top_k));
-            rcap_ = std::max(rcap_min_, int(T));   // one expert's rows always fit a batch
+            rcap_ = std::max(rcap_min_, std::min(int(T), 4096));   // one expert's rows always fit a batch
             if (use_mmq_) {
                 namespace mq = strata::prefill::mmq;
                 m_xq_ = Dev(mq::q8_bytes(rcap_, c.hidden));
@@ -1937,10 +1994,20 @@ public:
             ck(cudaMemGetInfo(&free_b, &total_b), "memory info");
             const char* dv = std::getenv("STRATA_DS41_STAGE_SLOTS");
             const char* dm = std::getenv("STRATA_DS41_DESKTOP_MIB");
-            const size_t keep = size_t(dm ? std::max(0, std::atoi(dm)) : 3072) << 20;
-            const size_t fit = free_b > keep ? (free_b - keep) / slot_bytes_ : 0;
+            const size_t keep = std::max<size_t>(size_t(dm ? std::max(0, std::atoi(dm)) : 0) << 20, vram_reserve);
+            // the desktop reserve is a hard floor: if the configured slot size leaves no room for two of them, halve the
+            // slots (down to 32 MiB) rather than take the desktop's VRAM
+            // beyond the reserve, leave the driver / runtime scratch (the MMQ stream-k fixup pool grows to ~256 MiB on
+            // the first wide expert product, and the runtime allocates a little more)
+            const size_t margin = size_t(640) << 20;
+            auto fit_for = [&](size_t bytes) { return free_b > keep + margin ? (free_b - keep - margin) / bytes : 0; };
+            while (fit_for(slot_bytes_) < 2 && slot_bytes_ > (size_t(32) << 20)) slot_bytes_ = std::max<size_t>(size_t(32) << 20, slot_bytes_ / 2);
+            const size_t fit = fit_for(slot_bytes_);
             dslots_ = int(std::min<size_t>(dv ? size_t(std::max(2, std::atoi(dv))) : 8, fit));
-            if (dslots_ < 2) throw std::runtime_error("ds41: no VRAM for the streamed experts' slots (shorter STRATA_DS41_PROMPT_BATCH)");
+            if (dslots_ < 2)
+                throw std::runtime_error("ds41: no VRAM for the streamed experts' slots (shorter STRATA_DS41_PROMPT_BATCH; " +
+                                         std::to_string(free_b >> 20) + " MiB free, " + std::to_string(keep >> 20) +
+                                         " MiB kept for the desktop, slots are " + std::to_string(slot_bytes_ >> 20) + " MiB each)");
             for (int i = 0; i < dslots_; ++i) dring_.emplace_back(slot_bytes_);
             for (auto* v : {&ev_ready_, &ev_free_}) {
                 for (auto e : *v) cudaEventDestroy(e);
@@ -2441,6 +2508,116 @@ public:
         const int end = pos + T;
         const auto loop0 = std::chrono::steady_clock::now();
         before_loop_s_ += std::chrono::duration<double>(loop0 - step0).count();
+        if (halves_ && T > pftile_ && !sess_ && !hook && !dsp_.on && !remote_) {
+            // PREFILL_HALVES: each layer's trunk runs its tiles (the attention-local buffers hold pftile_ rows), then its
+            // FFN runs once over the rows the layer still needs - one stream of the layer's experts for the whole pass.
+            const int A = pftile_;
+            for (int l = 0; l < c.layers; ++l) {
+                const std::string p = "blk." + std::to_string(l) + ".";
+                if (dtiming_ && (T <= 64 || pf_timing_)) dmark(0);
+                int row0 = 0;
+                const int hs = halves_skip_from_ >= 0 ? halves_skip_from_ : skip_from;
+                if (hs < c.layers && !all_logits && l >= hs) {
+                    // the rows this layer still feeds: its last `need` positions, plus one window so their ring rows are
+                    // written (256-token granularity, so the first tile is partial)
+                    const int need = c.window + (c.layers - 1 - l) * (c.window - 1);
+                    // 1024 rows of slack keep the truncated boundary's windows exact (KL 0.0007, vs 0.029 at one window)
+                    const int slack = std::getenv("STRATA_DS41_HALVES_SLACK") ? std::atoi(std::getenv("STRATA_DS41_HALVES_SLACK")) : 1024;
+                    row0 = std::max(0, ((end - need - slack - pos) / 256) * 256);   // (rows of this pass)
+                    row0 = std::max(row0, T - A);   // the FFN's shifted view holds at most one tile
+                    skipped_ += size_t(row0);
+                }
+                for (int t0 = row0; t0 < T; t0 += A) {
+                    const int n = std::min(A, T - t0);
+                    const size_t hb = size_t(n) * 4 * c.hidden * 4;
+                    // the tile's rows of the pass-wide residual, swapped in as the trunk's h_
+                    ck(cudaMemcpyAsync(ht_.p, h_.f(size_t(t0) * 4 * c.hidden), hb, cudaMemcpyDeviceToDevice, stream_), "halves h in");
+                    std::swap(h_, ht_);
+                    std::swap(h2_, h2t_);
+                    std::swap(y_, yt_);
+                    std::swap(xn_, xnt_);
+                    tokens_ = n;
+                    pos0_ = pos + t0;
+                    rope_off_ = t0;
+                    engram_off_ = t0;
+                    if (l > 0 && coeff_ffn_full_.p)   // the previous layer's FFN coefficients for the attention pre-mix
+                        ck(cudaMemcpyAsync(coeff_ffn_.p, coeff_ffn_full_.f(size_t(t0) * 24), size_t(n) * 24 * 4, cudaMemcpyDeviceToDevice, stream_), "halves coeff in");
+                    if (const int e = c.engram_index(l); e >= 0) {
+                        if (e > 0 && engram_later_.joinable()) {
+                            engram_later_.join();
+                            if (engram_failed_) throw std::runtime_error("ds41: Engram row read failed");
+                            for (size_t j = 1; j < c.engram_layers.size(); ++j) upload_engram(int(j));
+                        }
+                        engram(l, e);
+                    }
+                    mixes(p + "hc_attn_", coeff_attn_);
+                    if (l > 0 && fuse_ && share_q8() && hc_norm_ok(w(p + "attn_norm.weight"))) {
+                        k::glm_hc_pre_norm_rows_q8(h_.f(), coeff_ffn_.f(), w(p + "attn_norm.weight"), x_.f(), xn_.f(), q8x_.p,
+                                                   c.hidden, n, c.rms_eps, stream_);
+                    } else {
+                        if (l > 0) k::ds41_hc_pre(h_.f(), coeff_ffn_.f(), x_.f(), c.hidden, stream_, n);
+                        else ck(cudaMemcpy2DAsync(x_.p, size_t(c.hidden) * 4, h_.p, size_t(4) * c.hidden * 4, size_t(c.hidden) * 4,
+                                                  size_t(n), cudaMemcpyDeviceToDevice, stream_), "stream 0");
+                        norm_xn(x_.f(), w(p + "attn_norm.weight"));
+                    }
+                    sel_base_ = t0;   // (the indexer selection is indexed by the pass's rows)
+                    attention(l);
+                    sel_base_ = 0;
+                    k::ds41_hc_post(y_.f(), h_.f(), coeff_attn_.f(4), coeff_attn_.f(8), h2_.f(), c.hidden, stream_, n);
+                    std::swap(h_, h2_);
+                    mixes(p + "hc_ffn_", coeff_ffn_);
+                    if (coeff_ffn_full_.p)
+                        ck(cudaMemcpyAsync(coeff_ffn_full_.f(size_t(t0) * 24), coeff_ffn_.p, size_t(n) * 24 * 4,
+                                           cudaMemcpyDeviceToDevice, stream_), "halves coeff out");
+                    if (fuse_ && share_q8() && hc_norm_ok(w(p + "ffn_norm.weight"))) {
+                        k::glm_hc_pre_norm_rows_q8(h_.f(), coeff_attn_.f(), w(p + "ffn_norm.weight"), x_.f(), xn_.f(), q8x_.p,
+                                                   c.hidden, n, c.rms_eps, stream_);
+                    } else {
+                        k::ds41_hc_pre(h_.f(), coeff_attn_.f(), x_.f(), c.hidden, stream_, n);
+                        norm_xn(x_.f(), w(p + "ffn_norm.weight"));
+                    }
+                    // the tile's FFN input and post-attention residual go to the pass-wide buffers
+                    ck(cudaMemcpyAsync(xnt_.f(size_t(t0) * c.hidden), xn_.p, size_t(n) * c.hidden * 4, cudaMemcpyDeviceToDevice, stream_), "halves xn");
+                    ck(cudaMemcpyAsync(ht_.f(size_t(t0) * 4 * c.hidden), h_.p, hb, cudaMemcpyDeviceToDevice, stream_), "halves h out");
+                    std::swap(h_, ht_);
+                    std::swap(h2_, h2t_);
+                    std::swap(y_, yt_);
+                    std::swap(xn_, xnt_);
+                }
+                if (dtiming_ && (T <= 64 || pf_timing_)) dmark(6);   // (dtime 0 = the layer's trunk, 6 = its FFN)
+                tokens_ = T - row0;
+                if (row0) {   // the rows the layer keeps move to the front (the dropped rows are dead)
+                    const size_t rows = size_t(T - row0), hb = rows * 4 * c.hidden * 4;
+                    ck(cudaMemcpyAsync(ht_.p, h_.f(size_t(row0) * 4 * c.hidden), hb, cudaMemcpyDeviceToDevice, stream_), "halves h down");
+                    ck(cudaMemcpyAsync(h_.p, ht_.p, hb, cudaMemcpyDeviceToDevice, stream_), "halves h down 2");
+                    ck(cudaMemcpyAsync(xnt_.p, xn_.f(size_t(row0) * c.hidden), rows * c.hidden * 4, cudaMemcpyDeviceToDevice, stream_), "halves xn down");
+                    ck(cudaMemcpyAsync(xn_.p, xnt_.p, rows * c.hidden * 4, cudaMemcpyDeviceToDevice, stream_), "halves xn down 2");
+                    if (coeff_ffn_full_.p) {
+                        ck(cudaMemcpyAsync(coeff_ffn_.p, coeff_ffn_full_.f(size_t(row0) * 24), rows * 24 * 4, cudaMemcpyDeviceToDevice, stream_), "halves coeff down");
+                    }
+                }
+                ffn(l);
+                if (dtiming_ && (T <= 64 || pf_timing_)) dmark(8);
+                // the post's coefficients: the pass-wide buffer, or the tile one when the rows were moved to the front
+                const float* cpost = coeff_ffn_full_.p && row0 == 0 ? coeff_ffn_full_.f() : coeff_ffn_.f();
+                if (tail_fused_) {   // FUSE: the sums and the residual add inside the post-mix
+                    k::ds41_hc_post_sum(moe_.f(), tail_peer_ ? peer_sum_.f() : nullptr, tail_gsum_ ? g_sum_.f() : nullptr, y_.f(), h_.f(),
+                                        cpost + 4, cpost + 8, h2_.f(), c.hidden, stream_, tokens_);
+                    tail_fused_ = false;
+                } else
+                    k::ds41_hc_post(y_.f(), h_.f(), cpost + 4, cpost + 8, h2_.f(), c.hidden, stream_, tokens_);
+                std::swap(h_, h2_);
+                if (row0) {   // and the new residual back to its rows
+                    const size_t rows = size_t(T - row0), hb = rows * 4 * c.hidden * 4;
+                    ck(cudaMemcpyAsync(ht_.p, h_.p, hb, cudaMemcpyDeviceToDevice, stream_), "halves h up");
+                    ck(cudaMemcpyAsync(h_.f(size_t(row0) * 4 * c.hidden), ht_.p, hb, cudaMemcpyDeviceToDevice, stream_), "halves h up 2");
+                }
+            }
+            tokens_ = T;
+            pos0_ = pos;
+            rope_off_ = 0;
+            engram_off_ = 0;
+        } else
         for (int l = 0; l < c.layers; ++l) {
             if (enc_skip && !all_logits && l >= skip_from) {
                 const int need = c.window + (c.layers - 1 - l) * (c.window - 1);
@@ -2450,7 +2627,7 @@ public:
             }
             const std::string p = "blk." + std::to_string(l) + ".";
             if (gpu_timing_ && producer_.joinable()) mark(0);
-            if (dtiming_ && T <= 64) dmark(0);
+            if (dtiming_ && (T <= 64 || pf_timing_)) dmark(0);
             if (dsp_.on && !sess_) capture_features(l);
             if (const int e = c.engram_index(l); e >= 0) {
                 if (e > 0 && engram_later_.joinable()) {   // the background rows
@@ -2524,7 +2701,7 @@ public:
             }
             if (hook && observe) observe("attn_norm", l, xn_.f(), size_t(c.hidden));
             { const auto a0 = std::chrono::steady_clock::now(); attention(l); attn_host_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count(); }
-            if (dtiming_ && T <= 64) dmark(5);
+            if (dtiming_ && (T <= 64 || pf_timing_)) dmark(5);
             k::ds41_hc_post(y_.f(), h_.f(), coeff_attn_.f(4), coeff_attn_.f(8), h2_.f(), c.hidden, stream_, T);
             std::swap(h_, h2_);
             if (defer_pending_) defer_apply(false);   // the previous layer's deferred experts (STRATA_DS41_DEFER_RANK)
@@ -2542,9 +2719,9 @@ public:
             norm_xn(x_.f(), w(p + "ffn_norm.weight"));
             }
             if (hook && observe) observe("ffn_norm", l, xn_.f(), size_t(c.hidden));
-            if (dtiming_ && T <= 64) dmark(6);
+            if (dtiming_ && (T <= 64 || pf_timing_)) dmark(6);
             { const auto f0 = std::chrono::steady_clock::now(); ffn(l); ffn_host_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count(); }
-            if (dtiming_ && T <= 64) dmark(8);
+            if (dtiming_ && (T <= 64 || pf_timing_)) dmark(8);
             if (tail_fused_) {   // FUSE: the experts' sums and the residual add inside the post-mix
                 k::ds41_hc_post_sum(moe_.f(), tail_peer_ ? peer_sum_.f() : nullptr, tail_gsum_ ? g_sum_.f() : nullptr, y_.f(), h_.f(),
                                     coeff_ffn_.f(4), coeff_ffn_.f(8), h2_.f(), c.hidden, stream_, T);
@@ -2566,9 +2743,42 @@ public:
                 dtime_[dmark_id_[j]] += ms;
             }
             dmark_id_.clear();
-            dtokens_ += 1;
             dmark_used_ = 0;
             dmarks_.clear();
+            if (pf_timing_ && T > 64) {   // a prompt pass: totals, then cleared (decode passes keep the per-pass averages)
+                static const char* const pf[10] = {"pre", "q", "kv_index", "attn", "out", "ffn_pre", "router", "experts", "tail", "lane_wait"};
+                double tot = 0;
+                std::cerr << "DS41 chunk_gpu_ms T=" << T;
+                for (int q = 0; q < 10; ++q) {
+                    std::cerr << " " << pf[q] << "=" << dtime_[q];
+                    tot += dtime_[q];
+                }
+                std::cerr << " sum=" << tot << "\n";
+                if (!dma_ev_.empty()) {
+                    double dma_ms = 0, wait_ms = 0;
+                    for (const auto& [a, b] : dma_ev_) {
+                        float ms = 0;
+                        if (cudaEventElapsedTime(&ms, a, b) == cudaSuccess) dma_ms += ms;
+                    }
+                    for (const auto& [a, b] : wait_ev_) {
+                        float ms = 0;
+                        if (cudaEventElapsedTime(&ms, a, b) == cudaSuccess) wait_ms += ms;
+                    }
+                    std::cerr << "DS41 chunk_dma GB=" << dma_bytes_ / 1e9 << " copy_s=" << dma_ms / 1e3 << " GB/s="
+                              << (dma_ms > 0 ? dma_bytes_ / (dma_ms * 1e-3) / 1e9 : 0.0) << " items=" << dma_ev_.size()
+                              << " gpu_wait=" << wait_ms / 1e3 << "\n";
+                    dma_ev_.clear();
+                    wait_ev_.clear();
+                    {
+                        std::lock_guard<std::mutex> lock(dma_mu_);
+                        dma_pool_used_ = 0;
+                    }
+                    dma_bytes_ = 0;
+                }
+                std::fill(std::begin(dtime_), std::end(dtime_), 0.0);
+            } else {
+                dtokens_ += 1;
+            }
         }
         if (gpu_timing_ && !marks_.empty()) {   // dense (layer start to the routed experts) and routed GPU time per pass, ms
             ck(cudaStreamSynchronize(stream_), "timing");
@@ -2589,7 +2799,8 @@ public:
         const auto h0 = std::chrono::steady_clock::now();
         const int first = all_logits ? 0 : tokens_ - 1, n = tokens_ - first;
         if (logits_.bytes < size_t(n) * c.vocab * 4) logits_ = Dev(size_t(n) * c.vocab * 4);
-        k::ds41_hc_pre(h_.f(size_t(first) * 4 * c.hidden), coeff_ffn_.f(size_t(first) * 24), x_.f(), c.hidden, stream_, n);
+        k::ds41_hc_pre(h_.f(size_t(first) * 4 * c.hidden),
+                       (coeff_ffn_full_.p ? coeff_ffn_full_ : coeff_ffn_).f(size_t(first) * 24), x_.f(), c.hidden, stream_, n);
         k::glm_rms_norm_rows(x_.f(), w("output_norm.weight"), xn_.f(), c.hidden, n, c.rms_eps, stream_);
         mat("output.weight", xn_.f(), logits_.f(), n);
         logits_host_.resize(size_t(n) * c.vocab);
@@ -2645,12 +2856,13 @@ private:
 
     // FP16 caches: tokens [t0, t0 + n) of the pass's selected rows of `src`, as floats in kv_sel_ (n <= kGatherTokens)
     const float* gather_sel(int src, int ts, int t0, int n, int ratio) {
+        const int s0 = t0 + sel_base_;   // (merged pass: the selection is indexed by the pass's rows; the positions are not)
         if (kv_kind_ == 2) {
-            k::ds41_gather_sel_q8(caches_[size_t(src)].b(), kv_row_bytes(), row_width(), sel_[size_t(ts)].i() + size_t(t0) * cfg_.index_top_k,
+            k::ds41_gather_sel_q8(caches_[size_t(src)].b(), kv_row_bytes(), row_width(), sel_[size_t(ts)].i() + size_t(s0) * cfg_.index_top_k,
                                   cfg_.index_top_k, n, pos0_ + t0, ratio, kv_sel_.f(), stream_);
             return kv_sel_.f();
         }
-        k::ds41_gather_sel_h(reinterpret_cast<const uint16_t*>(caches_[size_t(src)].p), row_width(), sel_[size_t(ts)].i() + size_t(t0) * cfg_.index_top_k,
+        k::ds41_gather_sel_h(reinterpret_cast<const uint16_t*>(caches_[size_t(src)].p), row_width(), sel_[size_t(ts)].i() + size_t(s0) * cfg_.index_top_k,
                              cfg_.index_top_k, n, pos0_ + t0, ratio, kv_sel_.f(), stream_);
         return kv_sel_.f();
     }
@@ -2849,16 +3061,23 @@ private:
         // STRATA_DS41_FUSE_MIXES=1: one launch when fn is F32 (separate from FUSE: its GEMV is a different kernel, so the
         // compiler's contraction of its sums is not guaranteed to match f32_gemv's)
         static const bool fuse_mixes = std::getenv("STRATA_DS41_FUSE_MIXES") && std::string(std::getenv("STRATA_DS41_FUSE_MIXES")) == "1";
-        if (fuse_mixes) {
-            const Weight& W = weight(p + "fn.weight");
-            if (W.type == GGML_TYPE_F32 && W.in == 4 * c.hidden && W.out == 24 &&
-                k::ds41_hc_mixes(h_.f(), reinterpret_cast<const float*>(W.data.p), w(p + "scale.weight"), w(p + "base.weight"), flat_.f(), mixes_.f(),
-                                 coeff.f(), c.hidden, c.sinkhorn, c.hc_eps, c.rms_eps, stream_, tokens_))
-                return;
+        // STRATA_DS41_MIX_TILE=n: n tokens per call, so flat_ / mixes_ hold n rows instead of the pass's (a 8192-token
+        // pass saves 0.64 GiB at n = 1024)
+        const int step = mix_tile_ > 0 ? mix_tile_ : tokens_;
+        for (int t0 = 0; t0 < tokens_; t0 += step) {
+            const int n = std::min(step, tokens_ - t0);
+            const size_t hoff = size_t(t0) * 4 * c.hidden, coff = size_t(t0) * 24;
+            if (fuse_mixes) {
+                const Weight& W = weight(p + "fn.weight");
+                if (W.type == GGML_TYPE_F32 && W.in == 4 * c.hidden && W.out == 24 &&
+                    k::ds41_hc_mixes(h_.f(hoff), reinterpret_cast<const float*>(W.data.p), w(p + "scale.weight"), w(p + "base.weight"), flat_.f(),
+                                     mixes_.f(), coeff.f(coff), c.hidden, c.sinkhorn, c.hc_eps, c.rms_eps, stream_, n))
+                    continue;
+            }
+            k::glm_rms_norm_rows(h_.f(hoff), nullptr, flat_.f(), 4 * c.hidden, n, c.rms_eps, stream_);
+            mat(p + "fn.weight", flat_.f(), mixes_.f(), n);
+            k::ds41_hc_coeff(mixes_.f(), w(p + "scale.weight"), w(p + "base.weight"), coeff.f(coff), c.sinkhorn, c.hc_eps, stream_, n);
         }
-        k::glm_rms_norm_rows(h_.f(), nullptr, flat_.f(), 4 * c.hidden, tokens_, c.rms_eps, stream_);
-        mat(p + "fn.weight", flat_.f(), mixes_.f(), tokens_);
-        k::ds41_hc_coeff(mixes_.f(), w(p + "scale.weight"), w(p + "base.weight"), coeff.f(), c.sinkhorn, c.hc_eps, stream_, tokens_);
     }
 
     // the Engram rows of token i (position pos) for the e-th Engram layer, into engram_host_
@@ -3208,12 +3427,18 @@ private:
     void engram(int l, int e) {
         const auto& c = cfg_;
         const std::string p = "blk." + std::to_string(l) + ".";
-        mat(p + "engram_kv.weight", engram_rows_.f(size_t(e) * chunk_ * c.engram_cols() * c.engram_dim), engram_kv_.f(), tokens_);
-        if (tokens_ == 1 && observe) observe("engram_kv", l, engram_kv_.f(), size_t(5) * c.hidden);
-        k::ds41_engram(h_.f(), engram_kv_.f(), w(p + "engram_gate.weight"), c.hidden, c.rms_eps, stream_, tokens_);
+        const size_t per = size_t(c.engram_cols()) * c.engram_dim;   // floats per token of this layer's rows
+        const float* rows = engram_rows_.f(size_t(e) * chunk_ * per + size_t(engram_off_) * per);
+        const int step = engram_tile_ > 0 ? engram_tile_ : tokens_;
+        for (int t0 = 0; t0 < tokens_; t0 += step) {   // ENGRAM_TILE: the projection and the gate n tokens at a time
+            const int n = std::min(step, tokens_ - t0);
+            mat(p + "engram_kv.weight", rows + size_t(t0) * per, engram_kv_.f(), n);
+            if (n == 1 && observe && t0 + n == tokens_) observe("engram_kv", l, engram_kv_.f(), size_t(5) * c.hidden);
+            k::ds41_engram(h_.f(size_t(t0) * 4 * c.hidden), engram_kv_.f(), w(p + "engram_gate.weight"), c.hidden, c.rms_eps, stream_, n);
+        }
     }
 
-    const float* table(int i, int which) const { return cs_.f((size_t(i) * kTables + size_t(which)) * 64); }
+    const float* table(int i, int which) const { return cs_.f((size_t(rope_off_ + i) * kTables + size_t(which)) * 64); }
 
     // drop the pass's first d tokens: the per-token state that outlives a layer moves down by d
     void shift_down(void* base, size_t per, int d, int keep) {
@@ -3252,7 +3477,7 @@ private:
         const int fwd = ratio ? 2 : 0, back = ratio ? 3 : 1;
         const int nope = c.head_dim - c.rope_dim, pairs = c.rope_dim / 2, step = kTables * 64;
         const bool hook = T == 1 && observe && !sess_;
-        if (dtiming_ && T <= 64) dmark(1);
+        if (dtiming_ && (T <= 64 || pf_timing_)) dmark(1);
         quantize_xn();
         mat_xn(p + "attn_q_a.weight", qa_.f());
         k::glm_rms_norm_rows(qa_.f(), w(p + "attn_q_a_norm.weight"), qr_.f(), c.q_rank, T, c.rms_eps, stream_);
@@ -3260,13 +3485,13 @@ private:
         mat(p + "attn_q_b.weight", qr_.f(), q_.f(), T);
         k::ds41_rope(q_.f(), T * c.heads, c.head_dim, nope, pairs, table(0, fwd), stream_, c.heads, step);
         if (hook) observe("q", l, q_.f(), size_t(c.heads) * c.head_dim);
-        if (dtiming_ && T <= 64) dmark(2);
+        if (dtiming_ && (T <= 64 || pf_timing_)) dmark(2);
         // the window keys: normalized, rotated, into the ring (slot = position % ring)
         mat_xn(p + "attn_kv.weight", kv_.f());
         k::glm_rms_norm_rows(kv_.f(), w(p + "attn_kv_a_norm.weight"), kvn_.f(), c.head_dim, T, c.rms_eps, stream_);
         k::ds41_rope(kvn_.f(), T, c.head_dim, nope, pairs, table(0, fwd), stream_, 1, step);
         if (sess_) k::ds41_scatter_rows(kvn_.f(), T, c.head_dim, tpos_dev_.i() + T, bwin_[size_t(l)].f(), size_t(c.head_dim), stream_);
-        else
+        else if (T < 16)   // (16+ tokens: each attention batch writes its own rows just before it reads them)
         for (int i = 0; i < T;) {   // contiguous runs of ring slots
             const int slot = (pos0_ + i) % ring_, run = std::min(T - i, ring_ - slot);
             ck(cudaMemcpyAsync(windows_[size_t(l)].f(size_t(slot) * c.head_dim), kvn_.f(size_t(i) * c.head_dim),
@@ -3283,7 +3508,7 @@ private:
         }
         const float* sinks = w(p + "attn_sinks.weight");
         const float scale = 1.0f / std::sqrt(float(c.head_dim));
-        if (dtiming_ && T <= 64) dmark(3);
+        if (dtiming_ && (T <= 64 || pf_timing_)) dmark(3);
         if (sess_) {   // sessions: one launch pair, each token over its own ring and cache
             int* info = attn_info_;
             int bound = 1;
@@ -3323,23 +3548,29 @@ private:
                 const int pos = pos0_ + i, rows = std::min(pos + 1, c.window);
                 info[4 * i] = (pos - rows + 1) % ring_;
                 info[4 * i + 1] = rows;
-                info[4 * i + 2] = ratio && !sel_on_gpu_[size_t(ts)] && (pos + 1) / ratio > 0 ? sel_count_[size_t(ts)][size_t(i)] : 0;
+                info[4 * i + 2] = ratio && !sel_on_gpu_[size_t(ts)] && (pos + 1) / ratio > 0 ? sel_count_[size_t(ts)][size_t(sel_base_ + i)] : 0;
                 info[4 * i + 3] = 0;
             }
             ck(cudaMemcpyAsync(attn_info_dev_.p, info, size_t(T) * 16, cudaMemcpyHostToDevice, stream_), "attention info");
-            if (ratio && sel_on_gpu_[size_t(ts)]) k::ds41_patch_info(attn_info_dev_.i(), sel_cnt_[size_t(ts)].i(), T, pos0_, ratio, stream_);
+            if (ratio && sel_on_gpu_[size_t(ts)])
+                k::ds41_patch_info(attn_info_dev_.i(), sel_cnt_[size_t(ts)].i() + sel_base_, T, pos0_, ratio, stream_);
             // STRATA_DS41_ATTN_SUB (256): tokens per launch, so no single kernel holds the GPU for long
-            static const int sub = [] { const char* v = std::getenv("STRATA_DS41_ATTN_SUB"); return v ? std::max(16, std::atoi(v)) : 256; }();
             const size_t qw = size_t(c.heads) * c.head_dim;
-            const bool gathered = kv_half_ && ratio;   // FP16: each launch's selected rows gathered to floats first
-            const int stride = gathered ? std::min(sub, kGatherTokens) : sub;
+            const bool half_cache = kv_half_ && ratio;   // FP16 cache: the kernel reads the halves directly
+            const int stride = attn_sub_;
             for (int t0 = 0; t0 < T; t0 += stride) {
                 const int n = std::min(stride, T - t0);
+                for (int i = 0; i < n;) {   // this batch's window rows, contiguous runs of ring slots
+                    const int slot = (pos0_ + t0 + i) % ring_, run = std::min(n - i, ring_ - slot);
+                    ck(cudaMemcpyAsync(windows_[size_t(l)].f(size_t(slot) * c.head_dim), kvn_.f(size_t(t0 + i) * c.head_dim),
+                                       size_t(run) * c.head_dim * 4, cudaMemcpyDeviceToDevice, stream_), "window");
+                    i += run;
+                }
                 k::ds41_attention_batched(q_.f(size_t(t0) * qw), n, c.heads, c.head_dim, windows_[size_t(l)].f(), ring_, attn_info_dev_.i() + 4 * t0,
-                                          gathered ? gather_sel(src, ts, t0, n, ratio) : comp_rows, row_width(),
-                                          gathered ? sel_iota_.i()
-                                                   : (ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i()) + (ratio ? size_t(t0) * c.index_top_k : 0),
-                                          c.index_top_k, sinks, scale, att_.f(size_t(t0) * qw), stream_);
+                                          ratio ? static_cast<const float*>(caches_[size_t(src)].p) : comp_rows, row_width(),
+                                          (ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i()) +
+                                              (ratio ? size_t(sel_base_ + t0) * c.index_top_k : 0),
+                                          c.index_top_k, sinks, scale, att_.f(size_t(t0) * qw), stream_, half_cache);
             }
         } else if (static bool multi = std::getenv("STRATA_DS41_ATTN_MULTI") && std::string(std::getenv("STRATA_DS41_ATTN_MULTI")) == "1";
                    multi && T >= 2 && T <= 8) {   // a few tokens (a verify pass): one launch pair over all of them
@@ -3389,7 +3620,7 @@ private:
                               rows, comp_i, row_width(), sel, nsel, sinks, scale, attn_scores_.f(),
                               att_.f(size_t(i) * c.heads * c.head_dim), stream_, nsel_dev);
         }
-        if (dtiming_ && T <= 64) dmark(4);
+        if (dtiming_ && (T <= 64 || pf_timing_)) dmark(4);
         k::ds41_rope(att_.f(), T * c.heads, c.head_dim, nope, pairs, table(0, back), stream_, c.heads, step);
         if (hook) observe("attn_derope", l, att_.f(), size_t(c.heads) * c.head_dim);
         // grouped output projection: group g's out_rank rows read heads [g heads/groups, (g+1) heads/groups)
@@ -3402,19 +3633,30 @@ private:
             for (int g = 1; g < c.out_groups; ++g)
                 dense_mmq(A.type, static_cast<const uint8_t*>(A.data.p) + size_t(g) * c.out_rank * A.row_bytes, att_.f(size_t(g) * group_in), width,
                           oa_.f(size_t(g) * c.out_rank), c.out_groups * c.out_rank, group_in, c.out_rank, T);
-            mat(p + "attn_output_b.weight", oa_.f(), y_.f(), T);
+            for (int t0 = 0; t0 < T; t0 += (outa_tile_ > 0 ? outa_tile_ : T)) {
+                const int n = std::min(outa_tile_ > 0 ? outa_tile_ : T, T - t0);
+                mat(p + "attn_output_b.weight", oa_.f(size_t(t0) * c.out_groups * c.out_rank), y_.f(size_t(t0) * c.hidden), n);
+            }
             return;
         }
         if (T >= gemm_min_) {
-            k::glm_f16(att_.f(), xh_.h(), int64_t(T) * width, stream_);
-            uint16_t* xg = xh_.h() + size_t(T) * width;   // one group's columns, packed
-            for (int g = 0; g < c.out_groups; ++g) {
-                ck(cudaMemcpy2DAsync(xg, size_t(group_in) * 2, xh_.h() + size_t(g) * group_in, size_t(width) * 2, size_t(group_in) * 2,
-                                     size_t(T), cudaMemcpyDeviceToDevice, stream_), "group pack");
-                gemm_->native(xg, A.type, static_cast<const uint8_t*>(A.data.p) + size_t(g) * c.out_rank * A.row_bytes,
-                              oa_.f(size_t(g) * c.out_rank), T, c.out_rank, group_in, int64_t(c.out_groups) * c.out_rank);
+            const int xt = outa_tile_ > 0 ? outa_tile_ : T;   // OUTA_TILE: rows per conversion + projection call
+            for (int t0 = 0; t0 < T; t0 += xt) {
+                const int n = std::min(xt, T - t0);
+                k::glm_f16(att_.f(size_t(t0) * width), xh_.h(), int64_t(n) * width, stream_);
+                uint16_t* xg = xh_.h() + size_t(n) * width;   // one group's columns, packed
+                for (int g = 0; g < c.out_groups; ++g) {
+                    ck(cudaMemcpy2DAsync(xg, size_t(group_in) * 2, xh_.h() + size_t(g) * group_in, size_t(width) * 2, size_t(group_in) * 2,
+                                         size_t(n), cudaMemcpyDeviceToDevice, stream_), "group pack");
+                    gemm_->native(xg, A.type, static_cast<const uint8_t*>(A.data.p) + size_t(g) * c.out_rank * A.row_bytes,
+                                  oa_.f(size_t(t0) * c.out_groups * c.out_rank + size_t(g) * c.out_rank), n, c.out_rank, group_in,
+                                  int64_t(c.out_groups) * c.out_rank);
+                }
             }
-            mat(p + "attn_output_b.weight", oa_.f(), y_.f(), T);
+            for (int t0 = 0; t0 < T; t0 += xt) {
+                const int n = std::min(xt, T - t0);
+                mat(p + "attn_output_b.weight", oa_.f(size_t(t0) * c.out_groups * c.out_rank), y_.f(size_t(t0) * c.hidden), n);
+            }
             if (hook) observe("attn_out", l, y_.f(), size_t(c.hidden));
             return;
         }
@@ -3677,8 +3919,9 @@ private:
                     k::ds41_index_score_batched(iq_.f(size_t(t0) * c.index_heads * c.index_dim), c.index_heads, c.index_dim, cache_keys(src),
                                                 row_width(), pos0_ + t0, ratio, n, iw_.f(size_t(t0) * c.index_heads), w_scale, scores_.f(),
                                                 score_stride_, stream_, kv_kind_ == 1);
-                k::ds41_index_topk(scores_.f(), score_stride_, n, pos0_ + t0, ratio, c.index_top_k, sel_[size_t(l)].i() + size_t(t0) * c.index_top_k,
-                                   sel_cnt_[size_t(l)].i() + t0, mode, static_cast<uint8_t*>(cand_dev_.p) + size_t(t0) * cand_stride_, cand_stride_,
+                k::ds41_index_topk(scores_.f(), score_stride_, n, pos0_ + t0, ratio, c.index_top_k,
+                                   sel_[size_t(l)].i() + size_t(sel_base_ + t0) * c.index_top_k,
+                                   sel_cnt_[size_t(l)].i() + sel_base_ + t0, mode, static_cast<uint8_t*>(cand_dev_.p) + size_t(t0) * cand_stride_, cand_stride_,
                                    c.candidate_block, c.candidate_blocks, stream_);
                 // STRATA_DS41_TOPK_CHECK=1: the host's selection from these same GPU scores (so only the selection is
                 // compared), tile by tile
@@ -3689,8 +3932,8 @@ private:
                     if (wide > 0)
                         ck(cudaMemcpy2DAsync(all.data(), size_t(wide) * 4, scores_.p, size_t(score_stride_) * 4, size_t(wide) * 4, size_t(n),
                                              cudaMemcpyDeviceToHost, stream_), "check scores");
-                    ck(cudaMemcpyAsync(gp.data(), sel_[size_t(l)].i() + size_t(t0) * c.index_top_k, gp.size() * 4, cudaMemcpyDeviceToHost, stream_), "check sel");
-                    ck(cudaMemcpyAsync(gc.data(), sel_cnt_[size_t(l)].i() + t0, gc.size() * 4, cudaMemcpyDeviceToHost, stream_), "check count");
+                    ck(cudaMemcpyAsync(gp.data(), sel_[size_t(l)].i() + size_t(sel_base_ + t0) * c.index_top_k, gp.size() * 4, cudaMemcpyDeviceToHost, stream_), "check sel");
+                    ck(cudaMemcpyAsync(gc.data(), sel_cnt_[size_t(l)].i() + sel_base_ + t0, gc.size() * 4, cudaMemcpyDeviceToHost, stream_), "check count");
                     ck(cudaStreamSynchronize(stream_), "check sync");
                     int bad = 0;
                     for (int i = 0; i < n; ++i) {
@@ -3734,12 +3977,13 @@ private:
         (void)bs;
         for (int i = 0; i < T; ++i) {
             const int visible = (pos0_ + i + 1) / ratio;
-            if (visible == 0) { sel_count_[size_t(l)][size_t(i)] = 0; continue; }
+            if (visible == 0) { sel_count_[size_t(l)][size_t(sel_base_ + i)] = 0; continue; }
             const auto picked = host_select(l, all.data() + size_t(i) * widest, visible, i);
-            sel_count_[size_t(l)][size_t(i)] = int(picked.size());
+            sel_count_[size_t(l)][size_t(sel_base_ + i)] = int(picked.size());
             std::copy(picked.begin(), picked.end(), picks.begin() + size_t(i) * c.index_top_k);
         }
-        ck(cudaMemcpyAsync(sel_[size_t(l)].p, picks.data(), picks.size() * 4, cudaMemcpyHostToDevice, stream_), "sel");
+        ck(cudaMemcpyAsync(sel_[size_t(l)].i() + size_t(sel_base_) * c.index_top_k, picks.data(), picks.size() * 4,
+                           cudaMemcpyHostToDevice, stream_), "sel");
         ck(cudaStreamSynchronize(stream_), "sel sync");   // picks leaves scope
     }
 
@@ -3803,7 +4047,7 @@ private:
         size_t free_b = 0, total_b = 0;
         ck(cudaMemGetInfo(&free_b, &total_b), "memory info");
         // STRATA_DS41_DESKTOP_MIB (3072): VRAM left to the desktop (compositor, browser) and the decoder's scratch
-        const size_t reserve = size_t(env("STRATA_DS41_GPU_RESERVE_MIB", env("STRATA_DS41_DESKTOP_MIB", 3072))) << 20;
+        const size_t reserve = std::max<size_t>(size_t(env("STRATA_DS41_GPU_RESERVE_MIB", env("STRATA_DS41_DESKTOP_MIB", 3072))) << 20, vram_reserve + (128 << 20));
         size_t budget = free_b > reserve ? free_b - reserve : 0;
         if (std::getenv("STRATA_DS41_GPU_EXPERT_MIB")) budget = std::min(budget, size_t(env("STRATA_DS41_GPU_EXPERT_MIB", 0)) << 20);
         // one arena: many small allocations fragment and overshoot the reported free memory
@@ -4281,6 +4525,11 @@ private:
                 if (stop_stream_) return;
             }
             if (idx >= dslots_) cudaStreamWaitEvent(copy_s_, ev_free_[size_t(ds)], 0);
+            cudaEvent_t dma_a = nullptr, dma_b = nullptr;
+            if (pf_timing_) {   // the item's copies on the copy stream, for the pass's DMA busy time
+                dma_a = dma_event();
+                ck(cudaEventRecord(dma_a, copy_s_), "dma start");
+            }
             uint8_t* dst = static_cast<uint8_t*>(dring_[size_t(ds)].p);
             if (!pinned) {   // the staged parts: the whole slot alone; on two nodes this node's gate/up rows and an unpinned down
                 const int hs = u % hslots_;
@@ -4300,7 +4549,8 @@ private:
                 cudaEventRecord(ev_dma_[size_t(hs)], copy_s_);
                 ++u;
             }
-            if (!packed_.empty()) {   // the packed pinned copy: one DMA
+            if (expert_debug_ == 2) {   // EXPERT_DEBUG=2: the products timed alone (stale slots)
+            } else if (!packed_.empty()) {   // the packed pinned copy: one DMA
                 cudaMemcpyAsync(dst, packed_[size_t(it.layer)] + size_t(it.first) * it.stride, size_t(it.n) * it.stride, cudaMemcpyHostToDevice, copy_s_);
             } else {   // zero copy: strided DMAs from the pinned mapping into the slot
                 const auto& L = experts_[size_t(it.layer)];
@@ -4339,7 +4589,7 @@ private:
                 if (down_pin_[size_t(it.layer)] && !(gu_pin_[size_t(it.layer)] && gl == g))   // (the branches above copied it)
                     cudaMemcpy2DAsync(dst + 2 * g, it.stride, src.down + size_t(it.first) * d, d, d, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
             }
-            if (remote_ && !remote_gpu_) {   // the worker's rows: gate/up rows [fl_, ff) and each down row's columns from fl_ on
+            if (expert_debug_ != 2 && remote_ && !remote_gpu_) {   // the worker's rows: gate/up rows [fl_, ff) and each down row's columns from fl_ on
                 {
                     std::unique_lock<std::mutex> lock(sm_);
                     scv_.wait(lock, [&] { return stop_stream_ || fetched_ >= idx + 1; });
@@ -4360,6 +4610,12 @@ private:
                                   it.n, copy_s_);
             }
             cudaEventRecord(ev_ready_[size_t(ds)], copy_s_);
+            if (pf_timing_) {
+                dma_b = dma_event();
+                ck(cudaEventRecord(dma_b, copy_s_), "dma end");
+                dma_ev_.push_back({dma_a, dma_b});
+                dma_bytes_ += double(it.n) * double(it.stride);
+            }
             {
                 std::lock_guard<std::mutex> lock(sm_);
                 produced_ = idx + 1;
@@ -4553,7 +4809,7 @@ private:
         const auto& c = cfg_;
         if (!peer_ || peer_grown_ || packed_.empty() || rt_count_.empty()) return;
         peer_grown_ = true;
-        const size_t keep = size_t(std::getenv("STRATA_DS41_GPU_RESERVE_MIB") ? std::atoi(std::getenv("STRATA_DS41_GPU_RESERVE_MIB")) : 1024) << 20;
+        const size_t keep = std::max<size_t>(size_t(std::getenv("STRATA_DS41_GPU_RESERVE_MIB") ? std::atoi(std::getenv("STRATA_DS41_GPU_RESERVE_MIB")) : 1024) << 20, vram_reserve + (128 << 20));
         const size_t f = peer_->free_bytes();
         if (f <= keep + max_stride_) return;
         const size_t n = (f - keep) / max_stride_;
@@ -4595,7 +4851,7 @@ private:
         ck(cudaStreamSynchronize(stream_), "grow");
         size_t f = 0, t = 0;
         ck(cudaMemGetInfo(&f, &t), "memory info");
-        const size_t keep = size_t(std::getenv("STRATA_DS41_GPU_RESERVE_MIB") ? std::atoi(std::getenv("STRATA_DS41_GPU_RESERVE_MIB")) : 1024) << 20;
+        const size_t keep = std::max<size_t>(size_t(std::getenv("STRATA_DS41_GPU_RESERVE_MIB") ? std::atoi(std::getenv("STRATA_DS41_GPU_RESERVE_MIB")) : 1024) << 20, vram_reserve + (128 << 20));
         if (f <= keep + max_stride_) return;
         const size_t n = (f - keep) / max_stride_;
         std::vector<std::pair<float, int>> cand;   // (-routes, l * experts + e)
@@ -4775,6 +5031,9 @@ private:
     void stream_experts(int l, const std::vector<int>& ids, const std::vector<float>& wts) {
         const auto& c = cfg_;
         namespace mq = strata::prefill::mmq;
+        // STRATA_DS41_EXPERT_DEBUG=1: the streamed products skipped (timing the DMA alone); =2: the DMAs skipped (timing
+        // the products on stale slots). Both give wrong answers; they only split the expert segment of a prompt pass.
+        const int expert_debug = expert_debug_;
         const int T = tokens_, K = c.top_k;
         const auto& L = experts_[size_t(l)];
         const size_t g = L.f.gu_row * size_t(c.ff);
@@ -4862,6 +5121,9 @@ private:
                     ++j1;
                 }
                 Product pr{item, j0, j1, row0[size_t(base + j0)], rows, nb, mx};
+                if (mx > rcap_)
+                    throw std::runtime_error("ds41: an expert's rows (" + std::to_string(mx) + ") exceed the MMQ row cap (" +
+                                             std::to_string(rcap_) + "); raise STRATA_DS41_MMQ_ROWS");
                 for (int j = j0; j <= j1; ++j) s_hbound_[nb++] = row0[size_t(base + j)] - pr.row_first;
                 prods.push_back(pr);
                 j0 = j1;
@@ -4898,13 +5160,24 @@ private:
                 }
                 prof_[1] += 0;   // (waits are part of the expert time)
                 stream_wait_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - w0).count();
+                cudaEvent_t ev_a = nullptr;
+                if (pf_timing_) {   // the compute stream's wait for this item's copy
+                    ev_a = dma_event();
+                    ck(cudaEventRecord(ev_a, stream_), "wait start");
+                }
                 ck(cudaStreamWaitEvent(stream_, ev_ready_[size_t(pr.item % dslots_)], 0), "slot ready");
+                if (pf_timing_) {
+                    cudaEvent_t ev_b = dma_event();
+                    ck(cudaEventRecord(ev_b, stream_), "wait end");
+                    wait_ev_.push_back({ev_a, ev_b});
+                }
                 waited = pr.item;
             }
             if (pr.rows == 0) continue;
             const uint8_t* stage = static_cast<const uint8_t*>(dring_[size_t(pr.item % dslots_)].p) + size_t(pr.j0) * it.stride;
             const int32_t* rtok = s_idx_.i() + pr.row_first;
             const float* rw = s_w_.f(pr.row_first);
+            if (expert_debug == 1) continue;   // EXPERT_DEBUG=1: the DMA's wait kept, the products skipped
             mq::quantize(xn_.f(), rtok, m_xq_.p, L.f.gu_type, c.hidden, c.hidden, pr.rows, stream_);
             if (remote_ && remote_gpu_) {   // this node's rows: gate and up rows [0, fl_), h zero-padded to the full down rows
                 const int F = fl_;
@@ -4954,10 +5227,15 @@ private:
         const auto& c = cfg_;
         const int T = tokens_;
         const std::string p = "blk." + std::to_string(l) + ".";
-        mat_xn(p + "ffn_gate_shexp.weight", sh_gate_.f());
-        mat_xn(p + "ffn_up_shexp.weight", sh_up_.f());
-        k::glm_swiglu(sh_gate_.f(), sh_up_.f(), sh_h_.f(), T * c.ff, c.shared_clamp[size_t(l)], stream_);
-        mat(p + "ffn_down_shexp.weight", sh_h_.f(), y_.f(), T);
+        const int step = int(std::min<size_t>(sh_rows_, shexp_tile_ > 0 ? size_t(shexp_tile_) : size_t(T)));
+        for (int t0 = 0; t0 < T; t0 += step) {   // SHEXP_TILE: n tokens at a time
+            const int n = std::min(step, T - t0);
+            const float* x = xn_.f(size_t(t0) * c.hidden);
+            mat(p + "ffn_gate_shexp.weight", x, sh_gate_.f(), n);
+            mat(p + "ffn_up_shexp.weight", x, sh_up_.f(), n);
+            k::glm_swiglu(sh_gate_.f(), sh_up_.f(), sh_h_.f(), n * c.ff, c.shared_clamp[size_t(l)], stream_);
+            mat(p + "ffn_down_shexp.weight", sh_h_.f(), y_.f(size_t(t0) * c.hidden), n);
+        }
     }
     // GPU_ROUTE: the tier's slot pointers to the device when they changed (stream-ordered; the staging is reused only
     // after its last upload finished)
@@ -4998,7 +5276,7 @@ private:
         const auto f0 = std::chrono::steady_clock::now();
         if (fuse_) { quantize_xn(); mat_xn(p + "ffn_gate_inp.weight", logits_.f()); }
         else mat(p + "ffn_gate_inp.weight", xn_.f(), logits_.f(), T);
-        if (dtiming_ && T <= 64) dmark(7);
+        if (dtiming_ && (T <= 64 || pf_timing_)) dmark(7);
         // STRATA_DS41_GPU_ROUTE=1 (opt-in; decode / verify passes on one GPU with DECODE_GROUPED, no GROW): top-k and the
         // GPU-held experts run on the GPU at once; the host takes the ids / weights afterwards for its lane
         static const bool gpu_route_on = std::getenv("STRATA_DS41_GPU_ROUTE") && std::string(std::getenv("STRATA_DS41_GPU_ROUTE")) == "1";
@@ -5360,7 +5638,7 @@ private:
                    (peer_mode == 2 ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
                     : peer_mode == 1 ? peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0])
                                      : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
-        if (dtiming_ && T <= 64) dmark(9);   // "experts": the GPU's experts enqueued (and run); "lane_wait": the CPU's and the peer's after
+        if (dtiming_ && (T <= 64 || pf_timing_)) dmark(9);   // "experts": the GPU's experts enqueued (and run); "lane_wait": the CPU's and the peer's after
         const auto x1 = std::chrono::steady_clock::now();
         if (lane_async) lane_->finish();
         else lane_->run(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
@@ -5436,6 +5714,19 @@ private:
     Dev attn_info_dev_;
     int* attn_info_ = nullptr;   // pinned: per-token attention rows of a pass
     int rcap_min_ = 8192;
+    int engram_tile_ = 0;   // STRATA_DS41_ENGRAM_TILE: Engram projection rows per call (0: the whole pass)
+    int mix_tile_ = 0;      // STRATA_DS41_MIX_TILE: hyper-connection mix rows per call (0: the whole pass)
+    int shexp_tile_ = 0;    // STRATA_DS41_SHEXP_TILE: shared-expert rows per call (0: the whole pass)
+    int outa_tile_ = 0;     // STRATA_DS41_OUTA_TILE: output-projection rows per call (0: the whole pass)
+    size_t sh_rows_ = 0;    // the shared expert's intermediate rows (SHEXP_TILE, capped by the tile)
+    bool halves_ = false;   // STRATA_DS41_PREFILL_HALVES: trunk per tile, FFN once per layer
+    int pftile_ = 4096;     // STRATA_DS41_PREFILL_TILE: the trunk's rows per call in halves mode
+    int halves_skip_from_ = -1;   // STRATA_DS41_HALVES_SKIP_FROM=l: the merged pass truncates rows from layer l on (-1: skip_from)
+    int sel_base_ = 0;            // the indexer selection's first row in the pass (0 outside the merged pass)
+    int rope_off_ = 0;      // halves mode: the trunk tile's first token (rope tables, engram rows, cache rows)
+    int engram_off_ = 0;    // halves mode: the trunk tile's first token in engram_rows_
+    Dev ht_, h2t_, yt_, xnt_, coeff_ffn_full_;
+    int attn_sub_ = [] { const char* v = std::getenv("STRATA_DS41_ATTN_SUB"); return v ? std::max(16, std::atoi(v)) : 256; }();
     std::vector<std::unique_ptr<void, void (*)(void*)>> pinned_bufs_;
     int chunk_ = 256, ring_ = 0, pos0_ = 0, tokens_ = 1, score_stride_ = 0, score_tile_ = 1;
     // batched sessions (sessions_init): per-layer [S][...] rings, caches, ratio-2 stashes; each session's tokens;
@@ -6348,6 +6639,28 @@ public:
     std::vector<cudaEvent_t> marks_;
     // STRATA_DS41_DECODE_TIMING=1: GPU time of one-token passes by phase (events from a reused pool)
     bool dtiming_ = std::getenv("STRATA_DS41_DECODE_TIMING") != nullptr;
+    // STRATA_DS41_PREFILL_TIMING=1 (with DECODE_TIMING): the same phase events on prompt passes of any width, printed per
+    // pass as totals and cleared, so the pass does not land in the decode averages
+    bool pf_timing_ = std::getenv("STRATA_DS41_PREFILL_TIMING") != nullptr;
+    // STRATA_DS41_EXPERT_DEBUG=1 / =2: a streamed prompt pass with the expert products / the expert DMAs skipped (see
+    // stream_experts); timing only
+    int expert_debug_ = std::getenv("STRATA_DS41_EXPERT_DEBUG") ? std::atoi(std::getenv("STRATA_DS41_EXPERT_DEBUG")) : 0;
+    // PREFILL_TIMING: the streamed prompt passes' DMA busy time and bytes (events on the copy stream, per item) and the
+    // compute stream's wait for each item
+    std::vector<std::pair<cudaEvent_t, cudaEvent_t>> dma_ev_, wait_ev_;
+    std::vector<cudaEvent_t> dma_pool_;   // (the producer thread and the pass both take from it)
+    std::mutex dma_mu_;
+    size_t dma_pool_used_ = 0;
+    double dma_bytes_ = 0;
+    cudaEvent_t dma_event() {
+        std::lock_guard<std::mutex> lock(dma_mu_);
+        if (dma_pool_used_ == dma_pool_.size()) {
+            cudaEvent_t e;
+            ck(cudaEventCreate(&e), "dma event");
+            dma_pool_.push_back(e);
+        }
+        return dma_pool_[dma_pool_used_++];
+    }
     std::vector<cudaEvent_t> dpool_, dmarks_;
     size_t dmark_used_ = 0;
     // phases: 0 layer start (Engram, mixes, norm), 1 q, 2 kv / compressor / indexer, 3 attention, 4 output projection,

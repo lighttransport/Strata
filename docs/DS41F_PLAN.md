@@ -939,22 +939,117 @@ Unsloth UD-IQ1_S, Engram on the local NVMe (O_DIRECT), 15 lane threads, `numactl
 - RAM_COPY on TR16 triggered systemd-oomd (86.6 GB of anonymous copies plus reclaim): it killed the session's scope.
   Runs go in their own `systemd-run --user --scope`.
 
-**Prefill** (tok/s):
+**Prefill** (tok/s; the warm column is the second of two identical prompts, so nothing pays its first-touch cost):
 
-| Prompt | Default | PIN_GB=100 STREAM_MIN=256 PREFILL_HYBRID=0 KV=f16 INDEX_GEMM_MIN=64 |
-|---|---|---|
-| 600 | 16.8 (chunked, CPU experts) | 52-62 |
-| 4K | 201 | 249 |
-| 8K | 148 | ~330 warm (4K chunks ~12.4 s each) |
+| Prompt | Default | PIN_GB=100 STREAM_MIN=256 PREFILL_HYBRID=0 KV=f16 INDEX_GEMM_MIN=64 | Long-prompt set (2026-10-27) |
+|---|---|---|---|
+| 600 | 16.8 (chunked, CPU experts) | 52-62 | 83 gated / 61 ungated |
+| 4K | 201 | 249 | 331 (12.4 s) |
+| 8K | 148 | ~330 warm | 329 (24.90 s: 12.34 + 12.56) |
+
+Long-prompt set: the 249/330 switches with `PREFILL_HYBRID` left unset (ungated prefetch), `STRATA_DS41_STAGE_SLOTS=8`,
+`STRATA_DS41_DESKTOP_MIB=1024`, `STRATA_DS41_ENGRAM_THREADS=256`. Encoded, 8K went from 26.6 s (308 tok/s) to 24.9 s
+(329 tok/s) warm; the first prompt pays 16.96 s for the first streamed pass. Those numbers use a 256 MiB stream ring
+and leave only ~2.2 GB of VRAM. With the 2 GiB desktop reserve that the decoder now enforces (below) the ring is
+128 MiB and 8K/16K run at 306/307 tok/s.
 
 - A streamed pass streams every expert over PCIe 3.0 x16. PIN_GB=100 pins 37 of 40 layers in place for direct DMA
   (no extra RAM).
-- PREFILL_HYBRID=0 skips the experts a prompt does not route to (600 tokens: 44 GB of 108; 4K: 21 GB).
-- PREFILL_HYBRID>=1 (low-count experts on the CPU lane during the stream) froze the machine once (no kernel message):
+- **The expert DMA is the limit, not the GPU.** A 4096-token pass moves 116.1 GB (all 15360 expert slots less the
+  resident tier, which is lent back to the prompt buffers): `STRATA_DS41_PREFILL_TIMING=1` reads the copy stream at
+  12.47-12.56 GB/s, i.e. 9.3 s busy per pass. The card negotiates 32 GT/s to its switch, but the Threadripper 1950X
+  root port (`00:03.1`) is 8 GT/s: 15.75 GB/s raw, and a pinned H2D microbench reaches 12.2-13.0 GB/s. An 8K prompt is
+  two 4096 passes, so it pays that 9.3 s twice; nothing in the trunk can recover it.
+- Phase split of a warm 4096 pass (`PREFILL_TIMING`): 12.4 s = 1.0 s of GPU wait for the slots + 4.1 s attention +
+  ~4.8 s expert products (2.4 s with the DMA idle) + 1.9 s dense/trunk + ~1.0 s Engram. Every GPU phase runs 25-70 %
+  slower while the DMA is in flight (attention 3.1 -> 4.1 s, dense 1.3 -> 2.2 s); it is contention, not clocks
+  (sclk held 3.1-3.3 GHz, 100-260 W through the pass).
+- `STRATA_DS41_EXPERT_DEBUG=1` (copies kept, products skipped) times the expert segment at 8.0 s; `=2` (products on
+  stale slots) at 2.4 s. The products hide under the transfers; the transfers do not hide under the products.
+- `PREFILL_HYBRID=0` makes the producer wait for each layer's routing before it copies, which idles the copy engine
+  between layers: 4K 13.2 s gated vs 12.4 s ungated, 8K 25.3 vs 24.9. Keep it only for short prompts, where skipping
+  unused experts outweighs the stall: 600 tokens 7.2 s gated vs 9.8 s ungated (the pass reads 44 GB of 108 there).
+- Engram reader threads (256) do cut the row read (1.6 -> 0.4-1.7 s a pass) but it overlaps the DMA, so the pass time
+  barely moves.
+- `PREFILL_HYBRID>=1` (low-count experts on the CPU lane during the stream) froze the machine once (no kernel message):
   do not use until understood.
 - After a streamed prompt the GPU tier now also takes the prompt's routing (TIER_PROMPT_WEIGHT, default 10): tier hit
   0.10 -> 0.59, decode after a 600-token prompt 6.1 -> 10.3 tok/s (as after a chunked prompt).
-- PROMPT_BATCH=8192 does not fit 16 GB.
+- **`PROMPT_BATCH=8192` is the one lever left and it still does not fit.** `cudaMalloc` fails at load: the 8192 buffers
+  are roughly 4-6 GB above the 4096 set (q_ and att_ 1.07 GB each, kv_sel_ 1.34 GB, engram_kv_ 0.84 GB, h_/h2_/flat_
+  +1.0 GB, xh_ +0.3 GB), against ~3.1 GB free after dense weights and the 4096 buffers. One 8192 pass would move the
+  116 GB once instead of twice (9.3 s) and, by the split above, put 8K near 16 s (~510 tok/s). The way there is a
+  layer-major pass whose trunk runs each layer over two 4096-token halves while the FFN runs over all 8192 rows: the
+  trunk buffers stay at 4096, only the residual/FFN arrays grow (+1.3 GB). Not attempted yet.
+- Diagnostics added for this (opt-in, byte-identical when off: the 8K run's tokens match the pre-change binary exactly):
+  `STRATA_DS41_PREFILL_TIMING=1` (per-pass phase split and `chunk_dma GB= copy_s= GB/s= gpu_wait=`),
+  `STRATA_DS41_EXPERT_DEBUG=1|2`.
+
+**The 2 GiB desktop reserve (2026-10-27).** The decoder now leaves `STRATA_DS41_DESKTOP_MIB` (default 2048) MiB of VRAM to the
+compositor: every device allocation refuses (with the requested size, the free size and the reserve) if it would dip
+below it, the GPU-resident budgets (tier, grow, slots) are clamped to it, and the stream-slot size halves itself down
+to 32 MiB when the reserve leaves no room for two slots. On this desktop a decoder that grew past the reserve took the
+GNOME session down once. The measured price of the reserve is the stream ring: 8 x 128 MiB instead of 8 x 256 MiB
+(the 256 MiB ring no longer fits beside it), and a 4096 pass goes 12.45 -> 13.2 s.
+
+| 8K / 16K, warm, with the reserve | pass 1 | pass 2 | pass 3 | pass 4 | tok/s |
+|---|---|---|---|---|---|
+| 8K (two 4096 passes) | 13.25 | 13.49 | | | 306 |
+| 16K (four 4096 passes) | 13.13 | 13.38 | 13.45 | 13.43 | 307 |
+
+- The 8192-token single pass (which would halve the DMA) **does not fit under the reserve**. With the scratch tiles
+  below it needs ~7.4 GB of pass buffers + 6.3 GB of dense weights + 2.0 GB of reserve + ~0.6 GB of MMQ stream-k
+  scratch + slots: ~14.5 GB of the 16.3 GB card, i.e. ~0.6 GB over. It ran to `cudaMalloc` at 2.0 GB free.
+- New scratch tiles, all opt-in and byte-identical off (`ENGRAM_TILE=n` the Engram projection, `MIX_TILE=n` the
+  hyper-connection mixes, `SHEXP_TILE=n` the shared expert, `OUTA_TILE=n` the attention output projection and its FP16
+  conversion, `SCORE_MIB=n` the indexer's score tile): together they cut a 8192-token pass's buffers by ~1.6 GB
+  (Engram 0.8, mixes 0.6, shared expert 0.2, xh_ 0.47) without touching the kernels. `STRATA_DS41_MMQ_ROWS` caps the
+  MMQ row buffers, and an expert whose rows exceed the cap now fails loudly instead of overrunning them (an 8192-token
+  prompt routed 5245 tokens to one expert).
+- **500 tok/s at 8K is not reachable on this card with these kernels.** 500 needs 16.4 s for 8192 tokens; a single
+  8192 pass would have ~17 s of compute alone (attention 6.3 s, expert MMQ 6.6 s, dense 2.6 s, Engram 2 s) because
+  every GPU phase runs ~35 % slower while the DMA is in flight, and the 9.3 s of DMA hides under that. The way to 500
+  is ~1.4x faster attention and expert kernels (both run at ~9 TFLOPS today), or the layer-major pass (trunk over two
+  4096 halves, FFN over 8192 rows) which keeps the fast attention and halves the DMA but leaves the same compute.
+**PREFILL_HALVES (2026-10-27): one expert stream per prompt, trunk per tile.** `STRATA_DS41_PREFILL_HALVES=1
+STRATA_DS41_PREFILL_TILE=4096` runs each layer's trunk over 4096-token tiles (the attention-local buffers hold the tile,
+so `q_`/`att_`/`oa_`/`xh_`/the ring are tile-sized) and its FFN once over the whole pass: an 8K prompt becomes one
+8192-token pass, so the experts cross PCIe once (116 GB, 9.3 s) instead of twice. The residual and FFN arrays stay at
+the pass width, and the trunk's tiles are swapped in and out of them (h, x, coefficients; ~60 MB of copies per pass).
+
+| 8K / 16K, warm, 2 GiB reserve | halves (row truncation, KL 0.0007) | halves, no truncation | two passes, default |
+|---|---|---|---|
+| 8K | 20.1 s, **408 tok/s** | 25.1 s, 327 | 26.8 s, 306 |
+| 16K | 41.5 s (19.9 + 21.7), **394 tok/s** | 51.6 s, 318 | 53.4 s, 307 |
+
+- Quality: the last position's logits match the two-pass path to **KL 0.0008** (the chunking noise floor is 0.0006-0.001,
+  so this is exact within measurement), top-1 identical. `--dump-logits` both and `cmp_f32`; the comparison runs with
+  enc-skip as shipped.
+- **The row truncation inside the merged pass needed one invariant fixed.** `sel_`/`sel_count_`/`sel_cnt_` (the indexer's
+  per-token selection, written at the indexer-source layer and read by later layers that reuse it) were indexed relative
+  to each call. `narrow()` keeps that consistent because it shifts the buffers to the pass's current first token; a
+  per-layer row range does not, and layers with different kept ranges read each other's selections. Indexing the
+  selection by the pass's absolute row instead (`sel_base_`, T rows instead of a tile's) took the same truncation from
+  KL 1.06 to KL 0.03, and a 1024-row boundary slack (so the first truncated tile's windows are complete) from 0.03 to
+  **0.0007**. The final row range per layer is `end - need - 1024`, 256-aligned, with `need = window + (layers-1-l)*(window-1)`.
+- The MMQ grouping was also tried with hot experts split into their own products (a 4K pass routed 5245 tokens to one
+  expert, and the launch's grid is max_rows x experts): it cost 2.5 s, so the plain row-cap grouping stays.
+- With the truncation, the pass is no longer DMA bound: 20.1 s at 8K of which 9.5 s is DMA and the compute is
+  attention ~5.5 s + output projection 1.5 s + FFN (router, shared expert, 8192-row expert MMQ) 11.0 s.
+- **The FP16 KV cache is now read by the attention kernel directly** (`ds41_attention_batched(..., comp_half)`: the
+  compressed rows are loaded as `uint16_t` and converted in the tile loader). Before, each 256-token launch gathered its
+  512 selected rows per token to a float buffer (~500 MB per launch); the same values are now converted at read time,
+  so the result is unchanged (KL 0.0008 both ways) and an 8K pass went 20.8 -> 20.1 s.
+- 500 tok/s at 8K needs ~1.4x faster attention and expert kernels (both run at ~10 TFLOPS of a ~50 TFLOP FP32 /
+  ~97 TOPS INT8 card). The tensor-core attention kernel (`attn_wmma_kernel`, Volta+) is CUDA-only - it is not compiled
+  on HIP - so the HIP attention is the CUDA-core tiled kernel; porting it to gfx12's WMMA is the obvious next win.
+- Tiling the attention itself was tried and rejected: `q_`/`att_`/the output projection per 256-2048 tokens takes a
+  4096 pass from 3.6 s to 6.1-6.3 s of attention+output (the Tensor-core GEMMs at M = 256-2048 run at a third of the
+  M = 4096 rate), so it saves the 3.5 GB but costs 2.5 s a pass - more than the second DMA pass it would buy. The
+  window ring does not need it: writing the KV rows per attention batch (instead of per pass) shrank the ring from
+  681 MB to 31 MB at 8192 with no measurable cost.
+
+
 
 ## 9. Next steps (in order)
 

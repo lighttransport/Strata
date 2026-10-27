@@ -68,9 +68,11 @@ void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const 
 /// ds41_attention for `tokens` queries at once (prefill): info[4 t..] = {first window slot, window rows, selected rows,
 /// unused} per token, its selected rows at sel + t sel_stride; window row r of token t is slot (first + r) % ring.
 /// q, out: [tokens][heads][dim]. dim 256 or 512, heads % 8 == 0.
+/// `comp_half`: the compressed rows are FP16 (the cache's own storage), converted as they are read instead of gathered
+/// to a float buffer first. Same values, the window stays FP32.
 void ds41_attention_batched(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info,
                             const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale,
-                            float* out, void* stream);
+                            float* out, void* stream, bool comp_half = false);
 /// score[t] = sum_h relu(keys[t].q[h]) (w[h] w_scale) for rows t < rows (keys[t] at t * key_stride, width dim).
 void ds41_index_score(const float* q, int heads, int dim, const float* keys, int key_stride, int rows, const float* w,
                       float w_scale, float* score, void* stream, bool half = false);

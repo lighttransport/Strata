@@ -54,6 +54,25 @@ Best so far (code600):
 - `DEFER_ALL=1 CPU_TOPK=4`: 18.7 tok/s (lossy, KL ~0.2).
 - Prefill with `STRATA_DS41_PIN_GB=100 STRATA_DS41_STREAM_MIN=256 STRATA_DS41_PREFILL_HYBRID=0 STRATA_DS41_KV=f16
   STRATA_DS41_INDEX_GEMM_MIN=64`: 600 tokens 52-62, 4K 249, 8K ~330 tok/s warm.
+- 8K prefill, 2026-10-27 (docs/DS41F_PLAN.md 8k): 329 tok/s warm (24.9 s) with `PREFILL_HYBRID` unset (gated copies
+  idle the copy engine), `STAGE_SLOTS=8 ENGRAM_THREADS=256`, against 308 before. The pass is expert-DMA bound: 116.1 GB
+  per 4096-token pass at 12.5 GB/s (the 1950X root port is PCIe 3.0 x16, 8 GT/s), 9.3 s of copy stream per pass; the
+  expert MMQ (2.4 s) hides under it. `PREFILL_TIMING=1` prints the split; `EXPERT_DEBUG=1|2` times the DMA / the
+  products alone.
+- VRAM safety (2026-10-27): the decoder leaves `STRATA_DS41_DESKTOP_MIB` (default 2048) MiB free - every allocation
+  refuses below it, the tier/grow/slot budgets are clamped to it, and the stream slots halve to 32 MiB if needed (a
+  run that grew past it took the GNOME session down once). With the reserve: 8K 306, 16K 307 tok/s (8 x 128 MiB ring).
+- Scratch tiles (opt-in, byte-identical off): `ENGRAM_TILE=256 MIX_TILE=1024 SHEXP_TILE=1024 OUTA_TILE=1024
+  SCORE_MIB=16` cut a 8192-token pass's buffers ~1.6 GB.
+- PREFILL_HALVES (2026-10-27): trunk per 4096-tile, FFN once per layer, one expert stream per prompt, per-layer row
+  truncation. **8K 20.1 s / 408 tok/s, 16K 41.5 s / 394** (two passes: 306/307), KL 0.0008 vs the two-pass
+  path. The truncation needed the indexer selection indexed by the pass's absolute row (`sel_base_`; it is written at
+  one layer and read by later ones, so a per-layer kept range read the wrong rows: KL 1.06) plus a 1024-row boundary
+  slack (0.03 -> 0.0007). The pass is no longer DMA bound: 9.5 s of DMA in 20.6 s, compute = attention 6.2 + output
+  1.5 + FFN 11.0. 500 needs ~1.4x faster attention/expert kernels. Splitting hot experts into their own MMQ products
+  cost 2.5 s and was reverted.
+  Flags: `STRATA_DS41_PREFILL_HALVES=1 STRATA_DS41_PREFILL_TILE=4096 PROMPT_BATCH=8192 ENGRAM_TILE=256
+  SHEXP_TILE=2048 OUTA_TILE=4096 SCORE_MIB=16` (OUTA_TILE below the tile picks a split-K GEMM and costs KL 0.2).
 
 Safety: run every decoder in its own `systemd-run --user --scope` (systemd-oomd killed this session's whole tmux scope
 once: RAM_COPY, 86.6 GB anonymous). Never RAM_COPY on TR16. `STRATA_DS41_PREFILL_HYBRID>=1` froze the machine (a
@@ -76,7 +95,13 @@ first.
 6. PREFILL_HYBRID>=1 freeze: reproduce on a 2-layer-equivalent small prompt with a watchdog (or under a remote
    session with a hardware reset path), suspects: the lane's begin() during a streamed pass with 100 GB of pinned
    page cache under concurrent DMA.
-7. Prefill: the 8K second chunk is attention/indexer bound (GEMM scoring helps); PROMPT_BATCH 8192 does not fit 16 GB.
+7. Prefill is at 408 tok/s at 8K and 394 at 16K (PREFILL_HALVES, exact). The FP16 KV is now read directly by the
+   attention kernel (comp_half), no per-launch float gather. 500 needs the attention kernel ported to gfx12 WMMA (the
+   WMMA attention is CUDA-only) and ~1.4x on the expert MMQ. Historical note: 400 at 8K was the ceiling of this
+   configuration and 500 needs ~1.4x faster kernels, in order: (a) `ds41_attention_batched` (6.2 s per 8K pass,
+   ~10 TFLOPS) and the IQ1_S expert MMQ (11.0 s, ~10 TOPS); (b) a smaller per-pass DMA (the transfers are 9.5 s of
+   20.6 s, so overlapping them fully is worth at most ~1 s now); (c) the CPU lane for a share of the experts (still
+   blocked on the PREFILL_HYBRID freeze), (d) a finer row truncation (the 1024-row slack costs ~1 s a pass).
    Pin the experts at load (first streamed prompt pays ~5 s), and a GPU_BENCH run of MMQ vs dequant-F16 + hipBLASLt
    for IQ1_S at M 16-256 on gfx1201.
 8. Upstream Strata v0.2.6 `strata-dsv41` on TR16 for reference: 4.5-5.6 tok/s on the GSQ 2.00 set

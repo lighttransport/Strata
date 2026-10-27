@@ -9,8 +9,8 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>   // (hip_compat's under HIP)
 #if defined(__CUDACC__) && !defined(__HIP_PLATFORM_AMD__)
-#include <cuda_fp16.h>
 #include <mma.h>
 #define STRATA_DS41_WMMA 1
 #endif
@@ -715,8 +715,24 @@ __device__ inline const float* attn_tile_row(const float* window, int ring, int 
                                              const int* tsel, int r) {
     return r < wrows ? window + size_t((first + r) % ring) * kTileDim : comp + size_t(tsel[r - wrows]) * comp_stride;
 }
+// 4 values of one row at `col`: the window is FP32, the compressed rows are CT (FP16 when the cache is, converted here so
+// the gather to a float buffer per launch is not needed)
+template <class CT>
+__device__ inline float4 attn_tile_load4(const float* window, int ring, int first, int wrows, const CT* comp, int comp_stride,
+                                         const int* tsel, int r, int col) {
+    if (r < wrows) return *reinterpret_cast<const float4*>(window + size_t((first + r) % ring) * kTileDim + col);
+    const CT* p = comp + size_t(tsel[r - wrows]) * comp_stride + col;
+    if constexpr (sizeof(CT) == 4) {
+        return *reinterpret_cast<const float4*>(p);
+    } else {
+        const uint16_t* h = reinterpret_cast<const uint16_t*>(p);
+        return make_float4(__half2float(__ushort_as_half(h[0])), __half2float(__ushort_as_half(h[1])),
+                           __half2float(__ushort_as_half(h[2])), __half2float(__ushort_as_half(h[3])));
+    }
+}
+template <class CT>
 __global__ void __launch_bounds__(256) attn_tiled_kernel(const float* q, int heads, const float* window, int ring, const int4* info,
-        const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale, float* out) {
+        const CT* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale, float* out) {
     constexpr int dim = kTileDim, chunks = kTileDim / kDC;
     extern __shared__ float lds[];
     float* qs = lds;                  // kTG x dim
@@ -741,8 +757,7 @@ __global__ void __launch_bounds__(256) attn_tiled_kernel(const float* q, int hea
         for (int i = th; i < kTR * kDC / 4; i += 256) {
             const int r = i / (kDC / 4), c4 = i % (kDC / 4), rr = r0 + r;
             float4 v = make_float4(0, 0, 0, 0);
-            if (rr < rows)
-                v = *reinterpret_cast<const float4*>(attn_tile_row(window, ring, first, wrows, comp, comp_stride, tsel, rr) + c0 + 4 * c4);
+            if (rr < rows) v = attn_tile_load4(window, ring, first, wrows, comp, comp_stride, tsel, rr, c0 + 4 * c4);
             *reinterpret_cast<float4*>(kc + r * kDCP + 4 * c4) = v;
         }
     };
@@ -1927,7 +1942,7 @@ void ds41_attention(const float* q, int heads, int dim, const float* window, int
 
 void ds41_attention_batched(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info,
                             const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale,
-                            float* out, void* stream) {
+                            float* out, void* stream, bool comp_half) {
     static const bool v1 = std::getenv("STRATA_DS41_ATTN_V1") != nullptr;
 #ifdef STRATA_DS41_WMMA
     static const bool wmma = std::getenv("STRATA_DS41_ATTN_WMMA") && std::string(std::getenv("STRATA_DS41_ATTN_WMMA")) == "1";
@@ -1947,11 +1962,17 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
         const size_t shared = size_t(kTG * kTileDim + kTR * kDCP + kTR * kTG) * sizeof(float);
         static bool configured = false;
         if (!configured) {
-            cudaFuncSetAttribute(attn_tiled_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, int(shared));
+            cudaFuncSetAttribute(attn_tiled_kernel<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(shared));
+            cudaFuncSetAttribute(attn_tiled_kernel<uint16_t>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(shared));
             configured = true;
         }
-        attn_tiled_kernel<<<dim3(unsigned(tokens), unsigned(heads / kTG)), 256, shared, (cudaStream_t)stream>>>(
-            q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
+        if (comp_half)
+            attn_tiled_kernel<uint16_t><<<dim3(unsigned(tokens), unsigned(heads / kTG)), 256, shared, (cudaStream_t)stream>>>(
+                q, heads, window, ring, reinterpret_cast<const int4*>(info), reinterpret_cast<const uint16_t*>(comp), comp_stride, sel,
+                sel_stride, sinks, scale, out);
+        else
+            attn_tiled_kernel<float><<<dim3(unsigned(tokens), unsigned(heads / kTG)), 256, shared, (cudaStream_t)stream>>>(
+                q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
         check("attention tiled");
         return;
     }
