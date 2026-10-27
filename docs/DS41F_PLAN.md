@@ -1063,6 +1063,18 @@ tiles**: Q FP16 16 KB + K 32 rows x 512 dims FP16 32 KB (each wave reads its own
 k split needs no extra LDS) + 8 waves of [16 heads x 32 rows] FP32 partials 16 KB (or 4 waves, 8 KB) + P 1 KB + scores
 2 KB = 59 KB. The same buffer becomes V transposed to [dim][row] for the PV phase after the QK of a tile, so 20 tiles
 per 640-row token.
+**First cut built and measured (2026-10-27): `attn_wmma_gfx12_kernel`, `STRATA_DS41_ATTN_WMMA=1`.** One block per
+(token, 16-head group), 256 threads (8 waves), 32-row tiles: Q 16 KB + K 32 KB + scores 2 KB + P 1 KB = 60 KB of LDS.
+QK is 8 waves x 4 of the 32 k-steps summed with LDS atomics; PV is 8 waves x a 64-dim output slice with V staged
+transposed. It is correct - the 8K prompt's logits match the tiled kernel to KL 0.0033 (the FP16 Q/K/V conversion),
+top-1 identical - but **slower: the 8K pass 23.6 s against 20.1 s** (attention ~9 s against ~5.6 s). The cause is the
+tile: at 32 rows the two LDS staging passes (K, then V transposed) and the four syncs per tile outweigh the MMA work,
+and each staging element only feeds 16 MACs. A per-element staging was replaced by 8-element vectors (23.6 -> 21.0 s)
+but that version changed the values (KL 6, top-1 0%) and its layout turned out to be identical on inspection - an
+unresolved bug; it is not in the tree. Next: 64-row tiles with the k dimension streamed in two 256-dim chunks (Q 16 KB +
+K/V 32 KB + scores 4 KB + P 2 KB = 54 KB) - the same staged bytes per row but twice the MACs per element and half the
+syncs - and the vectorized staging debugged.
+
 **Measured issue rate at these shapes** (`tools/hip/wmma_attn_probe.hip`, one block per token, 16 heads x 64-row tiles
 x 512 dims, 8 waves with a 64-dim k slice each and an LDS partial-sum reduction, QK + PV): **26-45 TF/s** (44.5 at
 steady state, 8192 blocks) against ~10 TFLOPS for the CUDA-core kernel - a 3-4x headroom on the attention. The probe

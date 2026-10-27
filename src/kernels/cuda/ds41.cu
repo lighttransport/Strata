@@ -1940,6 +1940,179 @@ void ds41_attention(const float* q, int heads, int dim, const float* window, int
     check("attention out");
 }
 
+#if defined(__HIP_PLATFORM_AMD__)
+// this ROCm reports the device's arch as "gfx1201" (with an optional ":sramecc" suffix)
+static bool ds41_device_is_gfx12() {
+    static const bool v = [] {
+        int dev = 0;
+        hipDeviceProp_t p{};
+        if (hipGetDevice(&dev) != hipSuccess || hipGetDeviceProperties(&p, dev) != hipSuccess) return false;
+        const std::string a(p.gcnArchName);
+        return a.rfind("gfx1200", 0) == 0 || a.rfind("gfx1201", 0) == 0;
+    }();
+    return v;
+}
+#endif
+
+// ---- gfx12 (RDNA4) WMMA attention, opt-in with STRATA_DS41_ATTN_WMMA=1 -------------------------------------------
+// One block per (token, 16-head group); 256 threads = 8 waves. QK and PV on the gfx12 WMMA engine
+// (__builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12: wave32, lane l -> half = l/16, id = l%16; A[i] = A[id][half*8+i],
+// B[i] = B[half*8+i][id], C[i] = C[half*8+i][id]), which sustains ~40 TF/s at these shapes against ~10 for the CUDA-core
+// kernel (tools/hip/wmma_attn_probe.hip). Tiles are 32 rows: this card has 64 KB of LDS per block, and the tile's K
+// (32 x 512 FP16, 32 KB) plus Q (16 x 512 FP16, 16 KB) plus the scores/probabilities fit at 51 KB.
+// QK: S[16 heads][32 rows] = Q[16][512] . K[32][512]^T, the 8 waves each summing 4 of the 32 k-steps (LDS atomics).
+// PV: O[16][512] = P[16][32] . V[32][512], the 8 waves each owning a 64-dim output slice, V staged transposed.
+#if defined(__HIP_PLATFORM_AMD__)
+namespace wm12 {
+constexpr int kDim = 512, kHeads = 16, kRows = 32, kWaves = 8;
+constexpr size_t kLds = size_t(kHeads * kDim + kRows * kDim) * 2 + size_t(kHeads * kRows) * 4 + size_t(kHeads * kRows) * 2 +
+                        size_t(4 * kHeads) * 4;   // Q + K/VT + S + P + (m, l, f, sink)
+using f8 = float __attribute__((ext_vector_type(8)));
+using h8 = _Float16 __attribute__((ext_vector_type(8)));
+__device__ inline _Float16 bits_h(uint16_t u) { _Float16 f; __builtin_memcpy(&f, &u, 2); return f; }
+__device__ inline float f16_to_f32(_Float16 f) { float r; __builtin_memcpy(&r, &f, 4); return r; }   // (not used: see below)
+}  // namespace wm12
+
+template <class CT>
+__global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
+        const float* q, int heads, const float* window, int ring, const int4* info, const CT* comp, int comp_stride,
+        const int* sel, int sel_stride, const float* sinks, float scale, float* out) {
+#if defined(__HIP_DEVICE_COMPILE__) && (defined(__gfx1200__) || defined(__gfx1201__))
+    using namespace wm12;
+    extern __shared__ __align__(16) unsigned char wsm[];
+    _Float16* smQ = reinterpret_cast<_Float16*>(wsm);                       // [16][512]
+    _Float16* smK = smQ + kHeads * kDim;                                    // [32][512], then V transposed [512][32]
+    float* smS = reinterpret_cast<float*>(smK + kRows * kDim);              // [16][32]
+    _Float16* smP = reinterpret_cast<_Float16*>(smS + kHeads * kRows);      // [16][32]
+    float* smF = reinterpret_cast<float*>(smP + kHeads * kRows);            // [16] rescale factor of the max
+    float* smM = smF + kHeads;                                             // [16] running max
+    float* smL = smM + kHeads;                                             // [16] running sum
+    float* smK0 = smL + kHeads;                                            // [16] sink
+    const int t = blockIdx.x, h0 = blockIdx.y * kHeads;
+    const int tid = threadIdx.x, wid = tid >> 5, lid = tid & 31, hf = lid >> 4, id = lid & 15;
+    const int4 in = info[t];
+    const int first = in.x, wrows = in.y, rows = in.y + in.z;
+    const int* tsel = sel + size_t(t) * sel_stride;
+    // Q for this 16-head group, FP32 -> FP16
+    for (int i = tid; i < kHeads * kDim; i += 256) {
+        const int h = i / kDim, d = i % kDim;
+        smQ[i] = (_Float16) q[(size_t(t) * heads + h0 + h) * size_t(kDim) + d];
+    }
+    if (tid < kHeads) { smM[tid] = -INFINITY; smL[tid] = 0.f; smK0[tid] = sinks[h0 + tid]; }
+    // one row of the tile, dim `d` (window rows from the FP32 ring, selected rows from the cache)
+    auto tile_val = [&](int rr, int d) -> _Float16 {
+        if (rr < wrows) return (_Float16) window[size_t((first + rr) % ring) * kDim + d];
+        const CT* p = comp + size_t(tsel[rr - wrows]) * comp_stride + d;
+        if constexpr (sizeof(CT) == 4) return (_Float16) (*reinterpret_cast<const float*>(p));
+        else return bits_h(*reinterpret_cast<const uint16_t*>(p));
+    };
+    f8 o[4];
+#pragma unroll
+    for (int c = 0; c < 4; ++c)
+#pragma unroll
+        for (int i = 0; i < 8; ++i) o[c][i] = 0.f;
+    __syncthreads();
+    for (int r0 = 0; r0 < rows; r0 += kRows) {
+        // ---- K for this tile
+        for (int i = tid; i < kRows * kDim; i += 256) {
+            const int r = i / kDim, d = i % kDim, rr = r0 + r;
+            smK[i] = rr < rows ? tile_val(rr, d) : (_Float16) 0;
+        }
+        for (int i = tid; i < kHeads * kRows; i += 256) smS[i] = 0.f;   // the 8 waves' partial sums
+        __syncthreads();
+        // ---- QK: this wave sums its 4 k-steps (64 dims) into smS
+        for (int c = 0; c < 2; ++c) {   // two n-tiles of 16 rows
+            f8 s;
+#pragma unroll
+            for (int i = 0; i < 8; ++i) s[i] = 0.f;
+#pragma unroll
+            for (int ks = 0; ks < 4; ++ks) {
+                h8 a, b;
+#pragma unroll
+                for (int i = 0; i < 8; ++i) a[i] = smQ[id * kDim + wid * 64 + ks * 16 + hf * 8 + i];
+#pragma unroll
+                for (int i = 0; i < 8; ++i) b[i] = smK[(c * 16 + id) * kDim + wid * 64 + ks * 16 + hf * 8 + i];
+                s = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a, b, s);
+            }
+#pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                const int m = hf * 8 + i, n = c * 16 + id;   // head, row of the tile
+                if (r0 + n < rows) atomicAdd(&smS[m * kRows + n], s[i]);   // (8 waves, same 512 cells)
+            }
+        }
+        __syncthreads();
+        // ---- softmax over the tile, per head (16 threads of a head: thread th -> head th/16, rows (th%16)*2 + 0..1)
+        {
+            const int h = tid / 16, j = tid % 16;
+            float mx = -INFINITY;
+#pragma unroll
+            for (int q2 = 0; q2 < 2; ++q2) {
+                const int n = j * 2 + q2;
+                const int rr = r0 + n;
+                float v = rr < rows ? smS[h * kRows + n] * scale : -INFINITY;
+                smS[h * kRows + n] = v;   // (scaled in place, -inf off the end)
+                mx = fmaxf(mx, v);
+            }
+            for (int o2 = 8; o2; o2 /= 2) mx = fmaxf(mx, __shfl_xor_sync(0xffffffffu, mx, o2, 16));
+            const float nm = fmaxf(smM[h], mx);
+            const float f = smM[h] == -INFINITY ? 0.f : expf(smM[h] - nm);
+            float sum = 0;
+#pragma unroll
+            for (int q2 = 0; q2 < 2; ++q2) {
+                const int n = j * 2 + q2;
+                const float e = smS[h * kRows + n] == -INFINITY ? 0.f : expf(smS[h * kRows + n] - nm);
+                smP[h * kRows + n] = (_Float16) e;   // A layout: P[head][row]
+                sum += e;
+            }
+            for (int o2 = 8; o2; o2 /= 2) sum += __shfl_xor_sync(0xffffffffu, sum, o2, 16);
+            if (j == 0) {
+                smF[h] = f;
+                smL[h] = smL[h] * f + sum;
+                smM[h] = nm;
+            }
+        }
+        __syncthreads();
+        // ---- V transposed into the K buffer: smK[dim][row]
+        for (int i = tid; i < kRows * kDim; i += 256) {
+            const int r = i / kDim, d = i % kDim, rr = r0 + r;
+            smK[size_t(d) * kRows + r] = rr < rows ? tile_val(rr, d) : (_Float16) 0;
+        }
+        __syncthreads();
+        // ---- PV: each wave owns a 64-dim output slice; rescale the running sum by this tile's factor first
+        const float f4 = smF[hf * 8];   // (the 16 lanes of a half share the same 8 heads' factors)
+#pragma unroll
+        for (int c = 0; c < 4; ++c) {
+            float fc[8];
+#pragma unroll
+            for (int i = 0; i < 8; ++i) fc[i] = smF[hf * 8 + i];
+            for (int i = 0; i < 8; ++i) o[c][i] *= fc[i];
+#pragma unroll
+            for (int ks = 0; ks < 2; ++ks) {   // 2 k-steps of 16 rows
+                h8 a, b;
+#pragma unroll
+                for (int i = 0; i < 8; ++i) a[i] = smP[id * kRows + ks * 16 + hf * 8 + i];
+#pragma unroll
+                for (int i = 0; i < 8; ++i) b[i] = smK[(wid * 64 + c * 16 + id) * kRows + ks * 16 + hf * 8 + i];
+                o[c] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a, b, o[c]);
+            }
+        }
+        (void) f4;
+        __syncthreads();   // before the next tile's K overwrites the V rows
+    }
+    // ---- epilogue: divide by the running sum (+ sink), write FP32 out
+    for (int c = 0; c < 4; ++c)
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+            const int h = hf * 8 + i, d = wid * 64 + c * 16 + id;
+            const float sink = smK0[h], M = fmaxf(smM[h], sink);
+            const float fs = smM[h] == -INFINITY ? 0.f : expf(smM[h] - M);
+            const float inv = 1.f / (smL[h] * fs + expf(sink - M));
+            out[(size_t(t) * heads + h0 + h) * size_t(kDim) + d] = o[c][i] * inv;
+        }
+#endif
+}
+#endif  // __HIP_PLATFORM_AMD__
+
 void ds41_attention_batched(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info,
                             const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale,
                             float* out, void* stream, bool comp_half) {
@@ -1955,6 +2128,26 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
         attn_wmma_kernel<<<dim3(unsigned(tokens), unsigned(heads / kWG)), 128, kWmmaShared, (cudaStream_t)stream>>>(
             q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
         check("attention wmma");
+        return;
+    }
+#endif
+#if defined(__HIP_PLATFORM_AMD__)
+    static const bool wmma12 = std::getenv("STRATA_DS41_ATTN_WMMA") && std::string(std::getenv("STRATA_DS41_ATTN_WMMA")) == "1";
+    if (wmma12 && !v1 && dim == wm12::kDim && heads % wm12::kHeads == 0 && ds41_device_is_gfx12()) {
+        static bool configured = false;
+        if (!configured) {
+            cudaFuncSetAttribute(attn_wmma_gfx12_kernel<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(wm12::kLds));
+            cudaFuncSetAttribute(attn_wmma_gfx12_kernel<uint16_t>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(wm12::kLds));
+            configured = true;
+        }
+        if (comp_half)
+            attn_wmma_gfx12_kernel<uint16_t><<<dim3(unsigned(tokens), unsigned(heads / wm12::kHeads)), 256, wm12::kLds, (cudaStream_t)stream>>>(
+                q, heads, window, ring, reinterpret_cast<const int4*>(info), reinterpret_cast<const uint16_t*>(comp), comp_stride, sel,
+                sel_stride, sinks, scale, out);
+        else
+            attn_wmma_gfx12_kernel<float><<<dim3(unsigned(tokens), unsigned(heads / wm12::kHeads)), 256, wm12::kLds, (cudaStream_t)stream>>>(
+                q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
+        check("attention wmma gfx12");
         return;
     }
 #endif
@@ -1982,6 +2175,7 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
         q, heads, dim, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
     check("attention batched");
 }
+
 
 size_t ds41_attention_scratch(int heads) { return size_t(heads) * kMaxRows * sizeof(float); }
 
