@@ -16,6 +16,7 @@
 #include "strata/ds41/config.hpp"
 #include "strata/ds41/decode.hpp"
 #include "strata/ds41/expert_lane.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/kernels/ds41.hpp"
@@ -23,6 +24,7 @@
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
 #include "strata/kernels/iq_kernels.hpp"
+#include "strata/kernels/quantize_act.hpp"
 #include "strata/kernels/native_mmvq.hpp"
 #include "strata/net/expert_tp.hpp"
 #include "strata/prefill/gemm.hpp"
@@ -35,8 +37,10 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <condition_variable>
 #include <deque>
+#include <initializer_list>
 #include <mutex>
 #include <cmath>
 #include <cstdio>
@@ -54,6 +58,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <set>
 #include <memory>
@@ -74,6 +79,23 @@ void ck(cudaError_t e, const char* what) {
     if (e != cudaSuccess) throw std::runtime_error(std::string("ds41: ") + what + ": " + cudaGetErrorString(e));
 }
 
+float cpu_trim_threshold() {
+    const char* raw = std::getenv("STRATA_DS41_CPU_TRIM");
+    if (!raw) return 0.0f;
+    char* end = nullptr;
+    (void)std::strtod(raw, &end);
+    const double v = strata_env_value_double("STRATA_DS41_CPU_TRIM", 0.0);
+    if (end == raw || *end || !std::isfinite(v) || v < 0 || v > 0.25)
+        throw std::invalid_argument("ds41: CPU_TRIM must be in [0, 0.25]");
+    return float(v);
+}
+
+int dspark_cache_slots() {
+    const int slots = strata_env_int_or("STRATA_DS41_DSPARK_CACHE_SLOTS", 45);
+    if (slots < 1 || slots > 100) throw std::invalid_argument("ds41: DSpark cache slots must be in [1, 100]");
+    return slots;
+}
+
 // STRATA_DS41_DESKTOP_MIB (2048): VRAM this process leaves free for the desktop. Every device allocation checks it
 // and refuses with a message instead of starving the compositor (a shared desktop loses its session when VRAM runs out).
 size_t vram_reserve = [] {
@@ -81,16 +103,127 @@ size_t vram_reserve = [] {
     return size_t(v ? std::max(0, std::atoi(v)) : 2048) << 20;
 }();
 
+#if defined(__HIP_PLATFORM_AMD__)
+// HIP's reported free memory can exclude allocations owned by the desktop. Read
+// physical VRAM before sizing any tier or making any individual allocation.
+size_t physical_vram_free() {
+    int device = 0;
+    char bus[32] = {};
+    ck(cudaGetDevice(&device), "current device");
+    ck(cudaDeviceGetPCIBusId(bus, sizeof bus, device), "device PCI address");
+    std::string id(bus);
+    for (char& ch : id) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    const std::string base = "/sys/bus/pci/devices/" + id + "/mem_info_vram_";
+    unsigned long long total = 0, used = 0;
+    std::ifstream tf(base + "total"), uf(base + "used");
+    if (!(tf >> total) || !(uf >> used) || used > total)
+        throw std::runtime_error("ds41: cannot read physical AMD VRAM usage");
+    return size_t(total - used);
+}
+
+size_t physical_vram_keep() {
+    static const size_t keep = [] {
+        double headroom_mib = 1024;
+        if (const char* raw = std::getenv("STRATA_DS41_GPU_HEADROOM_MIB")) {
+            char* end = nullptr;
+            headroom_mib = std::strtod(raw, &end);
+            if (end == raw || *end || !std::isfinite(headroom_mib) || headroom_mib < 0 || headroom_mib > 4096)
+                throw std::invalid_argument("ds41: GPU headroom must be in [0, 4096] MiB");
+        }
+        const size_t headroom = size_t(headroom_mib) << 20;
+        if (vram_reserve > SIZE_MAX - headroom) throw std::runtime_error("ds41: GPU reserve plus headroom overflow");
+        return std::max(vram_reserve + headroom, size_t(2560) << 20);
+    }();
+    return keep;
+}
+#endif
+
+// STRATA_DS41_CANON_STREAM_THREADS: helper threads that copy streamed experts from the mapped files into pinned
+// slots and enqueue each part's DMA as soon as its copy is done (pageable copies run at about half the link's rate)
+class CanonStager {
+public:
+    struct Job { const uint8_t* src; uint8_t* pinned; void* dev; size_t bytes; };
+    CanonStager(int threads, cudaStream_t stream) : stream_(stream) {
+        for (int i = 0; i < threads; ++i) workers_.emplace_back([this] { work(); });
+    }
+    ~CanonStager() {
+        { std::lock_guard<std::mutex> g(m_); stop_ = true; }
+        cv_.notify_all();
+        for (auto& t : workers_) t.join();
+    }
+    // runs every job (memcpy, then its DMA on the stream) and returns once all are enqueued
+    void run(const std::vector<Job>& jobs) {
+        if (jobs.empty()) return;
+        {
+            std::lock_guard<std::mutex> g(m_);
+            jobs_ = &jobs; next_ = 0; done_ = 0; error_.clear(); ++gen_;
+        }
+        cv_.notify_all();
+        std::unique_lock<std::mutex> g(m_);
+        done_cv_.wait(g, [&] { return done_ == jobs.size(); });
+        jobs_ = nullptr;
+        if (!error_.empty()) throw std::runtime_error(error_);
+    }
+private:
+    void work() {
+        uint64_t seen = 0;
+        for (;;) {
+            const std::vector<Job>* jobs = nullptr;
+            {
+                std::unique_lock<std::mutex> g(m_);
+                cv_.wait(g, [&] { return stop_ || gen_ != seen; });
+                if (stop_) return;
+                seen = gen_;
+                jobs = jobs_;
+            }
+            for (;;) {
+                size_t i;
+                {
+                    std::lock_guard<std::mutex> g(m_);
+                    if (!jobs || next_ >= jobs->size()) break;
+                    i = next_++;
+                }
+                const Job& j = (*jobs)[i];
+                std::string err;
+                std::memcpy(j.pinned, j.src, j.bytes);
+                const cudaError_t e = cudaMemcpyAsync(j.dev, j.pinned, j.bytes, cudaMemcpyHostToDevice, stream_);
+                if (e != cudaSuccess) err = std::string("ds41: canonical staged copy: ") + cudaGetErrorString(e);
+                std::lock_guard<std::mutex> g(m_);
+                if (!err.empty() && error_.empty()) error_ = err;
+                if (++done_ == jobs->size()) done_cv_.notify_all();
+            }
+        }
+    }
+    cudaStream_t stream_;
+    std::vector<std::thread> workers_;
+    std::mutex m_;
+    std::condition_variable cv_, done_cv_;
+    const std::vector<Job>* jobs_ = nullptr;
+    size_t next_ = 0, done_ = 0;
+    uint64_t gen_ = 0;
+    bool stop_ = false;
+    std::string error_;
+};
+
 struct Dev {
     void* p = nullptr;
     size_t bytes = 0;
     Dev() = default;
     explicit Dev(size_t n) : bytes(n) {
+        const size_t allocation = std::max<size_t>(n, 16);
         static const bool probe = std::getenv("STRATA_DS41_ALLOC_PROBE") != nullptr;
+#if defined(__HIP_PLATFORM_AMD__)
+        const size_t physical_free = physical_vram_free();
+        const size_t physical_keep = physical_vram_keep();
+        if (physical_free < physical_keep || allocation > physical_free - physical_keep)
+            throw std::runtime_error("ds41: device allocation of " + std::to_string(allocation >> 20) +
+                                     " MiB would leave " + std::to_string(physical_free > allocation ? (physical_free - allocation) >> 20 : 0) +
+                                     " MiB free below the " + std::to_string(physical_keep >> 20) + " MiB physical AMD VRAM reserve");
+#endif
         if (vram_reserve > 0) {   // STRATA_DS41_DESKTOP_MIB: never take VRAM the desktop needs
             size_t f = 0, t = 0;
-            cudaMemGetInfo(&f, &t);
-            if (n + vram_reserve > f)
+            ck(cudaMemGetInfo(&f, &t), "memory info before allocation");
+            if (f < vram_reserve || allocation > f - vram_reserve)
                 throw std::runtime_error("ds41: cudaMalloc of " + std::to_string(n >> 20) + " MiB would leave " +
                                          std::to_string((f > n ? f - n : 0) >> 20) + " MiB free, below the " +
                                          std::to_string(vram_reserve >> 20) + " MiB desktop reserve (STRATA_DS41_DESKTOP_MIB); " +
@@ -101,7 +234,7 @@ struct Dev {
             cudaMemGetInfo(&f, &t);
             std::fprintf(stderr, "DS41 alloc %zu MiB (free %zu MiB)\n", n >> 20, f >> 20);
         }
-        ck(cudaMalloc(&p, std::max<size_t>(n, 16)), "cudaMalloc");
+        ck(cudaMalloc(&p, allocation), "cudaMalloc");
     }
     Dev(const Dev&) = delete;
     Dev& operator=(const Dev&) = delete;
@@ -113,6 +246,22 @@ struct Dev {
     uint16_t* h() const { return static_cast<uint16_t*>(p); }
     uint8_t* b(size_t at = 0) const { return static_cast<uint8_t*>(p) + at; }
 };
+
+size_t checked_size_mul(size_t a, size_t b, const char* what) {
+    if (b && a > std::numeric_limits<size_t>::max() / b)
+        throw std::runtime_error(std::string("ds41: size overflow for ") + what);
+    return a * b;
+}
+
+void require_device_range(const Dev& owner, size_t offset, size_t bytes, const char* what) {
+    if (!owner.p || offset > owner.bytes || bytes > owner.bytes - offset)
+        throw std::runtime_error(std::string("ds41: device buffer bounds for ") + what);
+}
+
+void* device_range_ptr(const Dev& owner, size_t offset, size_t bytes, const char* what) {
+    require_device_range(owner, offset, bytes, what);
+    return static_cast<uint8_t*>(owner.p) + offset;
+}
 
 struct Weight {
     Dev data;
@@ -257,16 +406,18 @@ struct Remote {
     static void ok(ucomm_status s, const char* what) {
         if (s != UCOMM_OK) throw std::runtime_error(std::string("ds41 remote ") + what + ": " + ucomm_strerror(s));
     }
-    void start(int layer, int nt, int K, const int* ids, const float* w, const float* z) {
+    // reply_rows: hidden-wide rows of the reply (STD1: nt summed rows; STD2: one raw row per owned route)
+    void start(int layer, int nt, int K, const int* ids, const float* w, const float* z, int reply_rows = -1) {
         const strata::net::TpRequest head{layer, nt, nt * K, 4 * hidden};
+        const size_t rows = reply_rows >= 0 ? size_t(reply_rows) : size_t(nt);
         const size_t jobs = size_t(nt) * K * sizeof(strata::net::TpJob), bytes = sizeof head + jobs + size_t(nt) * hidden * 4;
-        if (bytes > request.size() || size_t(nt) * hidden > reply.size())
+        if (bytes > request.size() || rows * hidden > reply.size())
             throw std::runtime_error("ds41 remote: a pass larger than the request buffers");
         std::memcpy(request.data(), &head, sizeof head);
         auto* list = reinterpret_cast<strata::net::TpJob*>(request.data() + sizeof head);
         for (int j = 0; j < nt * K; ++j) list[j] = {ids[j], j / K, w[j]};
         std::memcpy(request.data() + sizeof head + jobs, z, size_t(nt) * hidden * 4);
-        ok(ucomm_irecv(comm, 1, strata::net::kTagReply, reply.data(), size_t(nt) * hidden * 4, &receiving), "receive");
+        ok(ucomm_irecv(comm, 1, strata::net::kTagReply, reply.data(), rows * hidden * 4, &receiving), "receive");
         ok(ucomm_isend(comm, 1, strata::net::kTagRequest, request.data(), bytes, &sending), "send");
     }
     void finish_raw(int) {   // the reply in `reply`
@@ -596,10 +747,13 @@ struct PeerGpu {
             ++issued;
         }
     }
-    size_t free_bytes() const {
+    size_t available_bytes() const {
         Guard g(dev);
         size_t f = 0, t = 0;
-        cudaMemGetInfo(&f, &t);
+        ck(cudaMemGetInfo(&f, &t), "peer memory info");
+#if defined(__HIP_PLATFORM_AMD__)
+        f = std::min(f, physical_vram_free());
+#endif
         return f;
     }
     // STRATA_DS41_DECODE_STREAM: experts of the host's pinned copy computed here in this call (copied in, then a GEMV
@@ -853,7 +1007,7 @@ struct PeerGpu {
             mq::Product a;
             a.w = st; a.type = gu_type[size_t(l)]; a.w_rows = 2 * ff; a.w_cols = hidden; a.expert_bytes = stride[size_t(l)];
             a.n = p.j1 - p.j0; a.xq = xq.p; a.bounds = bounds_dev + p.b0; a.ids = iota.i(); a.total_rows = p.rows; a.max_rows = p.mx;
-            a.dst = gu.f(); a.ld_dst = 2 * ff;
+            a.dst = gu.f(); a.ld_dst = 2 * ff; a.dst_rows = p.rows;
             mmq->run(a, stream);
             split_mark(1);
             mq::swiglu(gu.f(), hf.f(), p.rows, ff, false, stream, clamp[size_t(l)]);
@@ -1022,6 +1176,9 @@ public:
         if (const char* v = std::getenv("STRATA_DS41_PREFILL_CHUNK"); v && chunk <= 0) chunk_ = std::max(1, std::atoi(v));
         ring_ = c.window + chunk_;
         stream_ = make_stream(0);   // the default (blocking) flags
+        // STRATA_DS41_MULTI_ROWS=1|2|4: rows per block of the exact multi-column dense GEMV (every choice is bitwise the
+        // single-column result, mmvq_multi_parity; speed only)
+        if (const char* rows = std::getenv("STRATA_DS41_MULTI_ROWS")) k::native_mmvq_set_multi_rows(std::atoi(rows));
         ck(cudaEventCreateWithFlags(&router_ev_, cudaEventDisableTiming), "router event");
         // STRATA_DS41_IQ2XXS_EXACT (1): IQ2_XXS GPU dots scale in floats like the CPU reference (the truncating
         // integer scale cost +2.5 % PPL on the IQ2_XXSE4 pack)
@@ -1030,6 +1187,53 @@ public:
         // [fl_, ff) of every routed expert, STRATA_DS41_REMOTE_SHARE of them (default 2/9, whole 256-row blocks)
         fl_ = c.ff;
         ram_copy_ = std::getenv("STRATA_DS41_RAM_COPY") && std::string(std::getenv("STRATA_DS41_RAM_COPY")) == "1";
+        stage_cpu_expert_ = strata_env_is_one("STRATA_DS41_STAGE_CPU_EXPERT");
+        stage_cpu_order_ = strata_env_is_one("STRATA_DS41_STAGE_CPU_ORDER");
+        stage_cpu_collect_ = strata_env_is_one("STRATA_DS41_STAGE_CPU_COLLECT");
+        stage_cpu_host_act_ = strata_env_is_one("STRATA_DS41_STAGE_CPU_HOST_ACT");
+        stage_cpu_batch_act_ = strata_env_is_one("STRATA_DS41_STAGE_BATCH_ACT");
+        stage_cpu_timing_ = strata_env_is_one("STRATA_DS41_STAGE_TIMING");
+        if (const char* slots = std::getenv("STRATA_DS41_STAGE_CACHE_SLOTS")) {
+            char* end = nullptr;
+            const long n = std::strtol(slots, &end, 10);
+            if (!*slots || *end || n < 0 || n > 192)
+                throw std::invalid_argument("ds41: staging cache slots must be 0 through 192");
+            stage_cache_slots_requested_ = int(n);
+        }
+        if (const char* quota = std::getenv("STRATA_DS41_STAGE_CPU_QUOTA")) {
+            if (std::strlen(quota) != 1 || quota[0] < '1' || quota[0] > '4')
+                throw std::invalid_argument("ds41: CPU staging quota must be 1 through 4");
+            stage_cpu_quota_ = quota[0] - '0';
+        }
+        if (stage_cpu_order_ && (!stage_cpu_expert_ || strata_env_is_one("STRATA_IQ1S_FAST")))
+            throw std::invalid_argument("ds41: CPU-order staging requires checked staging and default IQ1_S arithmetic");
+        if (stage_cpu_collect_ && !stage_cpu_order_)
+            throw std::invalid_argument("ds41: CPU-order collection requires CPU-order staging");
+        if (stage_cpu_host_act_ && !stage_cpu_collect_)
+            throw std::invalid_argument("ds41: host activation requires CPU-order collection");
+        if (stage_cpu_batch_act_ && (!stage_cpu_host_act_ || stage_cpu_quota_ != 1 || strata_env_is_one("STRATA_DS41_STAGE_CPU_ORDER_CHECK")))
+            throw std::invalid_argument("ds41: batched host activation requires one staged expert and disables the per-layer diagnostic");
+        if (stage_cpu_quota_ > 1 && !stage_cpu_collect_)
+            throw std::invalid_argument("ds41: multiple staged experts require ordered collection");
+        if (stage_cache_slots_requested_ && (!stage_cpu_collect_ || stage_cache_slots_requested_ < stage_cpu_quota_))
+            throw std::invalid_argument("ds41: staging cache requires ordered collection and at least one slot per staged expert");
+        if (strata_env_is_one("STRATA_DS41_STAGE_CACHE_FREQUENCY")) {
+            if (!stage_cache_slots_requested_ || c.layers <= 0 || c.experts <= 0 ||
+                size_t(c.layers) > (size_t(1) << 20) / size_t(c.experts))
+                throw std::invalid_argument("ds41: staging frequency requires a bounded staging cache and model geometry");
+            stage_cache_frequency_.resize(size_t(c.layers) * size_t(c.experts), 0);
+        }
+        if (stage_cpu_expert_) {
+            const char* rank = std::getenv("STRATA_DS41_DEFER_RANK");
+            const char* promote = std::getenv("STRATA_DS41_TIER_PROMOTE");
+            if (!strata_env_is_one("STRATA_DS41_VERIFY_EXACT") || !strata_env_is_one("STRATA_DS41_STAGE_CPU_CHECK") ||
+                ram_copy_ || strata_env_is_one("STRATA_DS41_GPU_ROUTE") || strata_env_is_one("STRATA_DS41_DECODE_GROUPED") ||
+                strata_env_is_one("STRATA_DS41_DEFER_ALL") || (rank && std::string(rank) != "0") ||
+                !promote || std::string(promote) != "0" || !std::getenv("STRATA_DS41_EXPERT_PROFILE") ||
+                std::getenv("STRATA_DS41_CPU_TOPK") || std::getenv("STRATA_DS41_CPU_TRIM") ||
+                std::getenv("STRATA_DS41_GPU_SUBST") || std::getenv("STRATA_DS41_DECODE_STREAM"))
+                throw std::invalid_argument("ds41: staged CPU expert requires checked exact-mode CPU routing with no lossy or packed routes");
+        }
         if (const char* addr = std::getenv("STRATA_DS41_REMOTE_TP")) {
             remote_addr_ = addr;
             const char* v = std::getenv("STRATA_DS41_REMOTE_SHARE");
@@ -1083,6 +1287,34 @@ public:
             std::string err;
             if (!cpu::native_fmt(int(g.tensor->type), int(d.tensor->type), c.hidden, c.ff, lane.f, err))
                 throw std::runtime_error("ds41: " + p + " experts: " + err);
+            if (stage_cpu_expert_) {
+                if (c.hidden <= 0 || c.hidden > 32768 || c.ff <= 0 || c.ff > 32768 ||
+                    c.experts <= 0 || c.experts > 4096 || c.layers <= 0 || c.layers > 256 ||
+                    !lane.f.gu_row || !lane.f.d_row ||
+                    size_t(c.ff) > SIZE_MAX / lane.f.gu_row || size_t(c.hidden) > SIZE_MAX / lane.f.d_row ||
+                    g.tensor->shape != std::vector<uint64_t>{uint64_t(c.hidden), uint64_t(c.ff), uint64_t(c.experts)} ||
+                    u.tensor->shape != g.tensor->shape ||
+                    d.tensor->shape != std::vector<uint64_t>{uint64_t(c.ff), uint64_t(c.hidden), uint64_t(c.experts)} ||
+                    !k::native_mmvq_supported(int(g.tensor->type)) || !k::native_mmvq_supported(int(d.tensor->type)))
+                    throw std::runtime_error("ds41: staged CPU expert tensor geometry or type is unsupported");
+                const size_t gate_bytes = lane.f.gu_row * size_t(c.ff), down_bytes = lane.f.d_row * size_t(c.hidden);
+                if (gate_bytes > SIZE_MAX / 2 || down_bytes > SIZE_MAX - 2 * gate_bytes ||
+                    gate_bytes > g.bytes / size_t(c.experts) || gate_bytes > u.bytes / size_t(c.experts) ||
+                    down_bytes > d.bytes / size_t(c.experts))
+                    throw std::runtime_error("ds41: staged CPU expert tensor span exceeds its source");
+                const size_t bytes_per_expert = 2 * gate_bytes + down_bytes;
+                if (bytes_per_expert == 0 || bytes_per_expert > (size_t(16) << 20) ||
+                    k::native_mmvq_weight_bytes(int(g.tensor->type), c.hidden, c.ff) != gate_bytes ||
+                    k::native_mmvq_weight_bytes(int(d.tensor->type), c.ff, c.hidden) != down_bytes)
+                    throw std::runtime_error("ds41: staged CPU expert packed size is invalid");
+                stage_cpu_capacity_ = std::max(stage_cpu_capacity_, bytes_per_expert);
+            }
+            if (stage_cpu_order_ && (c.hidden <= 0 || c.hidden > 5120 || c.hidden % 256 ||
+                                     c.ff <= 0 || c.ff > 5120 || c.ff % 256 ||
+                                     (lane.f.gu_type != 16 && lane.f.gu_type != 19) ||
+                                     (lane.f.d_type != 16 && lane.f.d_type != 19) ||
+                                     !(c.clamp[size_t(l)] > 0.f) || !std::isfinite(c.clamp[size_t(l)])))
+                throw std::runtime_error("ds41: CPU-order staging requires bounded IQ1_S/IQ2_XXS and a positive clamp");
             lane.f.swiglu_limit = c.clamp[size_t(l)];
             lane.f.iq1s_rows = true;
             full_.push_back(lane.f);
@@ -1256,7 +1488,13 @@ public:
             copy_s_ = make_stream(cudaStreamNonBlocking);
             use_mmq_ = strata::prefill::mmq::built() && !(std::getenv("STRATA_DS41_MMQ") && std::string(std::getenv("STRATA_DS41_MMQ")) == "0");
             if (use_mmq_) mmq_ = std::make_unique<strata::prefill::mmq::Context>();
-            if (const char* r = std::getenv("STRATA_DS41_MMQ_ROWS")) rcap_min_ = std::max(256, std::atoi(r));
+            if (const char* r = std::getenv("STRATA_DS41_MMQ_ROWS")) {
+                size_t consumed = 0;
+                const long long requested = std::stoll(r, &consumed, 10);
+                if (consumed != std::strlen(r) || requested > 8192)
+                    throw std::invalid_argument("ds41: STRATA_DS41_MMQ_ROWS must be an integer no greater than 8192");
+                rcap_min_ = requested <= 256 ? 256 : int(requested);
+            }
         }
         (void)H;
         score_.assign(size_t(c.layers) * c.experts, 0.0f);
@@ -1277,6 +1515,154 @@ public:
         tier_lent_ = chunk_ >= stream_min_;
         if (!tier_lent_) load_tier();
         else pin_experts();   // at load, not in the first prompt's time
+        if (stage_cpu_expert_) {
+            if (tier_lent_ || fl_ != c.ff || peer_ || !remote_addr_.empty() || experts_.size() != size_t(c.layers) ||
+                !stage_cpu_capacity_ || !gx_q8_.p || gx_q8_.bytes < k::native_q8_1_bytes(c.hidden, 1) ||
+                !g_h_q8_.p || g_h_q8_.bytes < k::native_q8_1_bytes(c.ff, 1) ||
+                !g_gate_.p || g_gate_.bytes < size_t(c.ff) * sizeof(float) ||
+                !g_up_.p || g_up_.bytes < size_t(c.ff) * sizeof(float) ||
+                !g_h_.p || g_h_.bytes < size_t(c.ff) * sizeof(float) ||
+                !g_out_.p || g_out_.bytes < size_t(c.hidden) * sizeof(float) ||
+                !g_sum_.p || chunk_ < 1 || g_sum_.bytes < size_t(std::min(chunk_, 8)) * size_t(c.hidden) * sizeof(float))
+                throw std::runtime_error("ds41: staged CPU expert scratch or execution mode is unsupported");
+            // All staging is bounded and allocated before any decoder forward pass.
+            if (stage_cpu_order_) {
+                stage_cpu_xq_ = Dev(size_t(c.hidden / 256) * 292);
+                stage_cpu_hq_ = Dev(size_t(c.ff / 256) * 292);
+                if (stage_cpu_collect_)
+                    stage_cpu_results_ = reinterpret_cast<float*>(pinned_keep(size_t(8) * stage_cpu_quota_ * c.hidden * sizeof(float)));
+                if (stage_cpu_host_act_) {
+                    stage_cpu_gateup_ = reinterpret_cast<float*>(pinned_keep(size_t(2) * c.ff * sizeof(float)));
+                    stage_cpu_hq_host_ = reinterpret_cast<uint8_t*>(pinned_keep(size_t(c.ff / 256) * 292));
+                    stage_cpu_hidden_.resize(size_t(c.ff));
+                    if (stage_cpu_batch_act_) {
+                        stage_batch_gateup_ = reinterpret_cast<float*>(pinned_keep(size_t(16) * c.ff * sizeof(float)));
+                        stage_batch_hq_ = reinterpret_cast<uint8_t*>(pinned_keep(size_t(8) * size_t(c.ff / 256) * 292));
+                    }
+                }
+            }
+            stage_cpu_device_ = Dev(stage_cpu_capacity_);
+            if (stage_cache_slots_requested_) {
+                const size_t cache_bytes = checked_size_mul(size_t(stage_cache_slots_requested_), stage_cpu_capacity_, "CPU staging cache");
+                if (cache_bytes > (size_t(3072) << 20))
+                    throw std::runtime_error("ds41: CPU staging cache exceeds 3 GiB");
+                stage_cache_device_ = Dev(cache_bytes);
+                stage_cache_.resize(size_t(stage_cache_slots_requested_));
+            }
+            stage_cpu_host_ = reinterpret_cast<uint8_t*>(pinned_keep(stage_cpu_capacity_));
+            stage_cpu_check_host_ = reinterpret_cast<uint8_t*>(pinned_keep(stage_cpu_capacity_));
+            stage_cpu_checked_.assign(size_t(c.layers), 0);
+            if (stage_cpu_order_) stage_cpu_order_checked_.assign(size_t(c.layers), 0);
+            ck(cudaEventCreateWithFlags(&stage_cpu_copy_done_, cudaEventDisableTiming), "CPU expert stage event");
+        }
+        if (const char* v = std::getenv("STRATA_DS41_CANON_MIB"); v && *v && std::string(v) != "0") canon_load(v);
+        if (const char* v = std::getenv("STRATA_DS41_REMOTE_OWN"); v && *v) connect_own(v);
+    }
+
+    // ---- STRATA_DS41_CANON_MIB=N (opt-in): a static GPU expert tier with the CPU lane's arithmetic.  The most-used
+    // experts of STRATA_DS41_CANON_PROFILE (a STRATA_DS41_ROUTES trace; hits per byte) fill up to N MiB of VRAM once at
+    // load.  In passes of up to 8 tokens, the CPU routes whose expert is held run on the GPU with the CPU-order IQ dots
+    // (Q8_K activations, the CPU's integer lanes and float order; the SwiGLU exponential in double), all of a layer's in
+    // one grouped launch per matrix, and their raw outputs join the lane's sum in its rank order
+    // (finish_with_external).  STRATA_DS41_CANON_CHECK=1 compares each layer's first entry with the CPU rows.
+    void canon_load(const char* mib_text) {
+        const auto& c = cfg_;
+        char* end = nullptr;
+        const long mib = std::strtol(mib_text, &end, 10);
+        if (*end || mib < 1 || mib > 12288) throw std::invalid_argument("ds41: STRATA_DS41_CANON_MIB must be 1 through 12288");
+        const char* profile = std::getenv("STRATA_DS41_CANON_PROFILE");
+        if (!profile || !*profile) throw std::invalid_argument("ds41: STRATA_DS41_CANON_MIB needs STRATA_DS41_CANON_PROFILE");
+        if (stage_cpu_expert_ || ram_copy_ || peer_ || !remote_addr_.empty() || !ram_pos_.empty() || !packed_.empty() ||
+            fl_ != c.ff || experts_.size() != size_t(c.layers) || strata_env_is_one("STRATA_IQ1S_FAST") ||
+            strata_env_is_one("STRATA_DS41_GPU_ROUTE") || c.hidden % 256 || c.ff % 256 || c.hidden > 5120 || c.ff > 5120 ||
+            c.top_k < 1 || c.top_k > 16)
+            throw std::invalid_argument("ds41: the canonical tier needs plain CPU routing (no staging, RAM copy, peer, remote, GPU_ROUTE or IQ1S_FAST)");
+        for (int l = 0; l < c.layers; ++l) {
+            const auto& f = experts_[size_t(l)].f;
+            if ((f.gu_type != 16 && f.gu_type != 19) || (f.d_type != 16 && f.d_type != 19) ||
+                f.gu_row != size_t(c.hidden / 256) * size_t(f.gu_type == 19 ? 50 : 66) ||
+                f.d_row != size_t(c.ff / 256) * size_t(f.d_type == 19 ? 50 : 66))
+                throw std::invalid_argument("ds41: the canonical tier supports IQ1_S / IQ2_XXS experts only");
+        }
+        std::vector<double> count(size_t(c.layers) * c.experts, 0);
+        {
+            std::ifstream g(profile, std::ios::binary);
+            if (!g) throw std::runtime_error("ds41: cannot read the canonical tier profile " + std::string(profile));
+            std::vector<int32_t> v(size_t(c.layers) * c.top_k);
+            while (g.read(reinterpret_cast<char*>(v.data()), std::streamsize(v.size() * 4)))
+                for (int l = 0; l < c.layers; ++l)
+                    for (int k = 0; k < c.top_k; ++k) {
+                        const int e = v[size_t(l) * c.top_k + k];
+                        if (e >= 0 && e < c.experts) count[size_t(l) * c.experts + e] += 1;
+                    }
+        }
+        std::vector<std::tuple<double, int, int>> order;
+        for (int l = 0; l < c.layers; ++l)
+            for (int e = 0; e < c.experts; ++e)
+                if (count[size_t(l) * c.experts + e] > 0)
+                    order.emplace_back(count[size_t(l) * c.experts + e] / double(expert_bytes(l)), l, e);
+        std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return std::get<0>(a) > std::get<0>(b); });
+        // the budget: the request, less a 512 MiB margin above the physical floor for later scratch
+        size_t budget = size_t(mib) << 20;
+#if defined(__HIP_PLATFORM_AMD__)
+        const size_t pf = physical_vram_free(), keep = physical_vram_keep() + (size_t(512) << 20);
+        budget = std::min(budget, pf > keep ? pf - keep : size_t(0));
+#endif
+        canon_off_.assign(size_t(c.layers) * c.experts, -1);
+        size_t used = 0;
+        std::vector<std::pair<int, int>> picks;
+        for (const auto& [score, l, e] : order) {
+            (void)score;
+            const size_t b = (expert_bytes(l) + 255) / 256 * 256;
+            if (used + b > budget) continue;
+            canon_off_[size_t(l) * c.experts + e] = int64_t(used);
+            picks.emplace_back(l, e);
+            used += b;
+        }
+        if (picks.empty()) throw std::runtime_error("ds41: no VRAM left for the canonical tier");
+        canon_arena_ = Dev(used);
+        size_t max_b = 0;
+        for (int l = 0; l < c.layers; ++l) max_b = std::max(max_b, expert_bytes(l));
+        uint8_t* host = reinterpret_cast<uint8_t*>(pinned_keep(max_b));
+        const auto t0 = std::chrono::steady_clock::now();
+        for (const auto& [l, e] : picks) {
+            slice_to_host(l, e, host);
+            ck(cudaMemcpyAsync(canon_arena_.b(size_t(canon_off_[size_t(l) * c.experts + e])), host, expert_bytes(l),
+                               cudaMemcpyHostToDevice, stream_), "canonical tier upload");
+            ck(cudaStreamSynchronize(stream_), "canonical tier upload sync");
+        }
+        // scratch for 8 positions x top_k entries
+        const int E = 8 * c.top_k;
+        const size_t q8k = 292;
+        canon_xq_ = Dev(size_t(8) * (c.hidden / 256) * q8k);
+        canon_gu_ = Dev(size_t(2) * E * c.ff * sizeof(float));
+        canon_h_ = Dev(size_t(E) * c.ff * sizeof(float));
+        canon_hq_ = Dev(size_t(E) * (c.ff / 256) * q8k);
+        canon_out_ = Dev(size_t(E) * c.hidden * sizeof(float));
+        canon_meta_ = Dev(size_t(2) * E * sizeof(uint64_t) + size_t(3 * E + 2) * sizeof(int));
+        canon_meta_host_ = reinterpret_cast<uint8_t*>(pinned_keep(canon_meta_.bytes));
+        canon_res_ = pinned_keep(size_t(E) * c.hidden * sizeof(float));
+        canon_checked_.assign(size_t(c.layers), 0);
+        if (const char* q = std::getenv("STRATA_DS41_CANON_STREAM"); q && *q) {
+            char* qe = nullptr;
+            const long v = std::strtol(q, &qe, 10);
+            if (*qe || v < 0 || v > 16) throw std::invalid_argument("ds41: STRATA_DS41_CANON_STREAM must be 0 through 16");
+            canon_stream_ = int(v);
+            if (canon_stream_) {
+                canon_ring_slot_ = (max_b + 255) / 256 * 256;
+                canon_ring_ = Dev(canon_ring_slot_ * size_t(canon_stream_));
+                if (const char* th = std::getenv("STRATA_DS41_CANON_STREAM_THREADS"); th && *th) {
+                    char* te = nullptr;
+                    const long tv = std::strtol(th, &te, 10);
+                    if (*te || tv < 0 || tv > 8) throw std::invalid_argument("ds41: STRATA_DS41_CANON_STREAM_THREADS must be 0 through 8");
+                    canon_stage_threads_ = int(tv);
+                }
+                if (canon_stage_threads_)
+                    canon_pinned_ = reinterpret_cast<uint8_t*>(pinned_keep(canon_ring_slot_ * size_t(canon_stream_)));
+            }
+        }
+        std::cerr << "DS41 canon_tier experts=" << picks.size() << " MiB=" << (used >> 20) << " of_requested=" << mib
+                  << " load_s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
     }
 
     // Connects to the worker (it dials STRATA_DS41_REMOTE_TP) and makes it hold rows [fl_, ff) of every expert: kept
@@ -1439,10 +1825,18 @@ public:
         g_h_ = Dev(size_t(c.ff) * 4);
         g_h_q8_ = Dev(k::native_q8_1_bytes(c.ff, 1));
         g_out_ = Dev(size_t(c.hidden) * 4);
-        const size_t keep = std::max<size_t>(size_t(env("STRATA_DS41_GPU_RESERVE_MIB", 1024)) << 20, vram_reserve + (128 << 20));
+        size_t keep = std::max<size_t>(size_t(env("STRATA_DS41_GPU_RESERVE_MIB", 1024)) << 20, vram_reserve + (128 << 20));
+#if defined(__HIP_PLATFORM_AMD__)
+        keep = std::max(keep, physical_vram_keep());
+        const size_t physical_free = physical_vram_free();
+        const size_t physical_budget = physical_free > keep ? physical_free - keep : 0;
+#endif
         size_t free0 = 0, total0 = 0;
         ck(cudaMemGetInfo(&free0, &total0), "memory info");
         size_t budget0 = free0 > keep ? free0 - keep : 0, budget1 = 0;
+#if defined(__HIP_PLATFORM_AMD__)
+        budget0 = std::min(budget0, physical_budget);
+#endif
         if (std::getenv("STRATA_DS41_GPU_EXPERT_MIB")) budget0 = std::min(budget0, size_t(env("STRATA_DS41_GPU_EXPERT_MIB", 0)) << 20);
         int devices = 0;
         cudaGetDeviceCount(&devices);
@@ -1453,8 +1847,12 @@ public:
             peer_->init(chunk_, rcap_);
             peer_->timing = dtiming_;
             if (env("STRATA_DS41_PEER_THREAD", 0) != 0) peer_->start_thread();
-            const size_t f1 = peer_->free_bytes();
-            budget1 = f1 > keep ? f1 - keep : 0;
+            const size_t f1 = peer_->available_bytes();
+            size_t peer_keep = keep;
+#if defined(__HIP_PLATFORM_AMD__)
+            peer_keep = std::max(peer_keep, physical_vram_keep());
+#endif
+            budget1 = f1 > peer_keep ? f1 - peer_keep : 0;
         }
         // STRATA_DS41_RAM_PINNED=1: the RAM experts in one pinned buffer per layer, in streaming order at the stream
         // stride (each streamed item is one DMA, no host staging). STRATA_DS41_PEER_STREAM=f (with it and the peer
@@ -1471,8 +1869,12 @@ public:
         if (peer_frac_ > 0) {
             const int ns = std::max(2, int(env("STRATA_DS41_PEER_SLOTS", 4)));
             peer_->stream_setup(ns, slot_bytes_);
-            const size_t f1 = peer_->free_bytes();
-            budget1 = f1 > keep ? f1 - keep : 0;
+            const size_t f1 = peer_->available_bytes();
+            size_t peer_keep = keep;
+#if defined(__HIP_PLATFORM_AMD__)
+            peer_keep = std::max(peer_keep, physical_vram_keep());
+#endif
+            budget1 = f1 > peer_keep ? f1 - peer_keep : 0;
         }
         // ranking: profile counts, ties by expert index then layer (spread over the layers)
         std::vector<double> count(size_t(c.layers) * c.experts, 0);
@@ -1506,6 +1908,11 @@ public:
         }
         // layout: per layer, GPU0's experts contiguous (positions after the streamed ones), the peer's contiguous
         if (used0) {
+#if defined(__HIP_PLATFORM_AMD__)
+            const size_t physical_free_now = physical_vram_free();
+            if (physical_free_now < keep || used0 > physical_free_now - keep)
+                throw std::runtime_error("ds41: resident expert arena would cross the physical AMD VRAM reserve");
+#endif
             void* p = nullptr;
             ck(cudaMalloc(&p, used0), "resident experts");
             arena_.p = p;
@@ -1738,7 +2145,7 @@ public:
     // before decode, so the lane meets page-cache misses (mapped experts only: not RAM_COPY's)
     void miss_test_drop() {
         if (lane_) { lane_->miss_reset(); lane_->async_reset(); }
-        substituted_ = dropped_ = 0;
+        substituted_ = dropped_ = affinity_swaps_ = 0;
         const char* v = std::getenv("STRATA_DS41_MISS_TEST_DROP");
         if (!v || !ram_pos_.empty()) return;
         const double f = std::atof(v);
@@ -1752,9 +2159,10 @@ public:
             std::cerr << "DS41 prefill_hybrid cpu_lane_s=" << hybrid_cpu_s_ << " not_copied_GB=" << hybrid_skipped_gb_ << "\n";
     }
     void miss_line(double tokens) const {
-        if (substituted_ || dropped_)
+        if (substituted_ || dropped_ || affinity_swaps_)
             std::cerr << "DS41 lossy_routes gpu_subst_per_token=" << double(substituted_) / std::max(tokens, 1.0)
-                      << " cpu_dropped_per_token=" << double(dropped_) / std::max(tokens, 1.0) << "\n";
+                      << " cpu_dropped_per_token=" << double(dropped_) / std::max(tokens, 1.0)
+                      << " affinity_swaps_per_token=" << double(affinity_swaps_) / std::max(tokens, 1.0) << "\n";
         if (!lane_) return;
         if (lane_->async_jobs())
             std::cerr << "DS41 lane_async jobs=" << lane_->async_jobs() << " busy_ms_per_token=" << lane_->async_busy_s() * 1e3 / std::max(tokens, 1.0) << "\n";
@@ -1932,6 +2340,8 @@ public:
         g_sum_ = Dev(T * H * 4);
         attn_info_dev_ = Dev(A * 16);
         attn_info_ = reinterpret_cast<int*>(pinned(A * 16));
+        attn_info_host_bytes_ = A * 16;
+        if (attn_bounds_check_ && !attn_error_.p) attn_error_ = Dev(sizeof(int));
         pinned_[0] = pinned(T * H * 4);
         pinned_[1] = pinned(T * H * 4);
         pinned_[2] = pinned(T * H * 4);
@@ -1974,11 +2384,14 @@ public:
             s_out_ = Dev(size_t(8) * H * 4);
             s_idx_ = Dev(T * size_t(c.top_k) * 4);
             s_w_ = Dev(T * size_t(c.top_k) * 4);
-            s_bound_ = Dev((size_t(c.experts) * 2 + 8) * 4);
-            s_hidx_ = reinterpret_cast<int*>(pinned(T * size_t(c.top_k) * 8 + (size_t(c.experts) * 2 + 8) * 4));
+            // An expert can exceed the row cap and be split into several products. Each split
+            // adds two bounds; 256 is the smallest permitted cap.
+            const size_t max_bounds = size_t(c.experts) * 2 + 8 + 2 * ((T * size_t(c.top_k) + 255) / 256);
+            s_bound_ = Dev(max_bounds * 4);
+            s_hidx_ = reinterpret_cast<int*>(pinned(T * size_t(c.top_k) * 8 + max_bounds * 4));
             s_hw_ = reinterpret_cast<float*>(s_hidx_ + T * size_t(c.top_k));
             s_hbound_ = reinterpret_cast<int32_t*>(s_hw_ + T * size_t(c.top_k));
-            rcap_ = std::max(rcap_min_, std::min(int(T), 4096));   // one expert's rows always fit a batch
+            rcap_ = std::max(rcap_min_, std::min(int(T), 4096));   // larger experts are split across products
             if (use_mmq_) {
                 namespace mq = strata::prefill::mmq;
                 m_xq_ = Dev(mq::q8_bytes(rcap_, c.hidden));
@@ -2035,6 +2448,13 @@ public:
         }
     }
     // pinned host memory owned by the decoder (released by resize)
+    // STRATA_DS41_VERIFY_EXACT=1 rounds a multi-token pass's trunk (dense GEMVs, the fused pre-mix) one column at a
+    // time, as the one-token passes do; STRATA_DS41_VERIFY_FAST_TRUNK=1 (opt-in) keeps the exact expert path but lets
+    // the trunk batch its columns (not bitwise equal to the one-token passes)
+    static bool trunk_exact() {
+        static const bool e = strata_env_is_one("STRATA_DS41_VERIFY_EXACT") && !strata_env_is_one("STRATA_DS41_VERIFY_FAST_TRUNK");
+        return e;
+    }
     // pinned memory that resize() keeps (the drafter's, the decode tables')
     std::vector<std::unique_ptr<void, void (*)(void*)>> keep_bufs_;
     float* pinned_keep(size_t bytes) {
@@ -2061,6 +2481,8 @@ public:
         for (auto& t : pf_threads_) t.join();
         if (engram_later_.joinable()) engram_later_.join();
         stream_end();
+        // Registered DSpark weight pages remain valid until all transfers on the decode stream finish.
+        if (stream_) (void)cudaStreamSynchronize(stream_);
         for (auto* r : rbuf_regions_) ucomm_mr_dereg(r);
         for (const auto& [m, n] : ram_maps_) munmap(m, n);
         for (void* r : registered_) cudaHostUnregister(r);
@@ -2068,6 +2490,19 @@ public:
         for (int fd : owned_fds_) ::close(fd);
         for (auto e : peer_late_ev_) if (e) cudaEventDestroy(e);
         if (router_ev_) cudaEventDestroy(router_ev_);
+        if (stage_cpu_copy_done_) cudaEventDestroy(stage_cpu_copy_done_);
+        if (stage_cpu_expert_)
+            std::cerr << "DS41 staged_cpu_experts=" << stage_cpu_transfers_ << " checked_layers="
+                      << std::count(stage_cpu_checked_.begin(), stage_cpu_checked_.end(), uint8_t(1)) << "\n";
+        if (stage_cpu_timing_)
+            std::cerr << "DS41 stage_timing groups=" << stage_timed_groups_ << " reuse_wait_s=" << stage_timing_[0]
+                      << " host_pack_s=" << stage_timing_[1] << " gate_wait_s=" << stage_timing_[2]
+                      << " host_activation_s=" << stage_timing_[3] << " final_wait_collect_s=" << stage_timing_[4] << "\n";
+        if (stage_cpu_batch_act_)
+            std::cerr << "DS41 stage_batch_activation groups=" << stage_batch_groups_ << " routes=" << stage_batch_routes_ << "\n";
+        if (stage_cache_slots_requested_)
+            std::cerr << "DS41 stage_cache slots=" << stage_cache_.size() << " hits=" << stage_cache_hits_
+                      << " misses=" << stage_cache_misses_ << "\n";
         if (stream_) cudaStreamDestroy(stream_);
     }
 
@@ -2145,6 +2580,63 @@ public:
             cudaSetDevice(0);
             return ms / reps;
         };
+        // prompt shapes: one GPU-0 resident expert of the layer, M tokens through its gate/up [2 ff x hidden] - MMQ (q8_1,
+        // dp4a on sm_70) against a dequantization to FP16 + a cuBLAS tensor-core GEMM (the down matrix likewise)
+        auto bench_prefill = [&](const uint8_t* wexp) {
+            namespace mq = strata::prefill::mmq;
+            const size_t g = slice_gate(l);
+            const int Mmax = 256;
+            Dev xf(size_t(Mmax) * std::max(c.hidden, c.ff) * 4), xq(mq::q8_bytes(Mmax, std::max(c.hidden, c.ff))),
+                dst(size_t(Mmax) * std::max(c.hidden, 2 * c.ff) * 4),
+                w16(size_t(2) * c.ff * c.hidden * 2), xh(size_t(Mmax) * std::max(c.hidden, c.ff) * 2), idsd((size_t(Mmax) + 128) * 4), bnd(64);
+            std::vector<float> xr(size_t(Mmax) * std::max(c.hidden, c.ff));
+            std::vector<uint16_t> hr(size_t(Mmax) * std::max(c.hidden, c.ff));
+            uint32_t rs = 777u;
+            for (auto& v : xr) { rs = rs * 1664525u + 1013904223u; v = (float(rs >> 8) / 16777216.0f - 0.5f) * 2.0f; }
+            for (auto& v : hr) { rs = rs * 1664525u + 1013904223u; v = uint16_t(0x3400 + ((rs >> 16) & 0x3ff)) | uint16_t((rs >> 15) & 0x8000); }
+            ck(cudaMemcpy(xf.p, xr.data(), xr.size() * 4, cudaMemcpyHostToDevice), "bench x");
+            ck(cudaMemcpy(xh.p, hr.data(), hr.size() * 2, cudaMemcpyHostToDevice), "bench xh");
+            mq::iota(idsd.i(), Mmax + 128, stream_);
+            const float one = 1.0f, zero = 0.0f;
+            for (int part = 0; part < 2; ++part) {   // 0: gate/up, 1: down
+                const int ty = part ? L.f.d_type : L.f.gu_type;
+                const int rows = part ? c.hidden : 2 * c.ff, cols = part ? c.ff : c.hidden;
+                const uint8_t* wm = part ? wexp + 2 * g : wexp;
+                const double dq = gpu_ms(0, stream_, 20, [&] { k::iq_dequant_f16(ty, wm, int64_t(rows) * cols, w16.h(), stream_); });
+                std::cerr << "DS41 gpu_bench prefill " << (part ? "down" : "gate/up") << " type=" << ty << " [" << rows << " x " << cols
+                          << "] dequant_f16_ms=" << dq;
+                for (int M : {16, 32, 64, 128, 256}) {
+                    const int32_t b[2] = {0, M};
+                    ck(cudaMemcpy(bnd.p, b, sizeof b, cudaMemcpyHostToDevice), "bench bounds");
+                    const double mm = gpu_ms(0, stream_, 20, [&] {
+                        mq::quantize(xf.f(), nullptr, xq.p, ty, cols, cols, M, stream_);
+                        mq::Product pr;
+                        pr.w = wm; pr.type = ty; pr.w_rows = rows; pr.w_cols = cols; pr.expert_bytes = mq::matrix_bytes(ty, rows, cols); pr.n = 1;
+                        pr.xq = xq.p; pr.bounds = bnd.i(); pr.ids = idsd.i(); pr.total_rows = M; pr.max_rows = M; pr.dst = dst.f(); pr.ld_dst = rows;
+                        pr.dst_rows = M;
+                        mmq_->run(pr, stream_);
+                    });
+                    const double gm = gpu_ms(0, stream_, 20, [&] {
+                        if (cublasGemmEx(blas_, CUBLAS_OP_T, CUBLAS_OP_N, rows, M, cols, &one, w16.p, CUDA_R_16F, cols, xh.p, CUDA_R_16F, cols, &zero,
+                                         dst.p, CUDA_R_32F, rows, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT) != CUBLAS_STATUS_SUCCESS)
+                            throw std::runtime_error("ds41: bench GEMM");
+                    });
+                    std::cerr << " M" << M << ":mmq=" << mm << ",f16gemm=" << gm;
+                }
+                std::cerr << "\n";
+            }
+        };
+        if (std::string(std::getenv("STRATA_DS41_GPU_BENCH")) == "prefill") {
+            if (tier_lent_ || slot_.empty() || !use_mmq_ || !mmq_)
+                throw std::runtime_error("ds41: prefill GPU bench needs a loaded tier and MMQ; use a prompt shorter than STRATA_DS41_STREAM_MIN");
+            for (int e = 0; e < c.experts; ++e) {
+                const int si = slot_[size_t(l)][size_t(e)];
+                if (si >= 0) { bench_prefill(slots_[size_t(si)].p); return; }
+            }
+            throw std::runtime_error("ds41: prefill GPU bench has no resident expert in its test layer");
+        }
+        if (where_.empty() || res0_base_.empty())
+            throw std::runtime_error("ds41: GPU bench requires contiguous resident experts; use STRATA_DS41_GPU_BENCH=prefill for a loaded tier");
         std::vector<int> devs{0};
         if (peer_) devs.push_back(peer_->dev);
         for (int dev : devs) {
@@ -2285,51 +2777,8 @@ public:
             std::cerr << "\n";
         }
         if (peer_) peer_->timing = timing0;
-        // prompt shapes: one GPU-0 resident expert of the layer, M tokens through its gate/up [2 ff x hidden] - MMQ (q8_1,
-        // dp4a on sm_70) against a dequantization to FP16 + a cuBLAS tensor-core GEMM (the down matrix likewise)
-        if (!e0.empty() && use_mmq_ && mmq_) {
-            namespace mq = strata::prefill::mmq;
-            const uint8_t* wexp = slots_[size_t(slot_[size_t(l)][size_t(e0[0])])].p;
-            const size_t g = slice_gate(l);
-            const int Mmax = 256;
-            Dev xf(size_t(Mmax) * c.hidden * 4), xq(mq::q8_bytes(Mmax, std::max(c.hidden, c.ff))), dst(size_t(Mmax) * 2 * c.ff * 4),
-                w16(size_t(2) * c.ff * c.hidden * 2), xh(size_t(Mmax) * std::max(c.hidden, c.ff) * 2), idsd((size_t(Mmax) + 128) * 4), bnd(64);
-            std::vector<float> xr(size_t(Mmax) * c.hidden);
-            std::vector<uint16_t> hr(size_t(Mmax) * std::max(c.hidden, c.ff));
-            uint32_t rs = 777u;
-            for (auto& v : xr) { rs = rs * 1664525u + 1013904223u; v = (float(rs >> 8) / 16777216.0f - 0.5f) * 2.0f; }
-            for (auto& v : hr) { rs = rs * 1664525u + 1013904223u; v = uint16_t(0x3400 + ((rs >> 16) & 0x3ff)) | uint16_t((rs >> 15) & 0x8000); }
-            ck(cudaMemcpy(xf.p, xr.data(), xr.size() * 4, cudaMemcpyHostToDevice), "bench x");
-            ck(cudaMemcpy(xh.p, hr.data(), hr.size() * 2, cudaMemcpyHostToDevice), "bench xh");
-            mq::iota(idsd.i(), Mmax + 128, stream_);
-            const float one = 1.0f, zero = 0.0f;
-            for (int part = 0; part < 2; ++part) {   // 0: gate/up, 1: down
-                const int ty = part ? L.f.d_type : L.f.gu_type;
-                const int rows = part ? c.hidden : 2 * c.ff, cols = part ? c.ff : c.hidden;
-                const uint8_t* wm = part ? wexp + 2 * g : wexp;
-                const double dq = gpu_ms(0, stream_, 20, [&] { k::iq_dequant_f16(ty, wm, int64_t(rows) * cols, w16.h(), stream_); });
-                std::cerr << "DS41 gpu_bench prefill " << (part ? "down" : "gate/up") << " type=" << ty << " [" << rows << " x " << cols
-                          << "] dequant_f16_ms=" << dq;
-                for (int M : {16, 32, 64, 128, 256}) {
-                    const int32_t b[2] = {0, M};
-                    ck(cudaMemcpy(bnd.p, b, sizeof b, cudaMemcpyHostToDevice), "bench bounds");
-                    const double mm = gpu_ms(0, stream_, 20, [&] {
-                        mq::quantize(xf.f(), nullptr, xq.p, ty, cols, cols, M, stream_);
-                        mq::Product pr;
-                        pr.w = wm; pr.type = ty; pr.w_rows = rows; pr.w_cols = cols; pr.expert_bytes = 0; pr.n = 1;
-                        pr.xq = xq.p; pr.bounds = bnd.i(); pr.ids = idsd.i(); pr.total_rows = M; pr.max_rows = M; pr.dst = dst.f(); pr.ld_dst = rows;
-                        mmq_->run(pr, stream_);
-                    });
-                    const double gm = gpu_ms(0, stream_, 20, [&] {
-                        if (cublasGemmEx(blas_, CUBLAS_OP_T, CUBLAS_OP_N, rows, M, cols, &one, w16.p, CUDA_R_16F, cols, xh.p, CUDA_R_16F, cols, &zero,
-                                         dst.p, CUDA_R_32F, rows, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT) != CUBLAS_STATUS_SUCCESS)
-                            throw std::runtime_error("ds41: bench GEMM");
-                    });
-                    std::cerr << " M" << M << ":mmq=" << mm << ",f16gemm=" << gm;
-                }
-                std::cerr << "\n";
-            }
-        }
+        if (!e0.empty() && use_mmq_ && mmq_)
+            bench_prefill(slots_[size_t(slot_[size_t(l)][size_t(e0[0])])].p);
     }
     int chunk() const { return chunk_; }
 
@@ -2432,13 +2881,28 @@ public:
     /// `count` tokens (at most chunk()) at positions pos .. pos + count - 1. Returns the last token's logits, or with
     /// all_logits every token's ([count][vocab]).
     const std::vector<float>& forward(const int* tokens, int count, int pos, bool all_logits) {
+        return forward_impl(tokens, count, pos, all_logits, false);
+    }
+
+    /// Speculative verification only: return each row's target-greedy token without copying full logits to host.
+    const std::vector<int>& forward_argmax(const int* tokens, int count, int pos) {
+        (void)forward_impl(tokens, count, pos, true, true);
+        return verify_argmax_host_;
+    }
+
+    const std::vector<float>& forward_impl(const int* tokens, int count, int pos, bool all_logits, bool argmax_only) {
         const auto& c = cfg_;
         const int T = count;
         const auto step0 = std::chrono::steady_clock::now();
         struct Done { double& t; std::chrono::steady_clock::time_point s; ~Done() { t += std::chrono::duration<double>(std::chrono::steady_clock::now() - s).count(); } } done{prof_[0], step0};
-        if (T < 1 || T > chunk_) throw std::invalid_argument("ds41: chunk size");
+        if (!tokens || T < 1 || T > chunk_ || (spec_save_ && T > 8) || pos < 0 || T > context_ || pos > context_ - T)
+            throw std::invalid_argument("ds41: chunk or context bounds");
+        if (argmax_only && !all_logits) throw std::invalid_argument("ds41: argmax-only forward requires every output row");
+        if (attn_error_.p) ck(cudaMemsetAsync(attn_error_.p, 0, sizeof(int), stream_), "attention bounds reset");
+        for (int i = 0; i < T; ++i)
+            if (tokens[i] < 0 || tokens[i] >= c.vocab)
+                throw std::invalid_argument("ds41: token id outside vocabulary");
         if (!sess_ && pos != int(history_.size())) throw std::logic_error("ds41: positions must be consecutive from 0");
-        if (pos + T > context_) throw std::runtime_error("ds41: context exhausted");
         pos0_ = pos;
         tokens_ = T;
         attn_info_key_ = -1;
@@ -2500,6 +2964,21 @@ public:
         route_log_.assign(size_t(T) * c.layers * c.top_k, -1);
         bool have_pre = false;
         skip_ = 0;
+        const char* attention_trace = std::getenv("STRATA_DS41_ATTN_TRACE");
+        auto trace_attention = [&](const char* label, const float* dev, size_t n, bool first = false) {
+            if (!attention_trace || !*attention_trace) return;
+            if (T != 1 || c.hidden != 5120 || n > 32768 || fuse_ || sess_ || producer_.joinable() || peer_ || remote_)
+                throw std::runtime_error("ds41: attention trace requires the bounded one-token single-GPU path");
+            std::vector<float> v(n);
+            ck(cudaMemcpyAsync(v.data(), dev, n * sizeof(float), cudaMemcpyDeviceToHost, stream_), "attention trace copy");
+            ck(cudaStreamSynchronize(stream_), "attention trace sync");
+            std::ofstream file(attention_trace, std::ios::binary | (first ? std::ios::trunc : std::ios::app));
+            char name[32] = {}; std::strncpy(name, label, sizeof(name)-1);
+            const uint32_t count = uint32_t(n);
+            if (!file.write(name, sizeof(name)) || !file.write(reinterpret_cast<const char*>(&count), sizeof(count)) ||
+                !file.write(reinterpret_cast<const char*>(v.data()), n * sizeof(float)))
+                throw std::runtime_error("ds41: attention trace write failed");
+        };
         // STRATA_DS41_ENC_SKIP (1): above the last KV-source layer nothing reads a layer's rows beyond its window, so
         // layer l needs only the pass's last window + (layers - 1 - l) (window - 1) positions (the last token's logits and
         // the next pass's windows stay exact); the earlier tokens are dropped, in steps of 256 or more
@@ -2689,36 +3168,57 @@ public:
 #endif
             // attention sublayer: its input collapses with the previous layer's FFN pre-mix (layer 0: stream 0)
             mixes(p + "hc_attn_", coeff_attn_);
-            if (have_pre && fuse_ && share_q8() && !hook && hc_norm_ok(w(p + "attn_norm.weight"))) {   // pre-mix, norm and Q8 in one launch
+            const bool verify_exact = trunk_exact();
+            if (have_pre && fuse_ && share_q8() && !hook && !verify_exact && hc_norm_ok(w(p + "attn_norm.weight"))) {   // pre-mix, norm and Q8 in one launch
                 k::glm_hc_pre_norm_rows_q8(h_.f(), coeff_ffn_.f(), w(p + "attn_norm.weight"), x_.f(), xn_.f(), q8x_.p, c.hidden, T, c.rms_eps, stream_);
                 q8x_ready_ = true;
             } else {
             if (have_pre) k::ds41_hc_pre(h_.f(), coeff_ffn_.f(), x_.f(), c.hidden, stream_, T);
             else ck(cudaMemcpy2DAsync(x_.p, size_t(c.hidden) * 4, h_.p, size_t(4) * c.hidden * 4, size_t(c.hidden) * 4, size_t(T),
                                       cudaMemcpyDeviceToDevice, stream_), "stream 0");
+            if (l == 10) trace_attention("attn_pre", x_.f(), size_t(c.hidden));
             if (hook && observe) observe("hc_attn_pre", l, x_.f(), size_t(c.hidden));
             norm_xn(x_.f(), w(p + "attn_norm.weight"));
             }
             if (hook && observe) observe("attn_norm", l, xn_.f(), size_t(c.hidden));
+            if (l == 10) trace_attention("attn_norm", xn_.f(), size_t(c.hidden));
             { const auto a0 = std::chrono::steady_clock::now(); attention(l); attn_host_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count(); }
+            if (l == 10 && attention_trace && *attention_trace) {
+                if (c.q_rank <= 0 || c.heads <= 0 || c.head_dim <= 0 || c.out_groups <= 0 || c.out_rank <= 0 ||
+                    size_t(c.q_rank) > qa_.bytes / sizeof(float) || size_t(c.q_rank) > qr_.bytes / sizeof(float) ||
+                    size_t(c.heads) * c.head_dim > q_.bytes / sizeof(float) ||
+                    size_t(c.heads) * c.head_dim > att_.bytes / sizeof(float) || size_t(c.head_dim) > kvn_.bytes / sizeof(float) ||
+                    size_t(c.out_groups) * c.out_rank > oa_.bytes / sizeof(float))
+                    throw std::runtime_error("ds41: attention trace scratch is too small");
+                trace_attention("query_a", qa_.f(), size_t(c.q_rank));
+                trace_attention("query_norm", qr_.f(), size_t(c.q_rank));
+                trace_attention("query", q_.f(), size_t(c.heads) * c.head_dim);
+                trace_attention("kv", kvn_.f(), size_t(c.head_dim));
+                trace_attention("attn_heads", att_.f(), size_t(c.heads) * c.head_dim);
+                trace_attention("output_a", oa_.f(), size_t(c.out_groups) * c.out_rank);
+            }
+            if (l == 10) trace_attention("attn_out", y_.f(), size_t(c.hidden));
             if (dtiming_ && (T <= 64 || pf_timing_)) dmark(5);
             k::ds41_hc_post(y_.f(), h_.f(), coeff_attn_.f(4), coeff_attn_.f(8), h2_.f(), c.hidden, stream_, T);
             std::swap(h_, h2_);
+            if (l == 10) trace_attention("attn_post", h_.f(), size_t(4) * c.hidden);
             if (defer_pending_) defer_apply(false);   // the previous layer's deferred experts (STRATA_DS41_DEFER_RANK)
             if (hook && observe) observe("hc_attn_post", l, h_.f(), size_t(4) * c.hidden);
             // FFN sublayer: its input collapses with this layer's attention pre-mix; its own pre-mix is the next
             // layer's attention input
             mixes(p + "hc_ffn_", coeff_ffn_);
             have_pre = true;
-            if (fuse_ && share_q8() && !hook && hc_norm_ok(w(p + "ffn_norm.weight"))) {
+            if (fuse_ && share_q8() && !hook && !verify_exact && hc_norm_ok(w(p + "ffn_norm.weight"))) {
                 k::glm_hc_pre_norm_rows_q8(h_.f(), coeff_attn_.f(), w(p + "ffn_norm.weight"), x_.f(), xn_.f(), q8x_.p, c.hidden, T, c.rms_eps, stream_);
                 q8x_ready_ = true;
             } else {
             k::ds41_hc_pre(h_.f(), coeff_attn_.f(), x_.f(), c.hidden, stream_, T);
+            if (l == 10) trace_attention("ffn_pre", x_.f(), size_t(c.hidden));
             if (hook && observe) observe("hc_ffn_pre", l, x_.f(), size_t(c.hidden));
             norm_xn(x_.f(), w(p + "ffn_norm.weight"));
             }
             if (hook && observe) observe("ffn_norm", l, xn_.f(), size_t(c.hidden));
+            if (l == 10) trace_attention("ffn_norm", xn_.f(), size_t(c.hidden));
             if (dtiming_ && (T <= 64 || pf_timing_)) dmark(6);
             { const auto f0 = std::chrono::steady_clock::now(); ffn(l); ffn_host_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count(); }
             if (dtiming_ && (T <= 64 || pf_timing_)) dmark(8);
@@ -2729,6 +3229,7 @@ public:
             } else
             k::ds41_hc_post(y_.f(), h_.f(), coeff_ffn_.f(4), coeff_ffn_.f(8), h2_.f(), c.hidden, stream_, T);
             std::swap(h_, h2_);
+            if (l == 9) trace_attention("layer9_out", h_.f(), size_t(4) * c.hidden, true);
             if (hook && observe) observe("l_out", l, h_.f(), size_t(4) * c.hidden);
             if (std::vector<float> r; hook && reference && reference("l_out", l, r) && r.size() == size_t(4) * c.hidden)
                 ck(cudaMemcpy(h_.p, r.data(), r.size() * 4, cudaMemcpyHostToDevice), "force l_out");
@@ -2803,14 +3304,36 @@ public:
                        (coeff_ffn_full_.p ? coeff_ffn_full_ : coeff_ffn_).f(size_t(first) * 24), x_.f(), c.hidden, stream_, n);
         k::glm_rms_norm_rows(x_.f(), w("output_norm.weight"), xn_.f(), c.hidden, n, c.rms_eps, stream_);
         mat("output.weight", xn_.f(), logits_.f(), n);
-        logits_host_.resize(size_t(n) * c.vocab);
-        ck(cudaMemcpyAsync(logits_host_.data(), logits_.p, logits_host_.size() * 4, cudaMemcpyDeviceToHost, stream_), "logits");
+        if (argmax_only) {
+            const size_t ids_bytes = checked_size_mul(size_t(n), sizeof(int), "verification argmax IDs");
+            if (verify_argmax_ids_dev_.bytes < ids_bytes) verify_argmax_ids_dev_ = Dev(ids_bytes);
+            if (!verify_argmax_bad_dev_.p) verify_argmax_bad_dev_ = Dev(sizeof(int));
+            verify_argmax_host_.resize(size_t(n));
+            ck(cudaMemsetAsync(verify_argmax_bad_dev_.p, 0, sizeof(int), stream_), "verification argmax status reset");
+            k::ds41_argmax_rows(logits_.f(), n, c.vocab, c.vocab, verify_argmax_ids_dev_.i(), verify_argmax_bad_dev_.i(), stream_);
+            ck(cudaMemcpyAsync(verify_argmax_host_.data(), verify_argmax_ids_dev_.p, ids_bytes, cudaMemcpyDeviceToHost, stream_),
+               "verification argmax tokens");
+            ck(cudaMemcpyAsync(&verify_argmax_bad_host_, verify_argmax_bad_dev_.p, sizeof(int), cudaMemcpyDeviceToHost, stream_),
+               "verification argmax status");
+        } else {
+            logits_host_.resize(size_t(n) * c.vocab);
+            ck(cudaMemcpyAsync(logits_host_.data(), logits_.p, logits_host_.size() * 4, cudaMemcpyDeviceToHost, stream_), "logits");
+        }
+        int attn_bounds_error = 0;
+        if (attn_error_.p) ck(cudaMemcpyAsync(&attn_bounds_error, attn_error_.p, sizeof(attn_bounds_error), cudaMemcpyDeviceToHost, stream_), "attention bounds result");
         ck(cudaStreamSynchronize(stream_), "sync");
+        if (attn_bounds_error) throw std::runtime_error("ds41: gfx12 WMMA attention rejected invalid row metadata or selection indices (code " +
+                                                        std::to_string(attn_bounds_error) + ")");
+        if (argmax_only) {
+            if (verify_argmax_bad_host_) throw std::runtime_error("ds41: speculative verification produced a NaN logit or invalid argmax");
+            for (int token : verify_argmax_host_)
+                if (token < 0 || token >= c.vocab) throw std::runtime_error("ds41: speculative target token outside vocabulary");
+        }
         prof_[6] += std::chrono::duration<double>(std::chrono::steady_clock::now() - h0).count();
         if (hook && observe) observe("result_output", -1, logits_.f(), size_t(c.vocab));
         if (routes_)
             routes_.write(reinterpret_cast<const char*>(route_log_.data()), std::streamsize(route_log_.size() * 4));
-        { const auto a0 = std::chrono::steady_clock::now(); adapt(T); prof_[3] += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count(); }
+        if (!spec_save_) { const auto a0 = std::chrono::steady_clock::now(); adapt(T); prof_[3] += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count(); }
         return logits_host_;
     }
 
@@ -2907,6 +3430,30 @@ private:
         W.out = 1;
         for (size_t i = 1; i < t.tensor->shape.size(); ++i) W.out *= int(t.tensor->shape[i]);
         W.row_bytes = ggml_row_size(ggml_type(W.type), W.in);
+        // STRATA_DS41_DENSE_Q4K=1 (lossy, opt-in): Q6_K and Q5_K trunk matrices requantized to Q4_K at load (about
+        // -30 % of their VRAM, for the expert tiers)
+        static const bool dense_q4k = strata_env_is_one("STRATA_DS41_DENSE_Q4K");
+        if (dense_q4k && (W.type == GGML_TYPE_Q6_K || W.type == GGML_TYPE_Q5_K) && W.in % 256 == 0 && W.out > 0) {
+            const int64_t n = int64_t(W.in) * W.out;
+            const auto f = to_float(W.type, t.data(), n);
+            const size_t rb = ggml_row_size(GGML_TYPE_Q4_K, W.in), qb = rb * size_t(W.out);
+            std::vector<uint8_t> q(qb);
+            const int nt = 8;
+            std::vector<std::thread> th;
+            for (int k = 0; k < nt; ++k)
+                th.emplace_back([&, k] {
+                    const int64_t r0 = int64_t(W.out) * k / nt, r1 = int64_t(W.out) * (k + 1) / nt;
+                    if (r1 > r0) ggml_quantize_chunk(GGML_TYPE_Q4_K, f.data() + r0 * W.in, q.data() + size_t(r0) * rb, 0, r1 - r0, W.in, nullptr);
+                });
+            for (auto& x : th) x.join();
+            W.type = GGML_TYPE_Q4_K;
+            W.row_bytes = rb;
+            W.data = Dev(qb);
+            ck(cudaMemcpy(W.data.p, q.data(), qb, cudaMemcpyHostToDevice), "upload Q4_K");
+            t.file->discard_tensor_pages(*t.tensor, t.bytes);
+            weights_.emplace(as.empty() ? name : as, std::move(W));
+            return qb;
+        }
         W.data = Dev(t.bytes);
         ck(cudaMemcpy(W.data.p, t.data(), t.bytes, cudaMemcpyHostToDevice), "upload");
         // the GPU copy is the only one used: its host pages leave the page cache to the experts
@@ -2958,7 +3505,7 @@ private:
         mq::Product pr;
         pr.w = w; pr.type = type; pr.w_rows = rows; pr.w_cols = in; pr.expert_bytes = mq::matrix_bytes(type, rows, in);
         pr.n = 1; pr.xq = dm_xq_.p; pr.bounds = dm_bounds_.i(); pr.ids = dm_iota_.i(); pr.total_rows = nt; pr.max_rows = nt;
-        pr.dst = y; pr.ld_dst = ldy;
+        pr.dst = y; pr.ld_dst = ldy; pr.dst_rows = nt;
         mmq_->run(pr, stream_);
         return true;
     }
@@ -2986,7 +3533,10 @@ private:
         if (W.type == GGML_TYPE_F32) {
             k::ds41_f32_gemv(reinterpret_cast<const float*>(base), x, y, rows, W.in, stream_, nt);
         } else if (W.type == GGML_TYPE_BF16) {
-            static const bool exact = std::getenv("STRATA_DS41_VERIFY_EXACT") && std::string(std::getenv("STRATA_DS41_VERIFY_EXACT")) == "1";
+            // the batched BF16 GEMV is another kernel (other sums): it stays per column in exact verification unless
+            // STRATA_DS41_VERIFY_FAST_BF16=1 as well
+            static const bool exact = strata_env_is_one("STRATA_DS41_VERIFY_EXACT") &&
+                                      !(strata_env_is_one("STRATA_DS41_VERIFY_FAST_TRUNK") && strata_env_is_one("STRATA_DS41_VERIFY_FAST_BF16"));
             if (nt == 1) k::exl3_bf16_gemv(reinterpret_cast<const uint16_t*>(base), x, y, W.in, rows, stream_);
             else if (exact)   // a short pass rounds as the one-token passes do
                 for (int t = 0; t < nt; ++t)
@@ -3044,7 +3594,7 @@ private:
     void mmvq(int type, const uint8_t* w, const void* q8, float* y, int in, int out, int nt) {
         const size_t col = k::native_q8_1_bytes(in, 1);
         // STRATA_DS41_VERIFY_EXACT=1: one column per launch, so a short pass rounds as the one-token passes do
-        static const bool exact = std::getenv("STRATA_DS41_VERIFY_EXACT") && std::string(std::getenv("STRATA_DS41_VERIFY_EXACT")) == "1";
+        static const bool exact = trunk_exact();
         if (exact) {
             for (int j = 0; j < nt; ++j)
                 k::native_mmvq(type, w, static_cast<const uint8_t*>(q8) + size_t(j) * col, y + size_t(j) * out, in, out, 1, stream_);
@@ -3513,14 +4063,21 @@ private:
             int* info = attn_info_;
             int bound = 1;
             for (int i = 0; i < T; ++i) {
-                const int pos = tpos_host_[i], rows = std::min(pos + 1, c.window);
+                const int pos = tpos_host_[i];
+                if (pos < 0 || pos == INT32_MAX) throw std::runtime_error("ds41: session attention position bounds");
+                const int rows = std::min(pos + 1, c.window);
                 const int nsel = ratio && (pos + 1) / ratio > 0 ? std::min(c.index_top_k, (pos + 1) / ratio) : 0;   // the bound (count on the GPU)
-                info[4 * i] = (pos - rows + 1) % ring_b_;
+                const int first = (pos - rows + 1) % ring_b_;
+                if (ring_b_ < 1 || first < 0 || first >= ring_b_ || rows < 1 || rows > ring_b_ || nsel < 0 ||
+                    nsel > c.index_top_k || rows > 4096 - nsel)
+                    throw std::runtime_error("ds41: session attention window bounds");
+                info[4 * i] = first;
                 info[4 * i + 1] = rows;
                 info[4 * i + 2] = nsel;
                 info[4 * i + 3] = 0;
                 bound = std::max(bound, rows + nsel);
             }
+            if (bound < 1 || bound > 4096) throw std::runtime_error("ds41: session attention bound bounds");
             ck(cudaMemcpyAsync(attn_info_dev_.p, info, size_t(T) * 16, cudaMemcpyHostToDevice, stream_), "attention info");
             const size_t rw = size_t(row_width());
             const int* sel = ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i();
@@ -3541,14 +4098,38 @@ private:
             }
             k::ds41_attention_multi(q_.f(), T, c.heads, c.head_dim, bwin_[size_t(l)].f(), ring_b_, attn_info_dev_.i(), bound, comp_rows,
                                     row_width(), sel, sel_stride, ratio ? sel_cnt_[size_t(ts)].i() : nullptr, sinks, scale, attn_scores_.f(),
-                                    att_.f(), stream_, size_t(ring_b_) * c.head_dim, css);
+                                    att_.f(), stream_, attn_scores_.bytes, size_t(ring_b_) * c.head_dim, css);
         } else if (T >= 16) {   // one launch for the pass: per-token {first slot, window rows, selected rows}
+            if (ring_ <= 0 || c.window <= 0 || c.window > ring_ || c.index_top_k < 1 || c.index_top_k > 4096 || sel_base_ < 0)
+                throw std::runtime_error("ds41: batched attention geometry bounds");
+            if (ratio && (src < 0 || size_t(src) >= caches_.size()))
+                throw std::runtime_error("ds41: batched attention cache layer bounds");
+            if (ratio && (ts < 0 || size_t(ts) >= sel_count_.size() || size_t(ts) >= sel_.size() ||
+                          size_t(ts) >= sel_on_gpu_.size()))
+                throw std::runtime_error("ds41: batched attention selection layer bounds");
+            if (ratio && (size_t(sel_base_) > sel_count_[size_t(ts)].size() ||
+                          size_t(T) > sel_count_[size_t(ts)].size() - size_t(sel_base_)))
+                throw std::runtime_error("ds41: batched attention selection count span bounds");
             int* info = attn_info_;
+            const size_t host_info_bytes = checked_size_mul(size_t(T), size_t(16), "attention host info span");
+            if (!attn_info_ || host_info_bytes > attn_info_host_bytes_)
+                throw std::runtime_error("ds41: batched attention host info capacity");
+            require_device_range(attn_info_dev_, 0, host_info_bytes, "attention info upload");
             for (int i = 0; i < T; ++i) {
-                const int pos = pos0_ + i, rows = std::min(pos + 1, c.window);
-                info[4 * i] = (pos - rows + 1) % ring_;
+                const int64_t pos64 = int64_t(pos0_) + i;
+                if (pos64 < 0 || pos64 >= INT32_MAX) throw std::runtime_error("ds41: batched attention position bounds");
+                const int pos = int(pos64), rows = int(std::min<int64_t>(pos64 + 1, c.window));
+                const int64_t first64 = (pos64 - rows + 1) % ring_;
+                if (rows < 1 || rows > ring_ || first64 < 0 || first64 >= ring_)
+                    throw std::runtime_error("ds41: batched attention window bounds");
+                int nsel = 0;
+                if (ratio && !sel_on_gpu_[size_t(ts)] && (pos64 + 1) / ratio > 0)
+                    nsel = sel_count_[size_t(ts)][size_t(sel_base_) + size_t(i)];
+                if (nsel < 0 || nsel > c.index_top_k || rows > 4096 - nsel)
+                    throw std::runtime_error("ds41: batched attention selected-row bounds");
+                info[4 * i] = int(first64);
                 info[4 * i + 1] = rows;
-                info[4 * i + 2] = ratio && !sel_on_gpu_[size_t(ts)] && (pos + 1) / ratio > 0 ? sel_count_[size_t(ts)][size_t(sel_base_ + i)] : 0;
+                info[4 * i + 2] = nsel;
                 info[4 * i + 3] = 0;
             }
             ck(cudaMemcpyAsync(attn_info_dev_.p, info, size_t(T) * 16, cudaMemcpyHostToDevice, stream_), "attention info");
@@ -3566,11 +4147,50 @@ private:
                                        size_t(run) * c.head_dim * 4, cudaMemcpyDeviceToDevice, stream_), "window");
                     i += run;
                 }
-                k::ds41_attention_batched(q_.f(size_t(t0) * qw), n, c.heads, c.head_dim, windows_[size_t(l)].f(), ring_, attn_info_dev_.i() + 4 * t0,
-                                          ratio ? static_cast<const float*>(caches_[size_t(src)].p) : comp_rows, row_width(),
-                                          (ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i()) +
-                                              (ratio ? size_t(sel_base_ + t0) * c.index_top_k : 0),
-                                          c.index_top_k, sinks, scale, att_.f(size_t(t0) * qw), stream_, half_cache);
+                const size_t q_offset = checked_size_mul(checked_size_mul(size_t(t0), qw, "attention q offset"), sizeof(float), "attention q offset");
+                const size_t io_offset = checked_size_mul(size_t(t0), size_t(16), "attention info offset");
+                const size_t tensor_bytes = checked_size_mul(checked_size_mul(size_t(n), qw, "attention tensor span"), sizeof(float), "attention tensor span");
+                const int* info_batch = static_cast<const int*>(device_range_ptr(attn_info_dev_, io_offset, size_t(n) * 16, "attention info"));
+                const float* q_batch = static_cast<const float*>(device_range_ptr(q_, q_offset, tensor_bytes, "attention q"));
+                float* out_batch = static_cast<float*>(device_range_ptr(att_, q_offset, tensor_bytes, "attention output"));
+                (void)device_range_ptr(windows_[size_t(l)], 0,
+                                       checked_size_mul(checked_size_mul(size_t(ring_), size_t(c.head_dim), "attention ring span"), sizeof(float),
+                                                        "attention ring span"),
+                                       "attention ring");
+                const int* sel_batch = nullptr;
+                size_t comp_rows = 0;
+                if (ratio) {
+                    comp_rows = rows_b(src);
+                    if (comp_rows > size_t(INT32_MAX)) throw std::runtime_error("ds41: attention cache row count exceeds int32");
+                    const size_t cache_row_bytes = checked_size_mul(size_t(row_width()), half_cache ? sizeof(uint16_t) : sizeof(float), "attention cache row");
+                    const size_t cache_bytes = checked_size_mul(comp_rows, cache_row_bytes, "attention cache span");
+                    require_device_range(caches_[size_t(src)], 0, cache_bytes, "attention compressed cache");
+                    const size_t sel_row = size_t(sel_base_) + size_t(t0);
+                    const size_t sel_offset = checked_size_mul(checked_size_mul(sel_row, size_t(c.index_top_k), "attention selection offset"), sizeof(int),
+                                                               "attention selection offset");
+                    const size_t sel_bytes = checked_size_mul(checked_size_mul(size_t(n), size_t(c.index_top_k), "attention selection span"), sizeof(int),
+                                                              "attention selection span");
+                    sel_batch = static_cast<const int*>(device_range_ptr(sel_[size_t(ts)], sel_offset, sel_bytes, "attention selections"));
+                }
+                static const char* const wmma_env = std::getenv("STRATA_DS41_ATTN_WMMA");
+                static const bool wmma_requested = wmma_env && (std::string(wmma_env) == "1" || std::string(wmma_env) == "2");
+                if (wmma_requested && ratio && !half_cache)
+                    throw std::runtime_error("ds41: gfx12 WMMA attention requires the FP16 KV cache");
+                k::ds41_attention_batched(q_batch, n, c.heads, c.head_dim, windows_[size_t(l)].f(), ring_, info_batch,
+                                          ratio ? static_cast<const float*>(caches_[size_t(src)].p) : nullptr, row_width(), sel_batch,
+                                          c.index_top_k, sinks, scale, out_batch, stream_, half_cache, int(comp_rows),
+                                          attn_bounds_check_ ? attn_error_.i() : nullptr);
+            }
+            // The WMMA diagnostic kernel returns early for invalid row metadata. Check its
+            // status before the next layer can consume a partially unwritten attention output.
+            if (attn_bounds_check_) {
+                int bounds_error = 0;
+                ck(cudaMemcpyAsync(&bounds_error, attn_error_.p, sizeof(bounds_error), cudaMemcpyDeviceToHost, stream_),
+                   "attention bounds result");
+                ck(cudaStreamSynchronize(stream_), "attention bounds sync");
+                if (bounds_error)
+                    throw std::runtime_error("ds41: gfx12 WMMA attention rejected invalid row metadata or selection indices (code " +
+                                             std::to_string(bounds_error) + ")");
             }
         } else if (static bool multi = std::getenv("STRATA_DS41_ATTN_MULTI") && std::string(std::getenv("STRATA_DS41_ATTN_MULTI")) == "1";
                    multi && T >= 2 && T <= 8) {   // a few tokens (a verify pass): one launch pair over all of them
@@ -3578,15 +4198,21 @@ private:
             int bound = 1;
             const bool dev = ratio && sel_on_gpu_[size_t(ts)];
             for (int i = 0; i < T; ++i) {
+                if (pos0_ < 0 || pos0_ > INT32_MAX - i - 1) throw std::runtime_error("ds41: multi attention position bounds");
                 const int pos = pos0_ + i, rows = std::min(pos + 1, c.window);
                 int nsel = 0;
                 if (ratio && (pos + 1) / ratio > 0) nsel = dev ? std::min(c.index_top_k, (pos + 1) / ratio) : sel_count_[size_t(ts)][size_t(i)];
-                info[4 * i] = (pos - rows + 1) % ring_;
+                const int first = (pos - rows + 1) % ring_;
+                if (ring_ < 1 || first < 0 || first >= ring_ || rows < 1 || rows > ring_ || nsel < 0 ||
+                    nsel > c.index_top_k || rows > 4096 - nsel)
+                    throw std::runtime_error("ds41: multi attention window bounds");
+                info[4 * i] = first;
                 info[4 * i + 1] = rows;
                 info[4 * i + 2] = nsel;
                 info[4 * i + 3] = 0;
                 bound = std::max(bound, rows + nsel);
             }
+            if (bound < 1 || bound > 4096) throw std::runtime_error("ds41: multi attention bound bounds");
             // the same rows as the last upload: skip it (only with the selected counts on the device: the host's
             // selection, and so info[2], varies per layer)
             const long key = (long(pos0_) * 64 + T) * 8 + ratio * 2 + (dev ? 1 : 0);
@@ -3595,10 +4221,11 @@ private:
                 attn_info_key_ = key;
             }
             const bool gathered = kv_half_ && ratio;
+            const float* comp_multi = gathered ? gather_sel(src, ts, 0, T, ratio) : comp_rows;   // null: no compressed rows
             k::ds41_attention_multi(q_.f(), T, c.heads, c.head_dim, windows_[size_t(l)].f(), ring_, attn_info_dev_.i(), bound,
-                                    gathered ? gather_sel(src, ts, 0, T, ratio) : comp_rows, row_width(),
+                                    comp_multi, comp_multi ? row_width() : 0,
                                     gathered ? sel_iota_.i() : ratio ? sel_[size_t(ts)].i() : attn_info_dev_.i(), c.index_top_k,
-                                    dev ? sel_cnt_[size_t(ts)].i() : nullptr, sinks, scale, attn_scores_.f(), att_.f(), stream_);
+                                    dev ? sel_cnt_[size_t(ts)].i() : nullptr, sinks, scale, attn_scores_.f(), att_.f(), stream_, attn_scores_.bytes);
         } else
         for (int i = 0; i < T; ++i) {
             const int pos = pos0_ + i, rows = std::min(pos + 1, c.window), first = (pos - rows + 1) % ring_;
@@ -3666,7 +4293,7 @@ private:
             k::ds41_swap_blocks(att_.f(), attg, T, c.out_groups, group_in, stream_);
             const size_t colg = k::native_q8_1_bytes(group_in, 1);
             quantize(attg, q8_.p, group_in, T * c.out_groups);
-            static const bool exact = std::getenv("STRATA_DS41_VERIFY_EXACT") && std::string(std::getenv("STRATA_DS41_VERIFY_EXACT")) == "1";
+            static const bool exact = trunk_exact();
             if (!(fuse_ && !exact && k::native_mmvq_groups(A.type, A.data.p, q8_.p, oa_part_.f(), group_in, c.out_rank, T, c.out_groups, stream_)))
                 for (int g = 0; g < c.out_groups; ++g)
                     mmvq(A.type, static_cast<const uint8_t*>(A.data.p) + size_t(g) * c.out_rank * A.row_bytes,
@@ -4049,9 +4676,23 @@ private:
         // STRATA_DS41_DESKTOP_MIB (3072): VRAM left to the desktop (compositor, browser) and the decoder's scratch
         const size_t reserve = std::max<size_t>(size_t(env("STRATA_DS41_GPU_RESERVE_MIB", env("STRATA_DS41_DESKTOP_MIB", 3072))) << 20, vram_reserve + (128 << 20));
         size_t budget = free_b > reserve ? free_b - reserve : 0;
+#if defined(__HIP_PLATFORM_AMD__)
+        // cudaMemGetInfo can overstate usable memory on a desktop AMD card.
+        // Apply the physical floor to the expert arena too, including ordinary
+        // prefill: unlike Dev allocations, this arena is allocated directly.
+        const size_t physical_free = physical_vram_free();
+        const size_t keep = physical_vram_keep();
+        const size_t required_keep = std::max(reserve, keep);
+        budget = std::min(budget, physical_free > required_keep ? physical_free - required_keep : size_t(0));
+#endif
         if (std::getenv("STRATA_DS41_GPU_EXPERT_MIB")) budget = std::min(budget, size_t(env("STRATA_DS41_GPU_EXPERT_MIB", 0)) << 20);
         // one arena: many small allocations fragment and overshoot the reported free memory
         while (budget > (size_t(256) << 20)) {
+#if defined(__HIP_PLATFORM_AMD__)
+            const size_t physical_free_now = physical_vram_free();
+            budget = std::min(budget, physical_free_now > required_keep ? physical_free_now - required_keep : size_t(0));
+            if (budget <= (size_t(256) << 20)) break;
+#endif
             void* p = nullptr;
             if (cudaMalloc(&p, budget) == cudaSuccess) { arena_.p = p; arena_.bytes = budget; break; }
             (void)cudaGetLastError();
@@ -4206,7 +4847,539 @@ private:
         k::native_mmvq(L.f.d_type, base + 2 * g, g_h_q8_.p, g_out_.f(), F, c.hidden, 1, stream_);
         k::ds41_axpy(g_out_.f(), w, g_sum_.f(size_t(i) * c.hidden), c.hidden, stream_);
     }
+    // ---- STRATA_DS41_REMOTE_OWN=ADDR:PORT (opt-in, STD2 in include/strata/net/expert_tp.hpp): a worker
+    // (strata-ds41-worker) owns whole experts: the most-used experts of the profile (STRATA_DS41_CANON_PROFILE, or
+    // STRATA_DS41_REMOTE_OWN_PROFILE) after the canonical tier's, up to STRATA_DS41_REMOTE_OWN_MIB (8192) MiB. This node
+    // sends them at setup (pread, never through its mapping) and drops them from its page cache; per layer it sends the
+    // pass's owned routes with the activations right after the router, and adds their raw outputs in the lane's route
+    // order with its own (finish_with_external), so the sums are the single node's.
+    void connect_own(const char* addr) {
+        const auto& c = cfg_;
+        namespace net = strata::net;
+        if (!remote_addr_.empty() || peer_ || ram_copy_ || stage_cpu_expert_ || fl_ != c.ff || !ram_pos_.empty() || !packed_.empty() ||
+            chunk_ >= stream_min_ || c.top_k < 1 || c.top_k > 16)
+            throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN needs plain CPU routing with lane prompt passes (no remote TP, peer, "
+                                        "RAM copy, staging, packed copy or streamed prompt chunks)");
+        const char* profile = std::getenv("STRATA_DS41_REMOTE_OWN_PROFILE");
+        if (!profile || !*profile) profile = std::getenv("STRATA_DS41_CANON_PROFILE");
+        if (!profile || !*profile) throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN needs a route profile (STRATA_DS41_REMOTE_OWN_PROFILE)");
+        const double mib = strata_env_value_double("STRATA_DS41_REMOTE_OWN_MIB", 8192.0);
+        if (!(mib >= 1 && mib <= 65536)) throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN_MIB must be 1 through 65536");
+        // the owned set: hits per byte, after the canonical tier's experts
+        std::vector<double> count(size_t(c.layers) * c.experts, 0);
+        {
+            std::ifstream g(profile, std::ios::binary);
+            if (!g) throw std::runtime_error("ds41: cannot read the ownership profile " + std::string(profile));
+            std::vector<int32_t> v(size_t(c.layers) * c.top_k);
+            while (g.read(reinterpret_cast<char*>(v.data()), std::streamsize(v.size() * 4)))
+                for (int l = 0; l < c.layers; ++l)
+                    for (int k = 0; k < c.top_k; ++k) {
+                        const int e = v[size_t(l) * c.top_k + k];
+                        if (e >= 0 && e < c.experts) count[size_t(l) * c.experts + e] += 1;
+                    }
+        }
+        // STRATA_DS41_REMOTE_OWN_SKIP_MIB=S: the band starts after the S hottest MiB of the profile (the same set whatever
+        // the canonical tier's final size, so the worker's kept rows stay valid); unset: after the canonical tier
+        const double skip_mib = strata_env_value_double("STRATA_DS41_REMOTE_OWN_SKIP_MIB", -1.0);
+        std::vector<std::tuple<double, int, int>> order;
+        for (int l = 0; l < c.layers; ++l)
+            for (int e = 0; e < c.experts; ++e)
+                if (skip_mib >= 0 || canon_off_.empty() || canon_off_[size_t(l) * c.experts + e] < 0)
+                    order.emplace_back(count[size_t(l) * c.experts + e] / double(expert_bytes(l)), l, e);
+        std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return std::get<0>(a) > std::get<0>(b); });
+        if (skip_mib >= 0) {
+            double skipped = 0;
+            size_t k = 0;
+            while (k < order.size() && skipped + double(expert_bytes(std::get<1>(order[k]))) <= skip_mib * double(1 << 20))
+                skipped += double(expert_bytes(std::get<1>(order[k++])));
+            order.erase(order.begin(), order.begin() + std::ptrdiff_t(k));
+        }
+        own_.assign(size_t(c.layers) * c.experts, 0);
+        size_t used = 0, picked = 0;
+        // STRATA_DS41_REMOTE_OWN_LOAD=f (0 < f < 1): walking the experts hottest first, the worker takes one only while
+        // its share of the profile's expected bytes (count x expert bytes) stays at most f, so it also holds colder
+        // experts (RAM) instead of only the hottest band (load); unset: the hottest band up to the MiB cap
+        const double load_f = strata_env_value_double("STRATA_DS41_REMOTE_OWN_LOAD", 0.0);
+        if (!(load_f >= 0 && load_f < 1)) throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN_LOAD must be in [0, 1)");
+        double load_all = 0, load_own = 0;
+        for (const auto& [score, l, e] : order) {
+            const double load = count[size_t(l) * c.experts + e] * double(expert_bytes(l));
+            load_all += load;
+            if (double(used + expert_bytes(l)) > mib * double(1 << 20)) continue;
+            if (load_f > 0 && load_own + load > load_f * load_all) continue;
+            own_[size_t(l) * c.experts + e] = 1;
+            used += expert_bytes(l);
+            load_own += load;
+            ++picked;
+            (void)score;
+        }
+        std::cerr << "DS41 remote_own load_share=" << (load_all > 0 ? load_own / load_all : 0.0) << " (of the non-canonical profile bytes)\n";
+        auto r = std::make_unique<Remote>();
+        r->hidden = c.hidden;
+        ucomm_config cfg;
+        ucomm_config_default(&cfg);
+        cfg.rank = 0;
+        cfg.world = 2;
+        cfg.root_addr = addr;
+        if (!std::getenv("UCOMM_TIMEOUT_MS")) cfg.timeout_ms = 0;
+        std::cerr << "DS41 remote_own waiting for the worker at " << addr << " (" << picked << " experts, "
+                  << double(used) / double(1ull << 30) << " GiB)\n";
+        Remote::ok(ucomm_init(&cfg, &r->comm), "connect");
+        const int most = std::max(chunk_, 64);
+        r->request.resize(sizeof(net::TpRequest) + size_t(most) * c.top_k * sizeof(net::TpJob) + size_t(most) * c.hidden * 4);
+        r->reply.resize(size_t(most) * c.top_k * c.hidden);
+        for (const auto& [ptr, bytes] : {std::pair<void*, size_t>{r->request.data(), r->request.size()}, {r->reply.data(), r->reply.size() * 4}}) {
+            ucomm_mr_t* region = nullptr;
+            if (ucomm_mr_reg(r->comm, ptr, bytes, &region) == UCOMM_OK) r->regions.push_back(region);
+        }
+        ext_vals_.resize(size_t(most) * c.top_k * c.hidden);
+        // setup: TpSetup, a TpLayer per layer (experts = owned count, pad = expert count), the owned ids
+        std::vector<uint8_t> setup(sizeof(net::TpSetup));
+        std::vector<int32_t> ids;
+        uint64_t h = 14695981039346656037ull;
+        auto mix = [&](const void* p, size_t n) { for (size_t i = 0; i < n; ++i) h = (h ^ static_cast<const uint8_t*>(p)[i]) * 1099511628211ull; };
+        for (int l = 0; l < c.layers; ++l) {
+            const auto& F = experts_[size_t(l)].f;
+            int owned = 0;
+            for (int e = 0; e < c.experts; ++e) if (own_[size_t(l) * c.experts + e]) { ids.push_back(e); ++owned; }
+            const net::TpLayer spec{l, int32_t(F.gu_type), int32_t(F.d_type), c.ff, 0, owned, c.clamp[size_t(l)], c.experts};
+            const auto* b = reinterpret_cast<const uint8_t*>(&spec);
+            setup.insert(setup.end(), b, b + sizeof spec);
+            for (const char* part : {"gate", "up", "down"}) {
+                const auto& t = art_.at("blk." + std::to_string(l) + ".ffn_" + part + "_exps.weight");
+                const int64_t geometry[3] = {l, int64_t(t.tensor->type), int64_t(t.bytes)};
+                mix(geometry, sizeof geometry);
+                mix(t.file->path().c_str(), t.file->path().size());
+                const int64_t where[2] = {int64_t(t.file->file_size()), int64_t(t.tensor->offset)};
+                mix(where, sizeof where);
+            }
+        }
+        mix(ids.data(), ids.size() * 4);
+        const auto* ib = reinterpret_cast<const uint8_t*>(ids.data());
+        setup.insert(setup.end(), ib, ib + ids.size() * 4);
+        // the owned experts' profile counts (float, the ids' order): the worker fills its GPU tier from them at setup
+        std::vector<float> counts;
+        for (int l = 0; l < c.layers; ++l)
+            for (int e = 0; e < c.experts; ++e)
+                if (own_[size_t(l) * c.experts + e]) counts.push_back(float(count[size_t(l) * c.experts + e]));
+        const auto* cb = reinterpret_cast<const uint8_t*>(counts.data());
+        setup.insert(setup.end(), cb, cb + counts.size() * 4);
+        const net::TpSetup head{net::kTpMagicDs41Own, uint32_t(c.layers), uint32_t(c.hidden), net::kReplyRaw, net::kWeightsStreamed, 1, h ? h : 1};
+        std::memcpy(setup.data(), &head, sizeof head);
+        if (setup.size() > (size_t(1) << 20)) throw std::runtime_error("ds41 remote_own: the setup exceeds the worker's 1 MiB message");
+        Remote::ok(ucomm_send(r->comm, 1, net::kTagSetup, setup.data(), setup.size()), "setup");
+        net::TpAccept accept{};
+        Remote::ok(ucomm_recv(r->comm, 1, net::kTagAccept, &accept, sizeof accept, nullptr), "accept");
+        if (!accept.ok)
+            throw std::runtime_error("ds41 remote_own: the worker refused: " + std::string(accept.reason, strnlen(accept.reason, sizeof accept.reason)));
+        const auto t0 = std::chrono::steady_clock::now();
+        double sent = 0;
+        std::map<std::string, int> fds;
+        auto fd_of = [&](const core::ArtifactTensor& t) {
+            auto it = fds.find(t.file->path());
+            if (it == fds.end()) {
+                const int fd = ::open(t.file->path().c_str(), O_RDONLY);
+                if (fd < 0) throw std::runtime_error("ds41 remote_own: cannot open " + t.file->path());
+                it = fds.emplace(t.file->path(), fd).first;
+            }
+            return it->second;
+        };
+        auto read_at = [](int fd, uint8_t* dst, size_t n, uint64_t off) {
+            for (size_t got = 0; got < n;) {
+                const ssize_t k = pread(fd, dst + got, n - got, off_t(off + got));
+                if (k <= 0) throw std::runtime_error("ds41 remote_own: read failed");
+                got += size_t(k);
+            }
+        };
+        {
+            size_t largest = 0;
+            for (int l = 0; l < c.layers; ++l) largest = std::max(largest, expert_bytes(l));
+            std::array<std::vector<uint8_t>, 2> staging;
+            std::array<ucomm_req_t*, 2> inflight{};
+            std::array<ucomm_mr_t*, 2> registered{};
+            for (int k = 0; k < 2; ++k) {
+                staging[size_t(k)].resize(largest);
+                if (ucomm_mr_reg(r->comm, staging[size_t(k)].data(), largest, &registered[size_t(k)]) != UCOMM_OK) registered[size_t(k)] = nullptr;
+            }
+            int which = 0;
+            for (int l = 0; l < c.layers; ++l) {
+                const std::string p = "blk." + std::to_string(l) + ".";
+                const auto &G = art_.at(p + "ffn_gate_exps.weight"), &U = art_.at(p + "ffn_up_exps.weight"), &D = art_.at(p + "ffn_down_exps.weight");
+                const auto& F = experts_[size_t(l)].f;
+                const uint64_t go = G.file->data_start() + G.tensor->offset, uo = U.file->data_start() + U.tensor->offset;
+                const uint64_t dof = D.file->data_start() + D.tensor->offset;
+                const size_t gstride = F.gu_row * size_t(c.ff), dstride = F.d_row * size_t(c.hidden), bytes = 2 * gstride + dstride;
+                if (bytes != expert_bytes(l)) throw std::runtime_error("ds41 remote_own: expert blob geometry");
+                for (int e = 0; e < c.experts; ++e) {
+                    if (!own_[size_t(l) * c.experts + e]) continue;
+                    if (!accept.have) {
+                        if (inflight[size_t(which)]) Remote::ok(ucomm_wait(inflight[size_t(which)], nullptr), "weights");
+                        inflight[size_t(which)] = nullptr;
+                        uint8_t* blob = staging[size_t(which)].data();
+                        read_at(fd_of(G), blob, gstride, go + size_t(e) * gstride);
+                        read_at(fd_of(U), blob + gstride, gstride, uo + size_t(e) * gstride);
+                        read_at(fd_of(D), blob + 2 * gstride, dstride, dof + size_t(e) * dstride);
+                        Remote::ok(ucomm_isend(r->comm, 1, net::kTagWeights, blob, bytes, &inflight[size_t(which)]), "weights");
+                        which ^= 1;
+                        sent += double(bytes);
+                    }
+                    // the owned expert leaves this node's page cache (this node never reads it again)
+                    posix_fadvise(fd_of(G), off_t(go + size_t(e) * gstride), off_t(gstride), POSIX_FADV_DONTNEED);
+                    posix_fadvise(fd_of(U), off_t(uo + size_t(e) * gstride), off_t(gstride), POSIX_FADV_DONTNEED);
+                    posix_fadvise(fd_of(D), off_t(dof + size_t(e) * dstride), off_t(dstride), POSIX_FADV_DONTNEED);
+                }
+            }
+            for (auto* q : inflight) if (q) Remote::ok(ucomm_wait(q, nullptr), "weights");
+            for (auto* m : registered) if (m) ucomm_mr_dereg(m);
+        }
+        for (const auto& [path, fd] : fds) ::close(fd);
+        net::TpReady ready{};
+        Remote::ok(ucomm_recv(r->comm, 1, net::kTagReady, &ready, sizeof ready, nullptr), "ready");
+        std::cerr << "DS41 remote_own backend=" << ucomm_backend_name(r->comm) << " experts=" << picked << " GiB="
+                  << double(used) / double(1ull << 30) << " weights=" << (accept.have ? "kept" : "sent") << " sent_GiB="
+                  << sent / double(1ull << 30) << " s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()
+                  << " worker_gpu_slots=" << ready.slots << "\n";
+        own_remote_ = std::move(r);
+    }
+    void canon_enqueue(int l, int T, int K, const std::vector<int32_t>& entries, const std::vector<int>& gstart,
+                       const std::vector<std::pair<int, int>>& groups) {
+        const auto& c = cfg_;
+        const auto& f = experts_[size_t(l)].f;
+        const int n = int(entries.size()), G = int(gstart.size()) - 1, E = 8 * c.top_k;
+        const size_t g = slice_gate(l);
+        const size_t xq_bytes = size_t(c.hidden / 256) * 292, hq_bytes = size_t(c.ff / 256) * 292;
+        if (T < 1 || T > 8 || n < 1 || n > E || G < 1 || G > n || gstart.front() != 0 || gstart.back() != n || groups.size() != size_t(G) ||
+            canon_xq_.bytes < size_t(T) * xq_bytes || canon_hq_.bytes < size_t(n) * hq_bytes ||
+            canon_gu_.bytes < size_t(2) * n * c.ff * sizeof(float) || canon_out_.bytes < size_t(n) * c.hidden * sizeof(float))
+            throw std::runtime_error("ds41: canonical tier pass geometry out of bounds");
+        // meta: [gu ptrs G][down ptrs G][gstart G+1][eact n][identity n]
+        uint64_t* gp = reinterpret_cast<uint64_t*>(canon_meta_host_);
+        uint64_t* dp = gp + G;
+        int* gs = reinterpret_cast<int*>(dp + G);
+        int* ea = gs + G + 1;
+        int* id = ea + n;
+        const size_t meta_bytes = size_t(2) * G * sizeof(uint64_t) + size_t(G + 1 + 2 * n) * sizeof(int);
+        if (meta_bytes > canon_meta_.bytes) throw std::runtime_error("ds41: canonical tier metadata exceeds its buffer");
+        const size_t eb = expert_bytes(l);
+        std::vector<std::pair<uint8_t*, int>> copies;   // streamed experts: (ring slot, expert)
+        int Gh = G;                                      // groups [0, Gh) are held, [Gh, G) streamed (in that order)
+        for (int j = 0; j < G; ++j) if (groups[size_t(j)].second >= 0) { Gh = j; break; }
+        for (int j = Gh; j < G; ++j) if (groups[size_t(j)].second < 0) throw std::runtime_error("ds41: canonical tier group order");
+        for (int j = 0; j < G; ++j) {
+            const int i0 = entries[size_t(gstart[size_t(j)])];
+            const int e = int(canon_original_expert(l, i0)), slot = groups[size_t(j)].second;
+            if (e != groups[size_t(j)].first) throw std::runtime_error("ds41: canonical tier group order mismatch");
+            if (slot < 0) {
+                const int64_t off = canon_off_[size_t(l) * c.experts + e];
+                if (off < 0 || size_t(off) + eb > canon_arena_.bytes) throw std::runtime_error("ds41: canonical tier slot out of bounds");
+                gp[j] = uint64_t(reinterpret_cast<uintptr_t>(canon_arena_.b(size_t(off))));
+            } else {
+                // a streamed expert: gate | up | down straight from the mapped tensors into its ring slot
+                if (slot >= canon_stream_ || size_t(slot + 1) * canon_ring_slot_ > canon_ring_.bytes || eb > canon_ring_slot_)
+                    throw std::runtime_error("ds41: canonical stream slot out of bounds");
+                uint8_t* dst = canon_ring_.b(size_t(slot) * canon_ring_slot_);
+                const auto& LE = experts_[size_t(l)];
+                if (slice_down_row(l) != LE.f.d_row) throw std::runtime_error("ds41: canonical stream needs whole down rows");
+                copies.push_back({dst, e});
+                gp[j] = uint64_t(reinterpret_cast<uintptr_t>(dst));
+            }
+            dp[j] = gp[j] + 2 * g;
+        }
+        for (int j = 0; j <= G; ++j) gs[j] = gstart[size_t(j)];
+        for (int j = 0; j < n; ++j) {
+            if (entries[size_t(j)] < 0 || entries[size_t(j)] >= T * K) throw std::runtime_error("ds41: canonical tier entry out of bounds");
+            ea[j] = entries[size_t(j)] / K;
+            id[j] = j;
+        }
+        uint8_t* md = canon_meta_.b();
+        ck(cudaMemcpyAsync(md, canon_meta_host_, meta_bytes, cudaMemcpyHostToDevice, stream_), "canonical tier metadata");
+        const auto* d_gp = reinterpret_cast<const uint8_t* const*>(md);
+        const auto* d_dp = d_gp + G;
+        const int* d_gs = reinterpret_cast<const int*>(md + size_t(2) * G * sizeof(uint64_t));
+        const int* d_ea = d_gs + G + 1;
+        const int* d_id = d_ea + n;
+        // the streamed experts' copies on their own stream (the ring slots' last readers, the previous layer's
+        // kernels, finished at that layer's results sync), overlapping the held experts' chain below
+        if (!copies.empty()) {
+            if (!canon_copy_s_) {
+                canon_copy_s_ = make_stream(cudaStreamNonBlocking);
+                ck(cudaEventCreateWithFlags(&canon_copy_ev_, cudaEventDisableTiming), "canonical stream event");
+                // STRATA_DS41_CANON_COPY_STREAMS=2: the streamed experts alternate over two copy streams (DMA engines)
+                if (strata_env_value_double("STRATA_DS41_CANON_COPY_STREAMS", 1.0) == 2.0) {
+                    canon_copy_s2_ = make_stream(cudaStreamNonBlocking);
+                    ck(cudaEventCreateWithFlags(&canon_copy_ev2_, cudaEventDisableTiming), "canonical stream event 2");
+                }
+            }
+            const auto& LE = experts_[size_t(l)];
+            const size_t dn = LE.f.d_row * size_t(c.hidden);
+            if (canon_stage_threads_ > 0) {
+                if (!canon_stager_) canon_stager_ = std::make_unique<CanonStager>(canon_stage_threads_, canon_copy_s_);
+                canon_jobs_.clear();
+                for (const auto& [dst, e] : copies) {
+                    const size_t slot = size_t(dst - canon_ring_.b()) / canon_ring_slot_;
+                    if (slot >= size_t(canon_stream_) || 2 * g + dn > canon_ring_slot_) throw std::runtime_error("ds41: canonical pinned slot out of bounds");
+                    uint8_t* pin = canon_pinned_ + slot * canon_ring_slot_;
+                    canon_jobs_.push_back({LE.gate + size_t(e) * LE.gate_stride, pin, dst, g});
+                    canon_jobs_.push_back({LE.up + size_t(e) * LE.gate_stride, pin + g, dst + g, g});
+                    canon_jobs_.push_back({LE.down + size_t(e) * LE.down_stride, pin + 2 * g, dst + 2 * g, dn});
+                }
+                canon_stager_->run(canon_jobs_);
+            } else
+                for (size_t j = 0; j < copies.size(); ++j) {
+                    const auto& [dst, e] = copies[j];
+                    cudaStream_t cs = canon_copy_s2_ && (j & 1) ? canon_copy_s2_ : canon_copy_s_;
+                    ck(cudaMemcpyAsync(dst, LE.gate + size_t(e) * LE.gate_stride, g, cudaMemcpyHostToDevice, cs), "canonical stream gate");
+                    ck(cudaMemcpyAsync(dst + g, LE.up + size_t(e) * LE.gate_stride, g, cudaMemcpyHostToDevice, cs), "canonical stream up");
+                    ck(cudaMemcpyAsync(dst + 2 * g, LE.down + size_t(e) * LE.down_stride, dn, cudaMemcpyHostToDevice, cs), "canonical stream down");
+                }
+            ck(cudaEventRecord(canon_copy_ev_, canon_copy_s_), "canonical stream copies done");
+            if (canon_copy_s2_) ck(cudaEventRecord(canon_copy_ev2_, canon_copy_s2_), "canonical stream copies done 2");
+        }
+        k::quantize_q8_K(xn_.f(), canon_xq_.b(), int64_t(T) * c.hidden, stream_);
+        // groups [g0, g1) with entries [gstart[g0], gstart[g1]): gate/up, SwiGLU, hidden Q8_K, down
+        auto chain = [&](int g0, int g1) {
+            if (g0 >= g1) return;
+            const int e0 = gstart[size_t(g0)], e1 = gstart[size_t(g1)], ne = e1 - e0;
+            k::ds41_canon_dot(f.gu_type, d_gp + g0, d_gs + g0, d_ea, g1 - g0, 2, canon_xq_.b(), canon_xq_.bytes, T, canon_gu_.f(),
+                              canon_gu_.bytes, n, c.hidden, c.ff, g, stream_);
+            k::ds41_canon_swiglu(canon_gu_.f(size_t(e0) * c.ff), canon_gu_.f(size_t(n + e0) * c.ff), canon_h_.f(size_t(e0) * c.ff),
+                                 ne * c.ff, c.clamp[size_t(l)], stream_);
+            k::quantize_q8_K(canon_h_.f(size_t(e0) * c.ff), canon_hq_.b(size_t(e0) * hq_bytes), int64_t(ne) * c.ff, stream_);
+            k::ds41_canon_dot(f.d_type, d_dp + g0, d_gs + g0, d_id, g1 - g0, 1, canon_hq_.b(), canon_hq_.bytes, n, canon_out_.f(),
+                              canon_out_.bytes, n, c.ff, c.hidden, 0, stream_);
+        };
+        chain(0, Gh);
+        if (!copies.empty()) {
+            ck(cudaStreamWaitEvent(stream_, canon_copy_ev_, 0), "canonical stream wait");
+            if (canon_copy_s2_) ck(cudaStreamWaitEvent(stream_, canon_copy_ev2_, 0), "canonical stream wait 2");
+        }
+        chain(Gh, G);
+        ck(cudaMemcpyAsync(canon_res_, canon_out_.p, size_t(n) * c.hidden * sizeof(float), cudaMemcpyDeviceToHost, stream_),
+           "canonical tier results");
+    }
+    // the expert of route entry i of the current layer (the route ids the pass started with)
+    int canon_original_expert(int l, int i) const {
+        if (i < 0 || size_t(i) >= canon_ids_now_.size()) throw std::runtime_error("ds41: canonical tier route index out of bounds");
+        (void)l;
+        return canon_ids_now_[size_t(i)];
+    }
+    // STRATA_DS41_CANON_CHECK=1: entry i's GPU output against the CPU rows (after the results sync)
+    void canon_check(int l, int K, int i) {
+        const auto& c = cfg_;
+        const auto& f = experts_[size_t(l)].f;
+        const int e = canon_ids_now_.at(size_t(i));
+        std::vector<uint8_t> w(expert_bytes(l)), xq(f.act_bytes), hq(f.h_bytes);
+        slice_to_host(l, e, w.data());
+        std::vector<float> hidden(size_t(c.ff)), ref(size_t(c.hidden));
+        cpu::native_quant_act(f, pinned_[0] + size_t(i / K) * c.hidden, xq.data());
+        const void* xp[] = {xq.data()}; float* hp[] = {hidden.data()};
+        cpu::native_gu_rows(f, w.data(), xp, 1, hp, 0, c.ff);
+        cpu::native_quant_h(f, hidden.data(), hq.data());
+        const void* qp[] = {hq.data()}; float* rp[] = {ref.data()};
+        cpu::native_down_rows(f, w.data(), qp, 1, rp, 0, c.hidden);
+        size_t diff = 0; double sq = 0, norm = 0;
+        for (int j = 0; j < c.hidden; ++j) {
+            const float got = canon_res_[size_t(j)];
+            if (!std::isfinite(got)) throw std::runtime_error("ds41: nonfinite canonical tier output");
+            diff += std::memcmp(&got, &ref[size_t(j)], sizeof(float)) != 0;
+            sq += double(got - ref[size_t(j)]) * double(got - ref[size_t(j)]); norm += double(ref[size_t(j)]) * ref[size_t(j)];
+        }
+        std::cerr << "DS41 canon_check layer=" << l << " expert=" << e << " differing=" << diff << "/" << c.hidden
+                  << " relative_l2=" << std::sqrt(sq / (norm + 1e-300)) << "\n";
+        canon_checked_[size_t(l)] = 1;
+    }
+    std::vector<int32_t> canon_ids_now_;
+    // STRATA_DS41_REMOTE_OWN: whole experts owned by a remote worker (STD2), per layer x expert
+    std::unique_ptr<Remote> own_remote_;
+    std::vector<uint8_t> own_;
+    std::vector<float> ext_vals_;     // canonical + remote raw route outputs, merged by finish_with_external
+    std::vector<int32_t> ext_entries_;
+    uint64_t own_routes_ = 0;
+    bool own_pending_merge_ = false;
+    std::chrono::steady_clock::time_point own_merge_t0_;
+public:
+    // STRATA_DS41_REMOTE_OWN, decode / verify passes: ms of canonical GPU sync, worker reply wait, lane finish + merge;
+    // [3] the layer calls counted
+    double own_ms_[4] = {0, 0, 0, 0};
+private:
+    int canon_stream_ = 0;          // STRATA_DS41_CANON_STREAM: experts streamed per layer pass
+    cudaStream_t canon_copy_s_ = nullptr;
+    cudaEvent_t canon_copy_ev_ = nullptr;
+    cudaStream_t canon_copy_s2_ = nullptr;
+    cudaEvent_t canon_copy_ev2_ = nullptr;
+    int canon_stage_threads_ = 0;   // STRATA_DS41_CANON_STREAM_THREADS (0: pageable copies)
+    uint8_t* canon_pinned_ = nullptr;
+    std::vector<CanonStager::Job> canon_jobs_;
+    std::unique_ptr<CanonStager> canon_stager_;
+    size_t canon_ring_slot_ = 0;
+    Dev canon_ring_;
+    void staged_cpu_order_chain(int l, const uint8_t* base, size_t capacity, int i, float w, float* result) {
+        const auto& c = cfg_;
+        const auto& f = experts_[size_t(l)].f;
+        const size_t g = slice_gate(l), d = f.d_row * size_t(c.hidden);
+        const size_t xq_bytes = size_t(c.hidden / 256) * 292, hq_bytes = size_t(c.ff / 256) * 292;
+        if (!base || g > capacity / 2 || d > capacity - 2*g || !stage_cpu_xq_.p || !stage_cpu_hq_.p ||
+            stage_cpu_xq_.bytes < xq_bytes || stage_cpu_hq_.bytes < hq_bytes || i < 0 || i >= 8)
+            throw std::runtime_error("ds41: CPU-order staged expert buffers or route are out of bounds");
+        k::quantize_q8_K(xn_.f(size_t(i) * c.hidden), stage_cpu_xq_.b(), c.hidden, stream_);
+        if (strata_env_is_one("STRATA_DS41_STAGE_PAIR_DOT")) {
+            const size_t row_bytes = size_t(c.hidden / 256) * size_t(f.gu_type == 19 ? 50 : 66);
+            if ((f.gu_type != 16 && f.gu_type != 19) || g != size_t(c.ff) * row_bytes)
+                throw std::runtime_error("ds41: paired staging gate stride is invalid");
+            k::ds41_cpu_order_iq_dot_pair(f.gu_type, base, 2*g, stage_cpu_xq_.b(), stage_cpu_xq_.bytes,
+                                          g_gate_.f(), g_gate_.bytes, g_up_.f(), g_up_.bytes, c.hidden, c.ff, stream_);
+        } else {
+            k::ds41_cpu_order_iq_dot(f.gu_type, base, g, stage_cpu_xq_.b(), stage_cpu_xq_.bytes,
+                                     g_gate_.f(), g_gate_.bytes, c.hidden, c.ff, stream_);
+            k::ds41_cpu_order_iq_dot(f.gu_type, base + g, g, stage_cpu_xq_.b(), stage_cpu_xq_.bytes,
+                                     g_up_.f(), g_up_.bytes, c.hidden, c.ff, stream_);
+        }
+        if (stage_cpu_host_act_) {
+            if (!stage_cpu_gateup_ || !stage_cpu_hq_host_ || stage_cpu_hidden_.size() != size_t(c.ff) || f.h_bytes != hq_bytes)
+                throw std::runtime_error("ds41: CPU-order host activation buffers are invalid");
+            const bool sample = stage_cpu_timing_ && stage_cpu_transfers_ < 1000;
+            const auto wait_start = std::chrono::steady_clock::now();
+            ck(cudaMemcpyAsync(stage_cpu_gateup_, g_gate_.p, size_t(c.ff) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "staged gate readback");
+            ck(cudaMemcpyAsync(stage_cpu_gateup_ + c.ff, g_up_.p, size_t(c.ff) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "staged up readback");
+            ck(cudaStreamSynchronize(stream_), "staged activation sync");
+            const auto act_start = std::chrono::steady_clock::now();
+            if (sample) stage_timing_[2] += std::chrono::duration<double>(act_start - wait_start).count();
+            const float limit = c.clamp[size_t(l)];
+            for (int j = 0; j < c.ff; ++j) {
+                const float gate = std::fmin(stage_cpu_gateup_[j], limit);
+                const float up = std::fmax(-limit, std::fmin(stage_cpu_gateup_[c.ff + j], limit));
+                stage_cpu_hidden_[size_t(j)] = (gate / (1.f + std::exp(-gate))) * up;
+            }
+            cpu::native_quant_h(f, stage_cpu_hidden_.data(), stage_cpu_hq_host_);
+            if (sample) stage_timing_[3] += std::chrono::duration<double>(std::chrono::steady_clock::now() - act_start).count();
+            ck(cudaMemcpyAsync(stage_cpu_hq_.p, stage_cpu_hq_host_, hq_bytes, cudaMemcpyHostToDevice, stream_), "staged hidden Q8_K upload");
+        } else {
+            k::ds41_cpu_order_swiglu(g_gate_.f(), g_up_.f(), g_h_.f(), c.ff, c.clamp[size_t(l)], stream_);
+            k::quantize_q8_K(g_h_.f(), stage_cpu_hq_.b(), c.ff, stream_);
+        }
+        k::ds41_cpu_order_iq_dot(f.d_type, base + 2*g, d, stage_cpu_hq_.b(), stage_cpu_hq_.bytes,
+                                 g_out_.f(), g_out_.bytes, c.ff, c.hidden, stream_);
+        if (strata_env_is_one("STRATA_DS41_STAGE_CPU_ORDER_CHECK") && !stage_cpu_order_checked_[size_t(l)]) {
+            if (f.act_bytes != xq_bytes || f.h_bytes != hq_bytes)
+                throw std::runtime_error("ds41: CPU-order diagnostic activation geometry mismatch");
+            std::vector<uint8_t> xq(f.act_bytes), hq(f.h_bytes);
+            std::vector<uint8_t> gpu_xq(f.act_bytes), gpu_hq(f.h_bytes);
+            std::vector<float> hidden(size_t(c.ff)), reference(size_t(c.hidden)), got(size_t(c.hidden));
+            cpu::native_quant_act(f, pinned_[0] + size_t(i) * c.hidden, xq.data());
+            const void* xp[] = {xq.data()}; float* hp[] = {hidden.data()};
+            cpu::native_gu_rows(f, stage_cpu_host_, xp, 1, hp, 0, c.ff);
+            cpu::native_quant_h(f, hidden.data(), hq.data());
+            const void* qp[] = {hq.data()}; float* rp[] = {reference.data()};
+            cpu::native_down_rows(f, stage_cpu_host_, qp, 1, rp, 0, c.hidden);
+            ck(cudaMemcpyAsync(gpu_xq.data(), stage_cpu_xq_.p, f.act_bytes, cudaMemcpyDeviceToHost, stream_), "CPU-order input Q8_K check");
+            ck(cudaMemcpyAsync(gpu_hq.data(), stage_cpu_hq_.p, f.h_bytes, cudaMemcpyDeviceToHost, stream_), "CPU-order hidden Q8_K check");
+            ck(cudaMemcpyAsync(got.data(), g_out_.p, size_t(c.hidden) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "CPU-order expert check copy");
+            ck(cudaStreamSynchronize(stream_), "CPU-order expert check sync");
+            size_t different = 0; double squared = 0, norm = 0, max_abs = 0;
+            for (int j = 0; j < c.hidden; ++j) {
+                if (!std::isfinite(reference[size_t(j)]) || !std::isfinite(got[size_t(j)]))
+                    throw std::runtime_error("ds41: nonfinite CPU-order expert diagnostic");
+                different += std::memcmp(&reference[size_t(j)], &got[size_t(j)], sizeof(float)) != 0;
+                const double delta = double(reference[size_t(j)]) - double(got[size_t(j)]);
+                squared += delta * delta; norm += double(reference[size_t(j)]) * reference[size_t(j)];
+                max_abs = std::max(max_abs, std::abs(delta));
+            }
+            std::cerr << "DS41 cpu_order_check layer=" << l << " differing=" << different << "/" << c.hidden
+                      << " max_abs=" << max_abs << " relative_l2=" << std::sqrt(squared / (norm + 1e-300));
+            size_t xq_diff = 0, hq_diff = 0;
+            for (size_t j = 0; j < xq.size(); ++j) xq_diff += xq[j] != gpu_xq[j];
+            for (size_t j = 0; j < hq.size(); ++j) hq_diff += hq[j] != gpu_hq[j];
+            std::cerr << " input_q8_bytes=" << xq_diff << " hidden_q8_bytes=" << hq_diff << "\n";
+            stage_cpu_diag_out_ = std::move(got);
+            stage_cpu_order_checked_[size_t(l)] = 1;
+        }
+        if (result)
+            ck(cudaMemcpyAsync(result, g_out_.p, size_t(c.hidden) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "CPU-order staged result");
+        else
+            k::ds41_axpy(g_out_.f(), w, g_sum_.f(size_t(i) * c.hidden), c.hidden, stream_);
+    }
+    void staged_cpu_order_batch(int l, const uint8_t* base, size_t capacity, const std::vector<int>& routes, int K, float* results) {
+        const auto& c = cfg_;
+        const auto& f = experts_[size_t(l)].f;
+        const size_t g = slice_gate(l), d = f.d_row * size_t(c.hidden);
+        const size_t xq = size_t(c.hidden / 256) * 292, hq = size_t(c.ff / 256) * 292;
+        if (!stage_cpu_batch_act_ || !stage_batch_gateup_ || !stage_batch_hq_ || !results || !base ||
+            routes.empty() || routes.size() > 8 || K < 1 || g > capacity / 2 || d > capacity - 2*g ||
+            stage_cpu_xq_.bytes < xq || stage_cpu_hq_.bytes < hq || f.h_bytes != hq ||
+            stage_cpu_hidden_.size() != size_t(c.ff))
+            throw std::runtime_error("ds41: batched host activation buffers or dimensions invalid");
+        const size_t row_bytes = size_t(c.hidden / 256) * size_t(f.gu_type == 19 ? 50 : 66);
+        if ((f.gu_type != 16 && f.gu_type != 19) || g != size_t(c.ff) * row_bytes)
+            throw std::runtime_error("ds41: batched host activation gate stride invalid");
+        ++stage_batch_groups_;
+        stage_batch_routes_ += routes.size();
+        for (size_t j = 0; j < routes.size(); ++j) {
+            const int i = routes[j] / K;
+            if (routes[j] < 0 || i >= 8) throw std::runtime_error("ds41: batched host activation route invalid");
+            k::quantize_q8_K(xn_.f(size_t(i) * c.hidden), stage_cpu_xq_.b(), c.hidden, stream_);
+            k::ds41_cpu_order_iq_dot_pair(f.gu_type, base, 2*g, stage_cpu_xq_.b(), stage_cpu_xq_.bytes,
+                                          g_gate_.f(), g_gate_.bytes, g_up_.f(), g_up_.bytes, c.hidden, c.ff, stream_);
+            float* dest = stage_batch_gateup_ + j * size_t(2) * c.ff;
+            ck(cudaMemcpyAsync(dest, g_gate_.p, size_t(c.ff) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "batch staged gate readback");
+            ck(cudaMemcpyAsync(dest + c.ff, g_up_.p, size_t(c.ff) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "batch staged up readback");
+        }
+        ck(cudaStreamSynchronize(stream_), "batch staged activation sync");
+        const float limit = c.clamp[size_t(l)];
+        for (size_t j = 0; j < routes.size(); ++j) {
+            const float* src = stage_batch_gateup_ + j * size_t(2) * c.ff;
+            for (int k = 0; k < c.ff; ++k) {
+                const float gate = std::fmin(src[k], limit);
+                const float up = std::fmax(-limit, std::fmin(src[c.ff + k], limit));
+                stage_cpu_hidden_[size_t(k)] = (gate / (1.f + std::exp(-gate))) * up;
+            }
+            uint8_t* q = stage_batch_hq_ + j * hq;
+            cpu::native_quant_h(f, stage_cpu_hidden_.data(), q);
+            ck(cudaMemcpyAsync(stage_cpu_hq_.p, q, hq, cudaMemcpyHostToDevice, stream_), "batch staged hidden upload");
+            k::ds41_cpu_order_iq_dot(f.d_type, base + 2*g, d, stage_cpu_hq_.b(), stage_cpu_hq_.bytes,
+                                     g_out_.f(), g_out_.bytes, c.ff, c.hidden, stream_);
+            ck(cudaMemcpyAsync(results + j * size_t(c.hidden), g_out_.p, size_t(c.hidden) * sizeof(float),
+                               cudaMemcpyDeviceToHost, stream_), "batch staged result");
+        }
+    }
     std::vector<Dev> dstream_;   // STRATA_DS41_DECODE_STREAM: GPU 0's slots for the CPU's experts
+    // One bounded staging slot: mapped expert pages themselves are never registered.
+    bool stage_cpu_expert_ = false, stage_cpu_copy_pending_ = false, stage_cpu_order_ = false;
+    bool stage_cpu_collect_ = false;
+    bool stage_cpu_host_act_ = false;
+    bool stage_cpu_batch_act_ = false;
+    size_t stage_batch_groups_ = 0, stage_batch_routes_ = 0;
+    bool stage_cpu_timing_ = false;
+    size_t stage_timed_groups_ = 0;
+    double stage_timing_[5] = {};
+    int stage_cpu_quota_ = 1;
+    struct StageCacheEntry { int layer = -1, expert = -1; uint64_t age = 0; };
+    int stage_cache_slots_requested_ = 0;
+    uint64_t stage_cache_clock_ = 0, stage_cache_hits_ = 0, stage_cache_misses_ = 0;
+    uint64_t stage_cache_skipped_misses_ = 0;
+    std::vector<uint32_t> stage_cache_frequency_;
+    Dev stage_cache_device_;
+    std::vector<StageCacheEntry> stage_cache_;
+    float* stage_cpu_results_ = nullptr;
+    float* stage_cpu_gateup_ = nullptr;
+    uint8_t* stage_cpu_hq_host_ = nullptr;
+    float* stage_batch_gateup_ = nullptr;
+    uint8_t* stage_batch_hq_ = nullptr;
+    std::vector<float> stage_cpu_hidden_;
+    std::vector<uint8_t> stage_cpu_order_checked_;
+    // STRATA_DS41_CANON_MIB: the canonical tier (arena offset per layer x expert, -1: not held) and its scratch
+    std::vector<int64_t> canon_off_;
+    Dev canon_arena_, canon_xq_, canon_gu_, canon_h_, canon_hq_, canon_out_, canon_meta_;
+    uint8_t* canon_meta_host_ = nullptr;
+    float* canon_res_ = nullptr;
+    std::vector<uint8_t> canon_checked_;
+    std::vector<float> stage_cpu_diag_out_;
+    Dev stage_cpu_xq_, stage_cpu_hq_;
+    size_t stage_cpu_capacity_ = 0, stage_cpu_transfers_ = 0;
+    uint8_t* stage_cpu_host_ = nullptr;
+    uint8_t* stage_cpu_check_host_ = nullptr;
+    Dev stage_cpu_device_;
+    cudaEvent_t stage_cpu_copy_done_ = nullptr;
+    std::vector<uint8_t> stage_cpu_checked_;
     GroupedRunner grouped0_;     // STRATA_DS41_DECODE_GROUPED: GPU 0's
     GroupedRunner grown0_;       // STRATA_DS41_GROWN_GROUPED: GPU 0's grown experts
     // STRATA_DS41_DEFER_RANK: the deferred routes (lane ids / weights), their input and output (pinned), on the device
@@ -4531,6 +5704,7 @@ private:
                 ck(cudaEventRecord(dma_a, copy_s_), "dma start");
             }
             uint8_t* dst = static_cast<uint8_t*>(dring_[size_t(ds)].p);
+            double item_dma_bytes = double(it.n) * double(it.stride);
             if (!pinned) {   // the staged parts: the whole slot alone; on two nodes this node's gate/up rows and an unpinned down
                 const int hs = u % hslots_;
                 const auto& L = experts_[size_t(it.layer)];
@@ -4563,11 +5737,13 @@ private:
                         if (stop_stream_) return;
                     }
                     const auto& need = need_[size_t(it.layer)];
+                    item_dma_bytes = 0;
                     for (int j0 = 0; j0 < it.n;) {
                         if (!need[size_t(it.first + j0)]) { ++j0; continue; }
                         int j1 = j0;
                         while (j1 < it.n && need[size_t(it.first + j1)]) ++j1;
                         const size_t e0 = size_t(it.first + j0), n = size_t(j1 - j0);
+                        item_dma_bytes += double(n) * double(2 * g + d);
                         uint8_t* d0 = dst + size_t(j0) * it.stride;
                         cudaMemcpy2DAsync(d0, it.stride, src.gate + e0 * g, g, g, n, cudaMemcpyHostToDevice, copy_s_);
                         cudaMemcpy2DAsync(d0 + g, it.stride, src.up + e0 * g, g, g, n, cudaMemcpyHostToDevice, copy_s_);
@@ -4614,7 +5790,7 @@ private:
                 dma_b = dma_event();
                 ck(cudaEventRecord(dma_b, copy_s_), "dma end");
                 dma_ev_.push_back({dma_a, dma_b});
-                dma_bytes_ += double(it.n) * double(it.stride);
+                dma_bytes_ += item_dma_bytes;
             }
             {
                 std::lock_guard<std::mutex> lock(sm_);
@@ -4809,8 +5985,11 @@ private:
         const auto& c = cfg_;
         if (!peer_ || peer_grown_ || packed_.empty() || rt_count_.empty()) return;
         peer_grown_ = true;
-        const size_t keep = std::max<size_t>(size_t(std::getenv("STRATA_DS41_GPU_RESERVE_MIB") ? std::atoi(std::getenv("STRATA_DS41_GPU_RESERVE_MIB")) : 1024) << 20, vram_reserve + (128 << 20));
-        const size_t f = peer_->free_bytes();
+        size_t keep = std::max<size_t>(size_t(std::getenv("STRATA_DS41_GPU_RESERVE_MIB") ? std::atoi(std::getenv("STRATA_DS41_GPU_RESERVE_MIB")) : 1024) << 20, vram_reserve + (128 << 20));
+#if defined(__HIP_PLATFORM_AMD__)
+        keep = std::max(keep, physical_vram_keep());
+#endif
+        const size_t f = peer_->available_bytes();
         if (f <= keep + max_stride_) return;
         const size_t n = (f - keep) / max_stride_;
         std::vector<std::pair<float, int>> cand;
@@ -4993,7 +6172,7 @@ private:
                 pr.total_rows = nrows;
                 pr.max_rows = rmx;
                 pr.dst = down ? dq_dout_.f(size_t(r0) * c.hidden) : dq_gu_.f(size_t(r0) * 2 * c.ff);
-                pr.ld_dst = down ? c.hidden : 2 * c.ff;
+                pr.ld_dst = down ? c.hidden : 2 * c.ff; pr.dst_rows = nrows;
                 mmq_->run(pr, stream_);
                 boff += q1 - q0 + 1;
             }
@@ -5017,7 +6196,7 @@ private:
         mq::Product gu;
         gu.w = stage; gu.type = L.f.gu_type; gu.w_rows = 2 * c.ff; gu.w_cols = c.hidden; gu.expert_bytes = stride;
         gu.n = j1 - j0; gu.xq = m_xq_.p; gu.bounds = s_bound_.i() + bound0; gu.ids = s_iota_.i(); gu.total_rows = rows;
-        gu.max_rows = max_rows; gu.dst = s_gu_.f(); gu.ld_dst = 2 * c.ff;
+        gu.max_rows = max_rows; gu.dst = s_gu_.f(); gu.ld_dst = 2 * c.ff; gu.dst_rows = rows;
         mmq_->run(gu, stream_);
         mq::swiglu(s_gu_.f(), s_hf_.f(), rows, c.ff, false, stream_, c.clamp[size_t(l)]);
         mq::quantize(s_hf_.f(), nullptr, m_hq_.p, L.f.d_type, c.ff, c.ff, rows, stream_);
@@ -5035,6 +6214,20 @@ private:
         // the products on stale slots). Both give wrong answers; they only split the expert segment of a prompt pass.
         const int expert_debug = expert_debug_;
         const int T = tokens_, K = c.top_k;
+        if (l < 0 || l >= c.layers || T <= 0 || K <= 0 || size_t(T) > SIZE_MAX / size_t(K))
+            throw std::runtime_error("ds41: streamed expert input geometry bounds");
+        const size_t route_capacity = size_t(T) * size_t(K);
+        if (route_capacity > size_t(INT32_MAX) || ids.size() != route_capacity || wts.size() != ids.size() ||
+            size_t(l) >= experts_.size() || size_t(l) >= order_.size() ||
+            (!where_.empty() && (size_t(l) >= where_.size() || where_[size_t(l)].size() != size_t(c.experts))) ||
+            (peer_frac_ > 0 && (size_t(l) >= ram_pos_.size() || ram_pos_[size_t(l)].size() != size_t(c.experts))) ||
+            (spec_save_ && spec_used_.size() != size_t(T)) ||
+            (!rt_count_.empty() && rt_count_.size() < size_t(c.layers) * size_t(c.experts)) ||
+            !s_hidx_ || !s_hw_ || !s_hbound_ || s_idx_.bytes < route_capacity * sizeof(int32_t) ||
+            s_w_.bytes < route_capacity * sizeof(float) || s_bound_.bytes < sizeof(int32_t))
+            throw std::runtime_error("ds41: streamed expert route or buffer capacity bounds");
+        if (rcap_ <= 0 || rcap_ > 8192)
+            throw std::runtime_error("ds41: streamed expert row cap bounds");
         const auto& L = experts_[size_t(l)];
         const size_t g = L.f.gu_row * size_t(c.ff);
         if (!use_mmq_ || !mq::fits(L.f.gu_type, 2 * c.ff) || !mq::fits(L.f.d_type, c.hidden))
@@ -5045,8 +6238,12 @@ private:
         for (int i = 0; i < T; ++i)
             for (int k = 0; k < K; ++k) {
                 const int e = ids[size_t(i) * K + k];
-                used_.push_back(l * c.experts + e);
-                if (!rt_count_.empty()) rt_count_[size_t(l) * c.experts + size_t(e)] += 1;
+                if (e < 0 || e >= c.experts) throw std::runtime_error("ds41: routed expert out of bounds");
+                if (spec_save_) spec_used_[size_t(i)].push_back(l * c.experts + e);
+                else {
+                    used_.push_back(l * c.experts + e);
+                    if (!rt_count_.empty()) rt_count_[size_t(l) * c.experts + size_t(e)] += 1;
+                }
                 if (!where_.empty() && where_[size_t(l)][size_t(e)] == 2) continue;   // the peer GPU's
                 if (peer_frac_ > 0 && ram_pos_[size_t(l)][size_t(e)] >= s0_[size_t(l)]) continue;   // streamed by the peer
                 tok[size_t(e)].push_back(i);
@@ -5064,7 +6261,8 @@ private:
             std::stable_sort(used_e.begin(), used_e.end(), [&](int a, int b) { return tok[size_t(a)].size() < tok[size_t(b)].size(); });
             std::vector<char> cpu(size_t(c.experts), 0);
             const int cap_cpu = int(hmax * double(used_e.size()));
-            for (int j = 0; j < int(used_e.size()) && j < cap_cpu && int(tok[size_t(used_e[size_t(j)])].size()) <= hm; ++j) cpu[size_t(used_e[size_t(j)])] = 1;
+            for (int j = 0; j < int(used_e.size()) && j < cap_cpu && int(tok[size_t(used_e[size_t(j)])].size()) <= hm; ++j)
+                cpu[size_t(used_e[size_t(j)])] = 1;
             std::vector<int32_t> cpu_ids(size_t(T) * K, -1);
             for (int e = 0; e < c.experts; ++e)
                 if (cpu[size_t(e)])
@@ -5097,11 +6295,24 @@ private:
         // rows laid out by position: order_[l] lists the streamed experts (positions [0, S)), then those resident on
         // this GPU (the experts on the peer GPU are not here)
         const auto& ord = order_[size_t(l)];
+        if (ord.size() > size_t(INT_MAX) || ord.size() > size_t(c.experts) || size_t(l + 1) >= item0_.size() ||
+            item0_.size() != size_t(c.layers) + 1 || dslots_ <= 0 || dring_.size() < size_t(dslots_) ||
+            ev_ready_.size() < size_t(dslots_) || ev_free_.size() < size_t(dslots_))
+            throw std::runtime_error("ds41: streamed expert order bounds");
         const int P = int(ord.size()), S = n_stream_[size_t(l)];
+        if (P > c.experts || S < 0 || S > P)
+            throw std::runtime_error("ds41: streamed expert order bounds");
         std::vector<int> row0(size_t(P) + 1, 0);
+        int64_t cumulative_rows = 0;
         for (int q = 0; q < P; ++q) {
             const int e = ord[size_t(q)];
-            row0[size_t(q) + 1] = row0[size_t(q)] + int(tok[size_t(e)].size());
+            if (e < 0 || e >= c.experts || tok[size_t(e)].size() != wt[size_t(e)].size() || cumulative_rows < 0 ||
+                uint64_t(cumulative_rows) > route_capacity ||
+                tok[size_t(e)].size() > route_capacity - size_t(cumulative_rows))
+                throw std::runtime_error("ds41: streamed expert row table bounds");
+            cumulative_rows += int64_t(tok[size_t(e)].size());
+            if (cumulative_rows > INT32_MAX) throw std::runtime_error("ds41: streamed expert row table overflow");
+            row0[size_t(q) + 1] = int(cumulative_rows);
             std::copy(tok[size_t(e)].begin(), tok[size_t(e)].end(), s_hidx_ + row0[size_t(q)]);
             std::copy(wt[size_t(e)].begin(), wt[size_t(e)].end(), s_hw_ + row0[size_t(q)]);
             tier_all_ += double(tok[size_t(e)].size());
@@ -5111,8 +6322,30 @@ private:
         struct Product { int item, j0, j1, row_first, rows, bound0, max_rows; };
         std::vector<Product> prods;
         int nb = 0;
+        const size_t bound_capacity = s_bound_.bytes / sizeof(int32_t);
+        auto append_bound = [&](int32_t value) {
+            if (nb < 0 || size_t(nb) >= bound_capacity)
+                throw std::runtime_error("ds41: streamed expert bounds buffer capacity");
+            s_hbound_[nb++] = value;
+        };
         auto group = [&](int item, int base, int count) {   // positions base + [0, count)
+            if (base < 0 || count < 0 || base > P || count > P - base || (item < -1) ||
+                (item >= 0 && size_t(item) >= items_.size()))
+                throw std::runtime_error("ds41: streamed expert product group bounds");
             for (int j0 = 0; j0 < count;) {
+                const int e0 = ord[size_t(base + j0)];
+                if (e0 < 0 || e0 >= c.experts) throw std::runtime_error("ds41: streamed expert group index bounds");
+                const int expert_rows = int(tok[size_t(e0)].size());
+                if (expert_rows > rcap_) {
+                    for (int offset = 0; offset < expert_rows; offset += rcap_) {
+                        const int n = std::min(rcap_, expert_rows - offset);
+                        prods.push_back(Product{item, j0, j0 + 1, row0[size_t(base + j0)] + offset, n, nb, n});
+                        append_bound(0);
+                        append_bound(n);
+                    }
+                    ++j0;
+                    continue;
+                }
                 int j1 = j0, rows = 0, mx = 0;
                 while (j1 < count && (j1 == j0 || rows + int(tok[size_t(ord[size_t(base + j1)])].size()) <= rcap_)) {
                     const int n = int(tok[size_t(ord[size_t(base + j1)])].size());
@@ -5121,17 +6354,49 @@ private:
                     ++j1;
                 }
                 Product pr{item, j0, j1, row0[size_t(base + j0)], rows, nb, mx};
-                if (mx > rcap_)
-                    throw std::runtime_error("ds41: an expert's rows (" + std::to_string(mx) + ") exceed the MMQ row cap (" +
-                                             std::to_string(rcap_) + "); raise STRATA_DS41_MMQ_ROWS");
-                for (int j = j0; j <= j1; ++j) s_hbound_[nb++] = row0[size_t(base + j)] - pr.row_first;
+                for (int j = j0; j <= j1; ++j) append_bound(row0[size_t(base + j)] - pr.row_first);
                 prods.push_back(pr);
                 j0 = j1;
             }
         };
+        if (item0_[size_t(l)] < 0 || item0_[size_t(l) + 1] < item0_[size_t(l)] ||
+            size_t(item0_[size_t(l) + 1]) > items_.size())
+            throw std::runtime_error("ds41: streamed expert item range bounds");
         for (int idx = item0_[size_t(l)]; idx < item0_[size_t(l) + 1]; ++idx) group(idx, items_[size_t(idx)].first, items_[size_t(idx)].n);
         if (P > S) group(-1, S, P - S);
         const int rows = row0[size_t(P)];
+        if (rows < 0 || size_t(rows) > route_capacity || size_t(rows) * sizeof(int32_t) > s_idx_.bytes ||
+            size_t(rows) * sizeof(float) > s_w_.bytes || !s_hidx_ || !s_hw_ || !s_hbound_ ||
+            size_t(nb) > bound_capacity)
+            throw std::runtime_error("ds41: streamed expert route or bounds buffer capacity");
+        for (const Product& pr : prods) {
+            const int nbound = pr.j1 - pr.j0 + 1;
+            if (pr.j0 < 0 || pr.j1 <= pr.j0 || nbound < 2 || pr.bound0 < 0 || pr.rows < 0 || pr.rows > rcap_ ||
+                pr.max_rows < 0 || pr.max_rows > pr.rows || pr.row_first < 0 || pr.row_first > rows ||
+                pr.rows > rows - pr.row_first || pr.bound0 > nb || nbound > nb - pr.bound0)
+                throw std::runtime_error("ds41: streamed expert product metadata bounds");
+            const int32_t* b = s_hbound_ + pr.bound0;
+            if (b[0] != 0 || b[nbound - 1] != pr.rows)
+                throw std::runtime_error("ds41: streamed expert product range endpoints");
+            int32_t largest = 0;
+            for (int j = 1; j < nbound; ++j) {
+                if (b[j] < b[j - 1] || b[j] > pr.rows)
+                    throw std::runtime_error("ds41: streamed expert product range bounds");
+                largest = std::max(largest, b[j] - b[j - 1]);
+            }
+            if (largest > pr.max_rows)
+                throw std::runtime_error("ds41: streamed expert product row cap bounds");
+            if (pr.item >= 0) {
+                const StreamItem& it = items_[size_t(pr.item)];
+                const size_t stage_slot = size_t(pr.item) % size_t(dslots_);
+                if (stage_slot >= dring_.size() || it.layer != l || pr.j1 > it.n ||
+                    it.stride < 2 * g + L.f.d_row * size_t(c.hidden) ||
+                    size_t(it.n) > SIZE_MAX / it.stride || size_t(it.n) * it.stride > dring_[stage_slot].bytes)
+                    throw std::runtime_error("ds41: streamed expert stage span bounds");
+            } else if (pr.j1 > P - S) {
+                throw std::runtime_error("ds41: resident expert product span bounds");
+            }
+        }
         ck(cudaMemcpyAsync(s_idx_.p, s_hidx_, size_t(rows) * 4, cudaMemcpyHostToDevice, stream_), "expert tokens");
         ck(cudaMemcpyAsync(s_w_.p, s_hw_, size_t(rows) * 4, cudaMemcpyHostToDevice, stream_), "expert weights");
         ck(cudaMemcpyAsync(s_bound_.p, s_hbound_, size_t(nb) * 4, cudaMemcpyHostToDevice, stream_), "expert bounds");
@@ -5184,7 +6449,7 @@ private:
                 mq::Product ga;
                 ga.w = stage; ga.type = L.f.gu_type; ga.w_rows = F; ga.w_cols = c.hidden; ga.expert_bytes = it.stride;
                 ga.n = pr.j1 - pr.j0; ga.xq = m_xq_.p; ga.bounds = s_bound_.i() + pr.bound0; ga.ids = s_iota_.i(); ga.total_rows = pr.rows;
-                ga.max_rows = pr.max_rows; ga.dst = s_gu_.f(); ga.ld_dst = 2 * F;
+                ga.max_rows = pr.max_rows; ga.dst = s_gu_.f(); ga.ld_dst = 2 * F; ga.dst_rows = pr.rows;
                 mmq_->run(ga, stream_);
                 mq::Product ua = ga;
                 ua.w = stage + g; ua.dst = s_gu_.f() + F;
@@ -5202,7 +6467,7 @@ private:
             mq::Product gu;
             gu.w = stage; gu.type = L.f.gu_type; gu.w_rows = 2 * c.ff; gu.w_cols = c.hidden; gu.expert_bytes = it.stride;
             gu.n = pr.j1 - pr.j0; gu.xq = m_xq_.p; gu.bounds = s_bound_.i() + pr.bound0; gu.ids = s_iota_.i(); gu.total_rows = pr.rows;
-            gu.max_rows = pr.max_rows; gu.dst = s_gu_.f(); gu.ld_dst = 2 * c.ff;
+            gu.max_rows = pr.max_rows; gu.dst = s_gu_.f(); gu.ld_dst = 2 * c.ff; gu.dst_rows = pr.rows;
             mmq_->run(gu, stream_);
             mq::swiglu(s_gu_.f(), s_hf_.f(), pr.rows, c.ff, false, stream_, c.clamp[size_t(l)]);
             mq::quantize(s_hf_.f(), nullptr, m_hq_.p, L.f.d_type, c.ff, c.ff, pr.rows, stream_);
@@ -5280,11 +6545,16 @@ private:
         // STRATA_DS41_GPU_ROUTE=1 (opt-in; decode / verify passes on one GPU with DECODE_GROUPED, no GROW): top-k and the
         // GPU-held experts run on the GPU at once; the host takes the ids / weights afterwards for its lane
         static const bool gpu_route_on = std::getenv("STRATA_DS41_GPU_ROUTE") && std::string(std::getenv("STRATA_DS41_GPU_ROUTE")) == "1";
-        static const bool grouped_on = std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1" &&
+        // Exact verification uses the same per-expert execution path as its greedy control.
+        static const bool grouped_on = !strata_env_is_one("STRATA_DS41_VERIFY_EXACT") && std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1" &&
                                        k::native_expert_supported(experts_[0].f.gu_type, experts_[0].f.d_type, c.hidden, c.ff);
         static const bool route_grow = std::getenv("STRATA_DS41_GROW") && std::string(std::getenv("STRATA_DS41_GROW")) == "1";
         static const bool route_subst = std::getenv("STRATA_DS41_GPU_SUBST") != nullptr;
         static const int route_topk = std::getenv("STRATA_DS41_CPU_TOPK") ? std::atoi(std::getenv("STRATA_DS41_CPU_TOPK")) : -1;
+        static const bool topk_original_weight = strata_env_is_one("STRATA_DS41_TOPK_ORIGINAL_WEIGHT");
+        // Fraction of the original normalized route weight, not a renormalized
+        // top-k. GPU-held routes retain their original weights.
+        static const float cpu_trim = cpu_trim_threshold();
         const bool dev_route = gpu_route_on && grouped_on && !route_grow && !route_subst && T <= 16 && !hook && !peer_ && !remote_ &&
                                !producer_.joinable() && fl_ == c.ff && !slot_.empty() && !slots_.empty();
         std::vector<float> logits(dev_route ? 0 : size_t(T) * c.experts);
@@ -5305,7 +6575,7 @@ private:
             }
             const bool lossy_topk = route_topk >= 0 && route_topk < K;
             k::ds41_route_table(logits_.f(), bias_dev_.f() + size_t(l) * c.experts, reinterpret_cast<const unsigned long long*>(slot_dev_.p) + size_t(l) * c.experts,
-                                T, c.experts, K, c.normalize, c.expert_scale, lossy_topk ? route_topk : -1, cap, route_ids_.i(), route_w_.f(), route_table_.p, stream_);
+                                T, c.experts, K, c.normalize, c.expert_scale, lossy_topk ? route_topk : -1, cap, route_ids_.i(), route_w_.f(), route_table_.p, stream_, topk_original_weight);
             ck(cudaMemcpyAsync(route_host_, route_ids_.p, size_t(cap) * 4, cudaMemcpyDeviceToHost, stream_), "route ids");
             ck(cudaMemcpyAsync(route_host_ + cap, route_w_.p, size_t(cap) * 4, cudaMemcpyDeviceToHost, stream_), "route weights");
             ck(cudaEventRecord(route_ev_, stream_), "route event");
@@ -5313,7 +6583,13 @@ private:
             const auto& LE = experts_[size_t(l)];
             grouped0_.run_device(LE.f.gu_type, LE.f.d_type, c.hidden, c.ff, c.clamp[size_t(l)], route_table_.b(), cap, xn_.f(), T, g_sum_.f(), stream_);
             if (shared_first) shared_expert(l);
-            ck(cudaEventSynchronize(route_ev_), "route sync");
+            if (dtiming_) {
+                const auto route_wait0 = std::chrono::steady_clock::now();
+                ck(cudaEventSynchronize(route_ev_), "route sync");
+                route_wait_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - route_wait0).count();
+            } else {
+                ck(cudaEventSynchronize(route_ev_), "route sync");
+            }
         } else {
         if (shared_first) {                        // for the copies (an event), not for it
             ck(cudaEventRecord(router_ev_, stream_), "router event");
@@ -5328,8 +6604,10 @@ private:
             else (void)cudaGetLastError();
             peer_late_pending_ = false;
         }
-        std::vector<int> ids(size_t(T) * K);
-        std::vector<float> wts(size_t(T) * K);
+        auto& ids = host_route_ids_;
+        auto& wts = host_route_weights_;
+        ids.resize(size_t(T) * K);
+        wts.resize(size_t(T) * K);
         const auto& bias = bias_[size_t(l)];
         // Lossy, opt-in, decode / verify passes (T <= 16) only, for a CPU lane that is the bottleneck:
         //  STRATA_DS41_GPU_SUBST=r (0..1): a pick held by neither GPU becomes the best-selected GPU-resident expert
@@ -5341,20 +6619,47 @@ private:
         // STRATA_DS41_GPU_SUBST_RANK (3): only picks of this rank and lower are substituted
         static const int subst_rank = std::getenv("STRATA_DS41_GPU_SUBST_RANK") ? std::atoi(std::getenv("STRATA_DS41_GPU_SUBST_RANK")) : 3;
         static const int cpu_topk = std::getenv("STRATA_DS41_CPU_TOPK") ? std::atoi(std::getenv("STRATA_DS41_CPU_TOPK")) : -1;
-        const bool lossy = T <= 16 && !hook && !slot_.empty() && (gpu_subst > 0.0f || (cpu_topk >= 0 && cpu_topk < K));
-        cut_.assign(lossy && cpu_topk >= 0 ? size_t(T) * K : 0, 0);
+        const bool lossy = T <= 16 && !hook && !slot_.empty() && (gpu_subst > 0.0f || cpu_trim > 0 || (cpu_topk >= 0 && cpu_topk < K));
+        cut_.assign(lossy && (cpu_topk >= 0 || cpu_trim > 0) ? size_t(T) * K : 0, 0);
         auto held = [&](int e) {
             return slot_[size_t(l)][size_t(e)] >= 0 || (!where_.empty() && (where_[size_t(l)][size_t(e)] == 2 || where_[size_t(l)][size_t(e)] == 4));
         };
+        // Lossy, opt-in, passes of up to 16 tokens: an expert that is cheap to run wins the selection within a margin
+        // (the GLM decoder's route affinity).  STRATA_DS41_ROUTE_AFFINITY=d: one held on the GPU (the canonical tier or
+        // the resident tier); STRATA_DS41_WINDOW_AFFINITY=d: one an earlier token of this pass already picked (its
+        // weights are read once for both).  Weights stay the model's (probs of the picks, normalised).
+        static const float route_affinity = strata_env_value_double("STRATA_DS41_ROUTE_AFFINITY", 0.0);
+        static const float window_affinity = strata_env_value_double("STRATA_DS41_WINDOW_AFFINITY", 0.0);
+        if (!(route_affinity >= 0.f && route_affinity <= 1.f && window_affinity >= 0.f && window_affinity <= 1.f))
+            throw std::invalid_argument("ds41: route / window affinity must be in [0, 1]");
+        const bool affine = T <= 16 && !hook && (route_affinity > 0.f || window_affinity > 0.f);
         auto route = [&](int i0, int i1) {
         std::vector<float> probs(size_t(c.experts)), selection(size_t(c.experts));
+        std::vector<uint8_t> in_window(affine && window_affinity > 0.f ? size_t(c.experts) : 0, 0);
         for (int i = i0; i < i1; ++i) {
             const float* lg = logits.data() + size_t(i) * c.experts;
             for (int e = 0; e < c.experts; ++e) {
                 probs[size_t(e)] = std::sqrt(softplus(lg[e]));
                 selection[size_t(e)] = probs[size_t(e)] + bias[size_t(e)];
             }
+            if (affine)
+                for (int e = 0; e < c.experts; ++e) {
+                    const bool resident = (!canon_off_.empty() && canon_off_[size_t(l) * c.experts + e] >= 0) ||
+                                          (!slot_.empty() && slot_[size_t(l)][size_t(e)] >= 0);
+                    if (resident) selection[size_t(e)] += route_affinity;
+                    else if (!in_window.empty() && in_window[size_t(e)]) selection[size_t(e)] += window_affinity;
+                }
             auto pick = top_k(selection.data(), c.experts, K);
+            if (affine) {
+                const auto plain = [&] {
+                    std::vector<float> sel(size_t(c.experts));
+                    for (int e = 0; e < c.experts; ++e) sel[size_t(e)] = probs[size_t(e)] + bias[size_t(e)];
+                    return top_k(sel.data(), c.experts, K);
+                }();
+                for (int k = 0; k < K; ++k)
+                    if (std::find(plain.begin(), plain.end(), pick[size_t(k)]) == plain.end()) ++affinity_swaps_;
+                for (int x : pick) if (!in_window.empty()) in_window[size_t(x)] = 1;
+            }
             if (lossy && gpu_subst > 0.0f)
                 for (int k = subst_rank; k < K; ++k) {
                     const int e = pick[size_t(k)];
@@ -5368,7 +6673,11 @@ private:
             for (int k = 0; k < K; ++k) {
                 ids[size_t(i) * K + k] = pick[size_t(k)];
                 wts[size_t(i) * K + k] = probs[size_t(pick[size_t(k)])];
-                if (!cut_.empty() && k >= cpu_topk && !held(pick[size_t(k)])) { cut_[size_t(i) * K + k] = 1; ++dropped_; continue; }
+                if (!cut_.empty() && cpu_topk >= 0 && k >= cpu_topk && !held(pick[size_t(k)])) {
+                    cut_[size_t(i) * K + k] = 1; ++dropped_;
+                    if (topk_original_weight) sum += wts[size_t(i) * K + k];
+                    continue;
+                }
                 sum += wts[size_t(i) * K + k];
             }
             for (int k = 0; k < K; ++k) {
@@ -5377,13 +6686,29 @@ private:
                 if (c.normalize && K > 1) v /= sum + 1e-20f;
                 v *= c.expert_scale;
             }
+            if (lossy && cpu_trim > 0 && c.normalize && c.expert_scale > 0)
+                for (int k = 2; k < K; ++k) {
+                    const size_t j = size_t(i) * K + k;
+                    if (!cut_[j] && !held(ids[j]) && wts[j] < cpu_trim * c.expert_scale) {
+                        cut_[j] = 1; wts[j] = 0.0f; ++dropped_;
+                    }
+                }
         }
         };
         if (dev_route) {   // GPU_ROUTE: the GPU's picks and weights (a dropped pick: weight 0 and not resident)
             std::copy(route_host_, route_host_ + size_t(T) * K, ids.begin());
             std::copy(reinterpret_cast<const float*>(route_host_ + size_t(T) * K), reinterpret_cast<const float*>(route_host_ + size_t(2) * T * K), wts.begin());
             if (!cut_.empty())
-                for (size_t i = 0; i < ids.size(); ++i) cut_[i] = wts[i] == 0.0f && int(i % size_t(K)) >= cpu_topk && !held(ids[i]);
+                for (size_t i = 0; i < ids.size(); ++i) {
+                    if (ids[i] < 0 || ids[i] >= c.experts) throw std::runtime_error("ds41: routed expert out of bounds");
+                    const int rank = int(i % size_t(K));
+                    const bool resident = held(ids[i]);
+                    const bool topk_cut = cpu_topk >= 0 && rank >= cpu_topk && !resident && wts[i] == 0.0f;
+                    const bool trim_cut = cpu_trim > 0 && c.normalize && c.expert_scale > 0 && rank >= 2 && !resident &&
+                                          wts[i] > 0 && wts[i] < cpu_trim * c.expert_scale;
+                    cut_[i] = topk_cut || trim_cut;
+                    if (trim_cut) wts[i] = 0.0f;
+                }
             for (size_t i = 0; i < cut_.size(); ++i) dropped_ += cut_[i];
         } else if (T >= 256) {   // long passes: tokens split over helper threads
             const int nt = 8;
@@ -5450,16 +6775,31 @@ private:
             k::ds41_add(g_sum_.f(), y_.f(), y_.f(), int(size_t(T) * H), stream_);
             return;
         }
-        std::vector<int> cpu_ids(ids);
-        std::vector<int> gids(size_t(T) * 16), gn(size_t(T), 0);
-        std::vector<float> gws(size_t(T) * 16);
+        auto& cpu_ids = host_cpu_route_ids_;
+        cpu_ids = ids;
+        auto& gids = host_gpu_route_ids_;
+        auto& gn = host_gpu_route_counts_;
+        auto& gws = host_gpu_route_weights_;
+        if (dev_route) {
+            gids.clear();
+            gn.clear();
+            gws.clear();
+        } else {
+            gids.resize(size_t(T) * 16);
+            gn.assign(size_t(T), 0);
+            gws.resize(size_t(T) * 16);
+        }
         for (int i = 0; i < T; ++i) {
             int n = 0;
             for (int k = 0; k < K; ++k) {
                 const int e = ids[size_t(i) * K + k];
+                if (e < 0 || e >= c.experts) throw std::runtime_error("ds41: routed expert out of bounds");
                 const bool on_gpu = !slot_.empty() && slot_[size_t(l)][size_t(e)] >= 0;
-                used_.push_back(l * c.experts + e);
-                if (!rt_count_.empty()) rt_count_[size_t(l) * c.experts + size_t(e)] += 1;
+                if (spec_save_) spec_used_[size_t(i)].push_back(l * c.experts + e);
+                else {
+                    used_.push_back(l * c.experts + e);
+                    if (!rt_count_.empty()) rt_count_[size_t(l) * c.experts + size_t(e)] += 1;
+                }
                 if (!where_.empty() && (where_[size_t(l)][size_t(e)] == 2 || where_[size_t(l)][size_t(e)] == 4)) {   // the peer GPU's (4: grown there)
                     cpu_ids[size_t(i) * K + k] = -1;
                     tier_hits_ += 1;
@@ -5467,13 +6807,15 @@ private:
                     continue;
                 }
                 if (!cut_.empty() && cut_[size_t(i) * K + k]) { cpu_ids[size_t(i) * K + k] = -1; continue; }   // CPU_TOPK
-                if (!on_gpu) { missed_.push_back(l * c.experts + e); continue; }
-                gids[size_t(i) * 16 + size_t(n)] = e;
-                gws[size_t(i) * 16 + size_t(n)] = wts[size_t(i) * K + k];
+                if (!on_gpu) { (spec_save_ ? spec_missed_[size_t(i)] : missed_).push_back(l * c.experts + e); continue; }
+                if (!dev_route) {
+                    gids[size_t(i) * 16 + size_t(n)] = e;
+                    gws[size_t(i) * 16 + size_t(n)] = wts[size_t(i) * K + k];
+                }
                 ++n;
                 cpu_ids[size_t(i) * K + k] = -1;
             }
-            gn[size_t(i)] = n;
+            if (!dev_route) gn[size_t(i)] = n;
             tier_hits_ += n;
             tier_all_ += K;
             if (static int dbg = 0; T == 1 && std::getenv("STRATA_DS41_TIER_DEBUG") && dbg < 80) {
@@ -5524,12 +6866,130 @@ private:
                     }
             }
         }
+        std::vector<int32_t> stage_original_ids;
+        if (stage_cpu_collect_) stage_original_ids = cpu_ids;
+        std::vector<int32_t> stage_diag_ids;
+        if (stage_cpu_order_ && T == 1 && strata_env_is_one("STRATA_DS41_STAGE_CPU_ORDER_CHECK"))
+            stage_diag_ids = cpu_ids;
+        int staged_cpu_expert = -1;
+        std::vector<int> staged_cpu_routes;
+        std::vector<std::pair<int, std::vector<int>>> staged_cpu_groups;
+        if (stage_cpu_expert_ && T <= 8) {
+            if (T < 1 || K < 1 || K > 16 || l < 0 || l >= c.layers || peer_ || remote_ || producer_.joinable() ||
+                !packed_.empty() || !ram_pos_.empty() || size_t(T) * size_t(K) != cpu_ids.size() ||
+                ids.size() != cpu_ids.size() || wts.size() != cpu_ids.size())
+                throw std::runtime_error("ds41: staged CPU expert route geometry or execution mode is invalid");
+            std::map<int, std::vector<int>> candidates;
+            for (int i = 0; i < T * K; ++i) {
+                const int e = cpu_ids[size_t(i)];
+                if (e < 0) continue;
+                if (e >= c.experts || ids[size_t(i)] != e || !std::isfinite(wts[size_t(i)]) || wts[size_t(i)] < 0)
+                    throw std::runtime_error("ds41: staged CPU expert route is invalid");
+                candidates[e].push_back(i);
+            }
+            // Prefer experts reused across verification rows; ties use lower ID.
+            for (auto& [e, routes] : candidates) staged_cpu_groups.emplace_back(e, std::move(routes));
+            if (!stage_cache_frequency_.empty()) {
+                for (const auto& g : staged_cpu_groups) {
+                    const size_t idx = size_t(l) * size_t(c.experts) + size_t(g.first);
+                    if (idx >= stage_cache_frequency_.size()) throw std::runtime_error("ds41: staging frequency index out of bounds");
+                    auto& n = stage_cache_frequency_[idx];
+                    if (n != UINT32_MAX) ++n;
+                }
+            }
+            auto cached = [&](int expert) {
+                return std::any_of(stage_cache_.begin(), stage_cache_.end(),
+                                   [&](const StageCacheEntry& entry) { return entry.layer == l && entry.expert == expert; });
+            };
+            std::stable_sort(staged_cpu_groups.begin(), staged_cpu_groups.end(), [&](const auto& a, const auto& b) {
+                const bool ca = cached(a.first), cb = cached(b.first);
+                if (ca != cb) return ca;
+                if (a.second.size() != b.second.size()) return a.second.size() > b.second.size();
+                if (!stage_cache_frequency_.empty())
+                    return stage_cache_frequency_[size_t(l) * size_t(c.experts) + size_t(a.first)] >
+                           stage_cache_frequency_[size_t(l) * size_t(c.experts) + size_t(b.first)];
+                return false;
+            });
+            if (staged_cpu_groups.size() > size_t(stage_cpu_quota_)) staged_cpu_groups.resize(size_t(stage_cpu_quota_));
+            // Extra experts may run only when already cached; the first still
+            // supplies misses so the bounded cache can adapt.
+            if (strata_env_is_one("STRATA_DS41_STAGE_EXTRA_CACHED") && staged_cpu_groups.size() > 1)
+                staged_cpu_groups.erase(std::remove_if(staged_cpu_groups.begin() + 1, staged_cpu_groups.end(),
+                    [&](const auto& g) { return !cached(g.first); }), staged_cpu_groups.end());
+            // After warming the bounded cache, let the CPU handle three out of
+            // four uncached candidates; periodically insert one to adapt.
+            static const bool throttle_cache_misses = strata_env_is_one("STRATA_DS41_STAGE_CACHE_THROTTLE");
+            if (throttle_cache_misses && !staged_cpu_groups.empty() && !stage_cache_.empty() &&
+                !cached(staged_cpu_groups.front().first) &&
+                std::none_of(stage_cache_.begin(), stage_cache_.end(), [](const StageCacheEntry& e) { return e.layer < 0; }) &&
+                (++stage_cache_skipped_misses_ % 4) != 0)
+                staged_cpu_groups.clear();
+            if (!staged_cpu_groups.empty()) staged_cpu_expert = staged_cpu_groups.front().first;
+            for (const auto& group : staged_cpu_groups)
+                staged_cpu_routes.insert(staged_cpu_routes.end(), group.second.begin(), group.second.end());
+            if (staged_cpu_routes.size() > size_t(T) * size_t(stage_cpu_quota_))
+                throw std::runtime_error("ds41: staged CPU route count exceeds quota");
+            for (int i : staged_cpu_routes) cpu_ids[size_t(i)] = -1;
+        }
+        // the canonical tier's routes leave the lane (they return through finish_with_external)
+        std::vector<int32_t> canon_original, canon_entries;
+        std::vector<int> canon_gstart;
+        std::vector<std::pair<int, int>> canon_groups;   // (expert, ring slot or -1 for the static arena)
+        if (!canon_off_.empty() && T <= 8 && size_t(T) * size_t(K) == cpu_ids.size()) {
+            std::map<int, std::vector<int>> held, rest;
+            for (int i = 0; i < T * K; ++i) {
+                const int e = cpu_ids[size_t(i)];
+                if (e < 0) continue;
+                if (e >= c.experts) throw std::runtime_error("ds41: canonical tier route out of bounds");
+                ++canon_cpu_routes_;
+                if (!own_.empty() && own_[size_t(l) * c.experts + e]) continue;   // the remote owner's (STRATA_DS41_REMOTE_OWN)
+                (canon_off_[size_t(l) * c.experts + e] >= 0 ? held : rest)[e].push_back(i);
+            }
+            // STRATA_DS41_CANON_STREAM=q: the q widest remaining CPU experts (most routes; lower id first) are copied
+            // to the GPU this pass and run there with the same arithmetic
+            std::vector<std::pair<int, std::vector<int>>> streamed;
+            if (canon_stream_ > 0 && !rest.empty()) {
+                std::vector<std::pair<int, std::vector<int>>> r(rest.begin(), rest.end());
+                std::stable_sort(r.begin(), r.end(), [](const auto& a, const auto& b) { return a.second.size() > b.second.size(); });
+                if (r.size() > size_t(canon_stream_)) r.resize(size_t(canon_stream_));
+                streamed = std::move(r);
+            }
+            if (!held.empty() || !streamed.empty()) {
+                canon_original = cpu_ids;
+                canon_ids_now_ = cpu_ids;
+                auto add = [&](int e, const std::vector<int>& routes, int slot) {
+                    canon_gstart.push_back(int(canon_entries.size()));
+                    canon_groups.push_back({e, slot});
+                    for (int i : routes) { canon_entries.push_back(i); cpu_ids[size_t(i)] = -1; }
+                };
+                for (const auto& [e, routes] : held) add(e, routes, -1);
+                for (size_t j = 0; j < streamed.size(); ++j) { add(streamed[j].first, streamed[j].second, int(j)); canon_streamed_ += streamed[j].second.size(); }
+                canon_gstart.push_back(int(canon_entries.size()));
+                canon_routes_ += canon_entries.size();
+            }
+        }
+        // STRATA_DS41_REMOTE_OWN: the worker's routes leave the lane and are sent now, with the pass's activations
+        std::vector<int32_t> own_ids;
+        int own_n = 0;
+        if (own_remote_ && size_t(T) * size_t(K) == cpu_ids.size()) {
+            own_ids.assign(cpu_ids.size(), -1);
+            for (size_t i = 0; i < cpu_ids.size(); ++i) {
+                const int e = cpu_ids[i];
+                if (e >= 0 && e < c.experts && own_[size_t(l) * c.experts + e]) { own_ids[i] = e; ++own_n; }
+            }
+            if (own_n) {
+                if (canon_original.empty()) canon_original = cpu_ids;
+                for (size_t i = 0; i < cpu_ids.size(); ++i) if (own_ids[i] >= 0) cpu_ids[i] = -1;
+                own_remote_->start(l, T, K, own_ids.data(), wts.data(), pinned_[0], own_n);
+                own_routes_ += size_t(own_n);
+            }
+        }
         if (!ram_pos_.empty())   // packed copy: the lane addresses positions
             for (int& e : cpu_ids) if (e >= 0) e = ram_pos_[size_t(l)][size_t(e)];
         // STRATA_DS41_LANE_ASYNC=1: the CPU lane's other threads start while this one enqueues the GPU experts
-        static const bool lane_async = std::getenv("STRATA_DS41_LANE_ASYNC") && std::string(std::getenv("STRATA_DS41_LANE_ASYNC")) == "1";
+        const bool lane_async = staged_cpu_expert >= 0 || !canon_entries.empty() || own_n > 0 || (std::getenv("STRATA_DS41_LANE_ASYNC") && std::string(std::getenv("STRATA_DS41_LANE_ASYNC")) == "1");
         static const bool decode_mmq = std::getenv("STRATA_DS41_DECODE_MMQ") && std::string(std::getenv("STRATA_DS41_DECODE_MMQ")) == "1";
-        static const bool decode_grouped = std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1" &&
+        static const bool decode_grouped = !strata_env_is_one("STRATA_DS41_VERIFY_EXACT") && std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1" &&
                                            k::native_expert_supported(experts_[0].f.gu_type, experts_[0].f.d_type, c.hidden, c.ff);
         // STRATA_DS41_PEER_MMQ (follows DECODE_MMQ): the peer GPU's routes by MMQ too (0: its GEMV chains)
         static const bool peer_mmq = decode_mmq && !(std::getenv("STRATA_DS41_PEER_MMQ") && std::string(std::getenv("STRATA_DS41_PEER_MMQ")) == "0");
@@ -5575,6 +7035,7 @@ private:
                 if (cpu_ids[i] >= 0 && int(i % size_t(K)) >= defer_rank) { def_ids_[i] = cpu_ids[i]; cpu_ids[i] = -1; defer_now = true; }
         }
         if (lane_async) lane_->begin(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
+        if (!canon_entries.empty()) canon_enqueue(l, T, K, canon_entries, canon_gstart, canon_groups);
         bool any_gpu = false;
         bool batched = false;
         if (dev_route) {   // GPU_ROUTE: the GPU-held experts already ran into g_sum_
@@ -5633,6 +7094,98 @@ private:
                 for (int i : to_gpu0[j].second) expert_chain(l, dstream_[j].b(), i / K, wts[size_t(i)]);
             }
         }
+        if (staged_cpu_expert >= 0) {
+            const size_t bytes = expert_bytes(l);
+            if (!stage_cpu_host_ || !stage_cpu_check_host_ || !stage_cpu_device_.p || !stage_cpu_copy_done_ ||
+                size_t(l) >= stage_cpu_checked_.size() || bytes == 0 || bytes > stage_cpu_capacity_ || bytes > stage_cpu_device_.bytes ||
+                staged_cpu_groups.empty() || staged_cpu_groups.size() > size_t(stage_cpu_quota_) ||
+                staged_cpu_routes.size() > size_t(8 * stage_cpu_quota_) || (stage_cpu_collect_ && !stage_cpu_results_))
+                throw std::runtime_error("ds41: staged CPU expert scratch or source bounds are invalid");
+            if (!stage_cpu_collect_ && !any_gpu) { ck(cudaMemsetAsync(g_sum_.p, 0, size_t(T) * H * 4, stream_), "stage tier sum"); any_gpu = true; }
+            size_t result_index = 0;
+            for (const auto& group : staged_cpu_groups) {
+                const int expert = group.first;
+                if (expert < 0 || expert >= c.experts || group.second.empty())
+                    throw std::runtime_error("ds41: staged CPU expert index is invalid");
+                for (int i : group.second)
+                    if (i < 0 || i >= T * K || ids[size_t(i)] != expert || i / K >= T)
+                        throw std::runtime_error("ds41: staged CPU expert route bounds are invalid");
+                const bool stage_sample = stage_cpu_timing_ && stage_cpu_transfers_ < 1000;
+                uint8_t* device_expert = stage_cpu_device_.b();
+                bool cache_hit = false;
+                if (!stage_cache_.empty()) {
+                    if (!stage_cpu_collect_ || stage_cache_.size() < size_t(stage_cpu_quota_) || !stage_cache_device_.p ||
+                        stage_cache_device_.bytes / stage_cpu_capacity_ != stage_cache_.size())
+                        throw std::runtime_error("ds41: staging cache execution mode or capacity invalid");
+                    size_t slot = stage_cache_.size();
+                    for (size_t j = 0; j < stage_cache_.size(); ++j)
+                        if (stage_cache_[j].layer == l && stage_cache_[j].expert == expert) { slot = j; cache_hit = true; break; }
+                    if (!cache_hit) {
+                        const bool frequency_evict = strata_env_is_one("STRATA_DS41_STAGE_CACHE_LFU") && !stage_cache_frequency_.empty();
+                        auto priority = [&](const StageCacheEntry& entry) {
+                            if (entry.layer < 0) return uint32_t(0);
+                            if (entry.layer >= c.layers || entry.expert < 0 || entry.expert >= c.experts)
+                                throw std::runtime_error("ds41: staging cache entry out of bounds");
+                            return stage_cache_frequency_[size_t(entry.layer) * size_t(c.experts) + size_t(entry.expert)];
+                        };
+                        slot = size_t(std::min_element(stage_cache_.begin(), stage_cache_.end(),
+                                      [&](const auto& a, const auto& b) {
+                                          if (frequency_evict) {
+                                              if ((a.layer < 0) != (b.layer < 0)) return a.layer < 0;
+                                              const auto fa = priority(a), fb = priority(b);
+                                              if (fa != fb) return fa < fb;
+                                          }
+                                          return a.age < b.age;
+                                      }) - stage_cache_.begin());
+                        ++stage_cache_misses_;
+                    } else ++stage_cache_hits_;
+                    if (slot >= stage_cache_.size() || slot * stage_cpu_capacity_ > stage_cache_device_.bytes - bytes)
+                        throw std::runtime_error("ds41: staging cache slot out of bounds");
+                    device_expert = stage_cache_device_.b(slot * stage_cpu_capacity_);
+                    stage_cache_[slot] = {l, expert, ++stage_cache_clock_};
+                }
+                if (stage_sample) ++stage_timed_groups_;
+                if (!cache_hit) {
+                    // H2D consumes the host slot before it can be overwritten;
+                    // each prior cache use has completed at collection sync.
+                    const auto reuse_start = std::chrono::steady_clock::now();
+                    if (stage_cpu_copy_pending_) ck(cudaEventSynchronize(stage_cpu_copy_done_), "CPU expert stage reuse");
+                    const auto pack_start = std::chrono::steady_clock::now();
+                    if (stage_sample) stage_timing_[0] += std::chrono::duration<double>(pack_start - reuse_start).count();
+                    slice_to_host(l, expert, stage_cpu_host_);
+                    if (stage_sample) stage_timing_[1] += std::chrono::duration<double>(std::chrono::steady_clock::now() - pack_start).count();
+                    ck(cudaMemcpyAsync(device_expert, stage_cpu_host_, bytes, cudaMemcpyHostToDevice, stream_), "CPU expert stage H2D");
+                    ck(cudaEventRecord(stage_cpu_copy_done_, stream_), "CPU expert stage copy event");
+                    stage_cpu_copy_pending_ = true;
+                    if (!stage_cpu_checked_[size_t(l)]) {
+                        ck(cudaMemcpyAsync(stage_cpu_check_host_, device_expert, bytes, cudaMemcpyDeviceToHost, stream_), "CPU expert stage D2H check");
+                        ck(cudaStreamSynchronize(stream_), "CPU expert stage check sync");
+                        if (std::memcmp(stage_cpu_host_, stage_cpu_check_host_, bytes) != 0)
+                            throw std::runtime_error("ds41: staged CPU expert copy mismatch");
+                        stage_cpu_checked_[size_t(l)] = 1;
+                    }
+                }
+                if (stage_cpu_batch_act_ && group.second.size() > 1) {
+                    if (result_index + group.second.size() > staged_cpu_routes.size())
+                        throw std::runtime_error("ds41: batched staged result bounds invalid");
+                    for (size_t j = 0; j < group.second.size(); ++j)
+                        if (staged_cpu_routes[result_index + j] != group.second[j])
+                            throw std::runtime_error("ds41: batched staged result ordering invalid");
+                    staged_cpu_order_batch(l, device_expert, bytes, group.second, K, stage_cpu_results_ + result_index * H);
+                    result_index += group.second.size();
+                } else for (int i : group.second) {
+                    if (result_index >= staged_cpu_routes.size() || staged_cpu_routes[result_index] != i)
+                        throw std::runtime_error("ds41: staged CPU result ordering is invalid");
+                    if (stage_cpu_order_) staged_cpu_order_chain(l, device_expert, bytes, i / K, wts[size_t(i)],
+                                                                  stage_cpu_collect_ ? stage_cpu_results_ + result_index * H : nullptr);
+                    else expert_chain(l, device_expert, i / K, wts[size_t(i)]);
+                    ++result_index;
+                }
+                ++stage_cpu_transfers_;
+            }
+            if (result_index != staged_cpu_routes.size())
+                throw std::runtime_error("ds41: incomplete staged CPU results");
+        }
         if (!peer_done)
             peer = peer_ && !peer_->threaded &&
                    (peer_mode == 2 ? peer_->grouped(l, T, K, ids.data(), wts.data(), pinned_[0])
@@ -5640,8 +7193,58 @@ private:
                                      : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
         if (dtiming_ && (T <= 64 || pf_timing_)) dmark(9);   // "experts": the GPU's experts enqueued (and run); "lane_wait": the CPU's and the peer's after
         const auto x1 = std::chrono::steady_clock::now();
-        if (lane_async) lane_->finish();
+        if (!canon_entries.empty() && own_n == 0) {
+            ck(cudaStreamSynchronize(stream_), "canonical tier results sync");
+            if (strata_env_is_one("STRATA_DS41_CANON_CHECK") && !canon_checked_[size_t(l)]) canon_check(l, K, canon_entries[0]);
+            lane_->finish_with_external(canon_original.data(), canon_entries.data(), canon_res_, int(canon_entries.size()), K);
+        } else if (own_n > 0) {   // the remote worker's routes (and the canonical tier's): one merge in the lane's order
+            const auto o0 = std::chrono::steady_clock::now();
+            if (!canon_entries.empty()) {
+                ck(cudaStreamSynchronize(stream_), "canonical tier results sync");
+                if (strata_env_is_one("STRATA_DS41_CANON_CHECK") && !canon_checked_[size_t(l)]) canon_check(l, K, canon_entries[0]);
+            }
+            const auto o1 = std::chrono::steady_clock::now();
+            own_remote_->finish_raw(T);
+            const auto o2 = std::chrono::steady_clock::now();
+            if (T <= 8) {   // decode / verify passes: GPU sync, the worker's reply, then the merge (below)
+                own_ms_[0] += std::chrono::duration<double, std::milli>(o1 - o0).count();
+                own_ms_[1] += std::chrono::duration<double, std::milli>(o2 - o1).count();
+                own_pending_merge_ = true;
+                own_merge_t0_ = o2;
+            }
+            ext_entries_.clear();
+            for (size_t i = 0; i < own_ids.size(); ++i) if (own_ids[i] >= 0) ext_entries_.push_back(int32_t(i));
+            if (int(ext_entries_.size()) != own_n || size_t(own_n) * size_t(H) > own_remote_->reply.size())
+                throw std::runtime_error("ds41: remote_own merge geometry");
+            lane_->finish_with_external2(canon_original.data(), canon_entries.data(), canon_res_, int(canon_entries.size()),
+                                         ext_entries_.data(), own_remote_->reply.data(), own_n, K);
+            if (own_pending_merge_) {
+                own_ms_[2] += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - own_merge_t0_).count();
+                own_ms_[3] += 1;
+                own_pending_merge_ = false;
+            }
+        } else if (stage_cpu_collect_ && staged_cpu_expert >= 0) {
+            const bool sample = stage_cpu_timing_ && stage_cpu_transfers_ <= 1000;
+            const auto wait_start = std::chrono::steady_clock::now();
+            ck(cudaStreamSynchronize(stream_), "CPU-order staged results sync");
+            lane_->finish_with_external(stage_original_ids.data(), staged_cpu_routes.data(), stage_cpu_results_, int(staged_cpu_routes.size()), K);
+            if (sample) stage_timing_[4] += std::chrono::duration<double>(std::chrono::steady_clock::now() - wait_start).count();
+        } else if (lane_async) lane_->finish();
         else lane_->run(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
+        if (!stage_cpu_collect_ && !stage_diag_ids.empty() && staged_cpu_expert >= 0 && staged_cpu_routes.size() == 1 &&
+            stage_cpu_diag_out_.size() == size_t(H)) {
+            std::vector<float> full(size_t(H), 0.f);
+            lane_->run(experts_[size_t(l)], pinned_[0], T, stage_diag_ids.data(), wts.data(), K, full.data());
+            double sq = 0, norm = 0, max_abs = 0;
+            const float weight = wts[size_t(staged_cpu_routes[0])];
+            for (int j = 0; j < H; ++j) {
+                const double delta = double(full[size_t(j)]) - (double(host_y[j]) + double(weight * stage_cpu_diag_out_[size_t(j)]));
+                sq += delta * delta; norm += double(full[size_t(j)]) * full[size_t(j)];
+                max_abs = std::max(max_abs, std::abs(delta));
+            }
+            std::cerr << "DS41 cpu_order_merge layer=" << l << " max_abs=" << max_abs
+                      << " relative_l2=" << std::sqrt(sq / (norm + 1e-300)) << "\n";
+        }
         const auto x2 = std::chrono::steady_clock::now();
         if (defer_now) {   // the deferred routes on the lane now; this layer's post coefficients kept for their add
             if (!def_in_) {
@@ -5691,6 +7294,18 @@ private:
             observe("ffn_moe_out", l, moe_.f(), H);
         }
         k::ds41_add(moe_.f(), y_.f(), y_.f(), int(size_t(T) * H), stream_);
+        if (const char* path = std::getenv("STRATA_DS41_ORDER_TRACE"); path && *path) {
+            if (T != 1 || H != 5120 || c.layers != 40 || fuse_ || hook || peer_ || remote_ || producer_.joinable())
+                throw std::runtime_error("ds41: order trace requires one token and the bounded single-GPU path");
+            std::vector<float> diagnostic(size_t(H) * 2);
+            ck(cudaMemcpyAsync(diagnostic.data(), moe_.p, size_t(H) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "order trace moe");
+            ck(cudaMemcpyAsync(diagnostic.data() + H, y_.p, size_t(H) * sizeof(float), cudaMemcpyDeviceToHost, stream_), "order trace total");
+            ck(cudaStreamSynchronize(stream_), "order trace sync");
+            std::ofstream file(path, std::ios::binary | (l == 0 ? std::ios::trunc : std::ios::app));
+            if (!file.write(reinterpret_cast<const char*>(pinned_[0]), size_t(H) * sizeof(float)) ||
+                !file.write(reinterpret_cast<const char*>(diagnostic.data()), size_t(H) * 2 * sizeof(float)))
+                throw std::runtime_error("ds41: order trace write failed");
+        }
         // no sync: the next layer's router sync orders this upload before host_y is written again (two layers on)
     }
 
@@ -5701,6 +7316,7 @@ public:
     /// [4] Engram gather, [5] indexer host, [6] head, [7] streamed experts' host copies.
     double prof_[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     double tier_hits_ = 0, tier_all_ = 0, promotions_ = 0;
+    uint64_t canon_routes_ = 0, canon_cpu_routes_ = 0, canon_streamed_ = 0;   // STRATA_DS41_CANON_MIB: routes on the GPU / CPU routes seen / streamed
 
 private:
     core::ModelArtifact art_;
@@ -5711,7 +7327,10 @@ private:
     Config cfg_;
     int context_;
     bool tier_lent_ = false;
-    Dev attn_info_dev_;
+    Dev attn_info_dev_, attn_error_;
+    size_t attn_info_host_bytes_ = 0;
+    bool attn_bounds_check_ = std::getenv("STRATA_DS41_ATTN_BOUNDS_CHECK") &&
+                              std::string(std::getenv("STRATA_DS41_ATTN_BOUNDS_CHECK")) == "1";
     int* attn_info_ = nullptr;   // pinned: per-token attention rows of a pass
     int rcap_min_ = 8192;
     int engram_tile_ = 0;   // STRATA_DS41_ENGRAM_TILE: Engram projection rows per call (0: the whole pass)
@@ -5761,7 +7380,7 @@ private:
     std::vector<LaneLayer> experts_;
     std::unique_ptr<ExpertLane> lane_;
     std::vector<char> cut_;               // CPU_TOPK: routes dropped this pass
-    uint64_t substituted_ = 0, dropped_ = 0;   // GPU_SUBST / CPU_TOPK counts
+    uint64_t substituted_ = 0, dropped_ = 0, affinity_swaps_ = 0;   // GPU_SUBST / CPU_TOPK counts
     Dev attn_scores_, h_, h2_, x_, xn_, flat_, mixes_, coeff_attn_, coeff_ffn_, qa_, qr_, q_, kv_, kvn_, att_, oa_, oa_part_, y_, q8_, q8g_, cs_;
     Dev comp_v_, comp_s_, comp_, ik_, iq_, iw_, logits_, sh_gate_, sh_up_, sh_h_, moe_, scores_, engram_rows_, engram_kv_;
     std::vector<Dev> windows_, caches_, stash_v_, stash_s_, sel_;
@@ -5776,7 +7395,16 @@ private:
     std::atomic<bool> engram_failed_{false};
     int engram_threads_ = 16;
     std::vector<int32_t> history_, route_log_;
+    // Reused by the layer-serial MoE path instead of rebuilding route buffers
+    // and the CPU/grouped-GPU routing scratch on every FFN call.
+    std::vector<int> host_route_ids_;
+    std::vector<float> host_route_weights_;
+    std::vector<int> host_cpu_route_ids_, host_gpu_route_ids_, host_gpu_route_counts_;
+    std::vector<float> host_gpu_route_weights_;
     std::vector<float> logits_host_;
+    Dev verify_argmax_ids_dev_, verify_argmax_bad_dev_;
+    std::vector<int> verify_argmax_host_;
+    int verify_argmax_bad_host_ = 0;
     float* pinned_[3] = {nullptr, nullptr, nullptr};   // the CPU lane's input (and the embeddings) and its two outputs
     std::ofstream routes_;
     std::vector<float> engram_host_, rope_host_;   // the uploads' sources outlive a pass
@@ -5891,7 +7519,7 @@ private:
 public:
     double stream_wait_s_ = 0;
     long skipped_ = 0;
-    double peer_prep_s_ = 0, peer_wait_s_ = 0, stream_enqueue_s_ = 0, attn_host_s_ = 0, ffn_host_s_ = 0, before_loop_s_ = 0, loop_s_ = 0;   // streamed passes: host time per part
+    double peer_prep_s_ = 0, peer_wait_s_ = 0, stream_enqueue_s_ = 0, attn_host_s_ = 0, ffn_host_s_ = 0, route_wait_s_ = 0, before_loop_s_ = 0, loop_s_ = 0;   // streamed passes: host time per part
     // STRATA_DS41_GPU_TIMING: per-layer GPU events of streamed passes
     // ---- DSpark speculative decoding (STRATA_DS41_DSPARK=draft.gguf, llama.cpp's dflash arch, DSV4 stages) ----
     // The drafter: 3 DSV4.1 blocks (lagged hyper-connections, window attention over its own ring, MoE with MXFP4
@@ -5903,34 +7531,56 @@ public:
     static constexpr int kInj = 128;        // positions per injection call
     struct Dspark {
         std::unique_ptr<GgufFile> file;
-        int layers = 0, block = 5, ring = 0, experts = 0, top_k = 0, sinkhorn = 20, mask = 128799, markov = 0;
+        int layers = 0, block = 5, draft_limit = 5, ring = 0, experts = 0, top_k = 0, sinkhorn = 20, mask = 128799, markov = 0;
         float scale = 1.5f, clamp = 10, clamp_sh = 10, eps = 1e-20f, hc_eps = 1e-6f;
         bool normalize = true;
         std::vector<int> targets;
         std::vector<std::vector<float>> bias;
         struct Ex { const uint8_t *gate = nullptr, *up = nullptr, *down = nullptr; size_t gu_row = 0, d_row = 0; Dev data; };
         std::vector<Ex> ex;
+        // With DSPARK_STREAM_EXPERTS the immutable expert tensors stay mapped on the host. One guarded
+        // GPU buffer is reused in stream order for the currently selected expert.
+        bool stream_experts = false, batch_stage = false, pin_experts = false, cache_experts = false;
+        Dev expert_stage;
+        uint8_t* expert_host_stage = nullptr;
+        size_t expert_host_stage_bytes = 0, expert_stage_stride = 0, expert_stage_groups = 0;
+        struct CacheSlot { int key = -1; uint64_t age = 0; };
+        std::vector<CacheSlot> expert_cache;
+        size_t expert_cache_slots = 0;
+        uint64_t expert_cache_clock = 0, expert_cache_hits = 0, expert_cache_misses = 0;
+        struct HostRegistrations {
+            std::vector<void*> ranges;
+            ~HostRegistrations() { for (void* p : ranges) cudaHostUnregister(p); }
+        } expert_registrations;
         std::vector<Dev> rings;
         std::vector<uint16_t> w1;   // markov_w1 rows, host
         std::vector<float> conf;    // conf_proj: [hidden + markov] (sigmoid of its dot with [pre-norm hidden; w1 row])
         float* hx = nullptr;        // pinned: the block's pre-norm hidden rows
+        size_t hx_bytes = 0;
         int* info = nullptr;        // pinned: the block's attention info (ds41_attention_multi)
+        size_t info_bytes = 0;
         Dev info_dev;
         std::vector<Dev> bias_dev;  // STRATA_DS41_DSPARK_GPU_ROUTE: router bias per layer, routes, pair -> token
         Dev rids, rw, ptok;
-        Dev w1_dev, conf_dev, dtok, dconf;   // STRATA_DS41_DSPARK_DEVICE_HEAD: the Markov chain on the device
+        Dev w1_dev, conf_dev, dtok, dconf, head_error;   // device Markov head and its bounds/non-finite status
         int* htok = nullptr;
+        size_t htok_bytes = 0;
         Dev fring, feat, fc, g, h, h2, x, xn, flat, mix, ca, cf, qa, qr, q, kv, kvn, att, oa, y, rl, sg, su, sh, eg, eu, eh, ed, moe, logits, cs, rowf, bvec;
         float* host = nullptr;      // pinned scratch
+        size_t host_bytes = 0;
         bool on = false;
         long drafted = 0, accepted = 0, steps = 0;
         double draft_s = 0, verify_s = 0, inject_s = 0, draft_layers_s = 0, draft_route_s = 0, draft_head_s = 0, lookup_s = 0;
+        std::array<std::deque<int>, 5> cache_sim;
+        std::array<uint64_t, 5> cache_hits{};
+        uint64_t cache_accesses = 0;
         // STRATA_DS41_DSPARK_SCHED: verify ms per pass width T (running means, weight 0.2; 0 = not seen), the draft's ms
         double verify_ms[16] = {}, draft_ms = 0;
         long sched_cut = 0;   // tokens the schedule left unverified
         long lookup_steps = 0, lookup_drafted = 0, lookup_accepted = 0;
     } dsp_;
     std::vector<Dev> spec_v_, spec_s_;
+    std::array<std::vector<int>, 8> spec_used_, spec_missed_;
     Dev dq8_;   // the drafter's quantized activations (STRATA_DS41_DSPARK_Q8)   // verify passes: each position's compressor value/score (ratio-2 KV sources)
     bool spec_save_ = false;
 
@@ -5938,6 +7588,10 @@ public:
     void dmat(const std::string& name, const float* x, int ldx, int n, float* y, int ldy, int row0 = 0, int rows = 0) {
         const Weight& W = weight(name);
         if (!rows) rows = W.out;
+        if (!x || !y || n < 1 || n > kInj || W.in < 1 || ldx < W.in || row0 < 0 || rows < 1 ||
+            row0 > W.out || rows > W.out - row0 || ldy < rows || !W.data.p ||
+            W.row_bytes == 0 || size_t(W.out) > W.data.bytes / W.row_bytes)
+            throw std::runtime_error("ds41: drafter matrix bounds: " + name);
         const uint8_t* base = static_cast<const uint8_t*>(W.data.p) + size_t(row0) * W.row_bytes;
         for (int t0 = 0; t0 < n; t0 += 8) {
             const int m = std::min(8, n - t0);
@@ -5966,6 +7620,7 @@ public:
         auto num = [&](const std::string& k, double fb) { const auto* v = f.get("dflash." + k); return v ? (v->is_num() ? v->num() : v->items.empty() ? fb : v->items[0].num()) : fb; };
         d.layers = int(num("block_count", 3));
         d.block = int(num("block_size", 5));
+        d.draft_limit = strata_env_is_one("STRATA_DS41_DSPARK_EXTEND") ? 7 : d.block;
         d.experts = int(num("expert_count", 128));
         d.top_k = int(num("expert_used_count", 3));
         d.scale = float(num("expert_weights_scale", 1.5));
@@ -5975,7 +7630,43 @@ public:
         d.sinkhorn = int(num("hyper_connection.sinkhorn_iterations", 20));
         d.hc_eps = float(num("hyper_connection.epsilon", 1e-6));
         if (const char* m = std::getenv("STRATA_DS41_DSPARK_MASK")) d.mask = std::atoi(m);
-        for (int64_t t : f.int_array("dflash.target_layers")) d.targets.push_back(int(t));
+        d.stream_experts = strata_env_is_one("STRATA_DS41_DSPARK_STREAM_EXPERTS");
+        d.batch_stage = strata_env_is_one("STRATA_DS41_DSPARK_BATCH_STAGE");
+        d.pin_experts = strata_env_is_one("STRATA_DS41_DSPARK_PIN_EXPERTS");
+        d.cache_experts = strata_env_is_one("STRATA_DS41_DSPARK_CACHE_EXPERTS");
+        if (d.cache_experts) {
+            d.expert_cache_slots = size_t(dspark_cache_slots());
+            d.expert_cache.resize(d.expert_cache_slots);
+        }
+        if (d.layers < 1 || d.layers > c.layers || d.block < 1 || d.block > 7 || d.experts < 1 || d.experts > 1024 ||
+            d.top_k < 1 || d.top_k > std::min(d.experts, 16) || d.mask < 0 || d.mask >= c.vocab)
+            throw std::runtime_error("ds41: invalid DSpark block, layer, expert, top-k, or mask bounds");
+        if (d.layers > INT32_MAX / d.experts) throw std::runtime_error("ds41: DSpark expert key overflow");
+        if (d.stream_experts && strata_env_is_one("STRATA_DS41_DSPARK_GPU_ROUTE"))
+            throw std::runtime_error("ds41: streamed DSpark experts require host routing");
+        if (d.batch_stage && !d.stream_experts) throw std::runtime_error("ds41: DSpark batch staging requires streamed experts");
+        if (d.pin_experts && !d.batch_stage) throw std::runtime_error("ds41: DSpark expert pinning requires batch staging");
+        if (d.cache_experts && (!d.batch_stage || d.pin_experts || size_t(d.draft_limit) * size_t(d.top_k) > d.expert_cache_slots))
+            throw std::runtime_error("ds41: DSpark expert cache requires bounded unpinned batch staging");
+#if defined(__HIP_PLATFORM_AMD__)
+        // Registered file-backed mappings have coincided with GPU permission
+        // faults and sustained reclaim pressure on AMD. Fail closed until the
+        // faulting path is isolated and validated; use bounded host staging.
+        if (d.pin_experts)
+            throw std::runtime_error("ds41: DSpark mapped expert pinning is disabled on AMD; use batch staging without pinning");
+#endif
+        for (int64_t t : f.int_array("dflash.target_layers")) {
+            if (t < 0 || t >= c.layers) throw std::runtime_error("ds41: DSpark target layer out of bounds");
+            d.targets.push_back(int(t));
+        }
+        if (d.targets.empty() || d.targets.size() > size_t(c.layers)) throw std::runtime_error("ds41: invalid DSpark target layers");
+        if (c.hidden <= 0 || c.hidden > INT32_MAX / 4 || c.ff <= 0 || c.q_rank <= 0 || c.head_dim <= 0 ||
+            c.heads <= 0 || c.out_groups <= 0 || c.out_rank <= 0 || c.window <= 0 || c.window > INT32_MAX - 16 ||
+            c.heads % c.out_groups != 0 || int64_t(c.heads) * c.head_dim > INT32_MAX ||
+            int64_t(c.out_groups) * c.out_rank > INT32_MAX ||
+            d.targets.size() > size_t(INT32_MAX / c.hidden) || c.rope_dim < 0 || c.rope_dim > c.head_dim ||
+            c.rope_dim > 128 || c.rope_dim % 2 != 0)
+            throw std::runtime_error("ds41: invalid target geometry for DSpark");
         if (int(num("embedding_length", 0)) != c.hidden || int(num("attention.head_count", 0)) != c.heads ||
             int(num("attention.key_length", 0)) != c.head_dim || int(num("attention.q_lora_rank", 0)) != c.q_rank ||
             int(num("attention.output_group_count", 0)) != c.out_groups || int(num("attention.output_lora_rank", 0)) != c.out_rank ||
@@ -5983,16 +7674,85 @@ public:
             throw std::runtime_error("ds41: the DSpark draft's geometry differs from the target's");
         std::map<std::string, const TensorInfo*> ts;
         for (const auto& t : f.tensors()) ts[t.name] = &t;
-        size_t bytes = 0;
-        auto put = [&](const std::string& name) {
+        auto checked = [&](const std::string& name) -> const TensorInfo& {
             const auto it = ts.find(name);
             if (it == ts.end()) throw std::runtime_error("ds41: DSpark tensor missing: " + name);
-            const TensorInfo& t = *it->second;
+            const auto& t = *it->second;
+            if (f.data_start() > f.file_size()) throw std::runtime_error("ds41: DSpark data start outside file");
+            const uint64_t bytes = tensor_payload_bytes(t), payload = f.file_size() - f.data_start();
+            if (!bytes || t.offset > payload || bytes > payload - t.offset)
+                throw std::runtime_error("ds41: DSpark tensor outside file: " + name);
+            return t;
+        };
+        const auto& fc = checked("fc.weight");
+        const auto& w1 = checked("markov_w1.weight");
+        const auto& w2 = checked("markov_w2.weight");
+        if (fc.shape != std::vector<uint64_t>{uint64_t(d.targets.size()) * uint64_t(c.hidden), uint64_t(c.hidden)} ||
+            w1.type != GGML_TYPE_BF16 || w1.shape.size() != 2 || w1.shape[0] == 0 || w1.shape[0] > uint64_t(INT32_MAX) ||
+            w1.shape[1] != uint64_t(c.vocab) || w2.shape != w1.shape)
+            throw std::runtime_error("ds41: invalid DSpark feature or Markov tensor shape");
+        // Validate every matrix and raw float vector consumed by the draft
+        // kernels before uploading weights or launching the first draft.
+        auto matrix = [&](const std::string& name, int in, int out) {
+            const auto& t = checked(name);
+            if (in <= 0 || out <= 0 || t.shape.empty() || t.shape[0] != uint64_t(in))
+                throw std::runtime_error("ds41: DSpark matrix input shape: " + name);
+            uint64_t rows = 1;
+            for (size_t i = 1; i < t.shape.size(); ++i) {
+                if (!t.shape[i] || t.shape[i] > uint64_t(out) / rows)
+                    throw std::runtime_error("ds41: DSpark matrix output shape: " + name);
+                rows *= t.shape[i];
+            }
+            if (rows != uint64_t(out) ||
+                (t.type != GGML_TYPE_F32 && t.type != GGML_TYPE_BF16 && !k::native_mmvq_supported(int(t.type))) ||
+                (t.type == GGML_TYPE_BF16 && in % 64))
+                throw std::runtime_error("ds41: DSpark matrix shape or type: " + name);
+        };
+        auto float_vector = [&](const std::string& name, size_t count) {
+            const auto& t = checked(name);
+            if (t.type != GGML_TYPE_F32 || tensor_payload_bytes(t) < count * sizeof(float))
+                throw std::runtime_error("ds41: DSpark float vector shape or type: " + name);
+        };
+        matrix("fc.weight", int(d.targets.size()) * c.hidden, c.hidden);
+        matrix("markov_w2.weight", int(w1.shape[0]), c.vocab);
+        float_vector("enc.output_norm.weight", size_t(c.hidden));
+        float_vector("output_norm.weight", size_t(c.hidden));
+        for (int l = 0; l < d.layers; ++l) {
+            const std::string p = "blk." + std::to_string(l) + ".";
+            matrix(p + "attn_q_a.weight", c.hidden, c.q_rank);
+            matrix(p + "attn_q_b.weight", c.q_rank, c.heads * c.head_dim);
+            matrix(p + "attn_kv.weight", c.hidden, c.head_dim);
+            matrix(p + "attn_output_a.weight", c.heads / c.out_groups * c.head_dim, c.out_groups * c.out_rank);
+            matrix(p + "attn_output_b.weight", c.out_groups * c.out_rank, c.hidden);
+            matrix(p + "ffn_gate_inp.weight", c.hidden, d.experts);
+            matrix(p + "ffn_gate_shexp.weight", c.hidden, c.ff);
+            matrix(p + "ffn_up_shexp.weight", c.hidden, c.ff);
+            matrix(p + "ffn_down_shexp.weight", c.ff, c.hidden);
+            for (const char* h : {"hc_attn_", "hc_ffn_"}) {
+                matrix(p + h + "fn.weight", 4 * c.hidden, 24);
+                float_vector(p + h + "base.weight", 24);
+                float_vector(p + h + "scale.weight", 3);
+            }
+            float_vector(p + "attn_sinks.weight", size_t(c.heads));
+            float_vector(p + "attn_norm.weight", size_t(c.hidden));
+            float_vector(p + "attn_q_a_norm.weight", size_t(c.q_rank));
+            float_vector(p + "attn_kv_a_norm.weight", size_t(c.head_dim));
+            float_vector(p + "ffn_norm.weight", size_t(c.hidden));
+        }
+        size_t bytes = 0;
+        auto put = [&](const std::string& name) {
+            const TensorInfo& t = checked(name);
+            if (t.shape.empty() || t.shape[0] == 0 || t.shape[0] > uint64_t(INT32_MAX))
+                throw std::runtime_error("ds41: DSpark tensor dimension: " + name);
             Weight W;
             W.type = int(t.type);
             W.in = int(t.shape[0]);
             W.out = 1;
-            for (size_t i = 1; i < t.shape.size(); ++i) W.out *= int(t.shape[i]);
+            for (size_t i = 1; i < t.shape.size(); ++i) {
+                if (!t.shape[i] || t.shape[i] > uint64_t(INT32_MAX / W.out))
+                    throw std::runtime_error("ds41: DSpark tensor dimension: " + name);
+                W.out *= int(t.shape[i]);
+            }
             W.row_bytes = ggml_row_size(ggml_type(W.type), W.in);
             // STRATA_DS41_DSPARK_Q8=1: the BF16 matrices (but the grouped output projection) as Q8_0, read by native MMVQ
             static const bool q8 = std::getenv("STRATA_DS41_DSPARK_Q8") && std::string(std::getenv("STRATA_DS41_DSPARK_Q8")) == "1";
@@ -6022,27 +7782,122 @@ public:
                                   "ffn_gate_shexp.weight", "ffn_down_shexp.weight", "ffn_up_shexp.weight", "ffn_norm.weight", "hc_attn_base.weight",
                                   "hc_attn_fn.weight", "hc_attn_scale.weight", "hc_ffn_base.weight", "hc_ffn_fn.weight", "hc_ffn_scale.weight"})
                 put(p + n);
-            const auto& b = *ts.at(p + "exp_probs_b.bias");
+            const auto& b = checked(p + "exp_probs_b.bias");
+            if (b.shape != std::vector<uint64_t>{uint64_t(d.experts)}) throw std::runtime_error("ds41: DSpark router bias shape");
             d.bias.push_back(to_float(int(b.type), f.tensor_data(b), d.experts));
             Dspark::Ex e;
-            const auto &G = *ts.at(p + "ffn_gate_exps.weight"), &U = *ts.at(p + "ffn_up_exps.weight"), &D = *ts.at(p + "ffn_down_exps.weight");
+            const auto &G = checked(p + "ffn_gate_exps.weight"), &U = checked(p + "ffn_up_exps.weight"), &D = checked(p + "ffn_down_exps.weight");
             if (G.type != 39 || U.type != 39 || D.type != 39) throw std::runtime_error("ds41: DSpark experts must be MXFP4");
+            const std::vector<uint64_t> gu_shape{uint64_t(c.hidden), uint64_t(c.ff), uint64_t(d.experts)};
+            const std::vector<uint64_t> down_shape{uint64_t(c.ff), uint64_t(c.hidden), uint64_t(d.experts)};
+            if (G.shape != gu_shape || U.shape != gu_shape || D.shape != down_shape)
+                throw std::runtime_error("ds41: DSpark expert tensor shape");
             e.gu_row = ggml_row_size(GGML_TYPE_MXFP4, c.hidden);
             e.d_row = ggml_row_size(GGML_TYPE_MXFP4, c.ff);
-            const size_t gb = e.gu_row * size_t(c.ff) * d.experts, db = e.d_row * size_t(c.hidden) * d.experts;
-            e.data = Dev(2 * gb + db);
-            ck(cudaMemcpy(e.data.b(), f.tensor_data(G), gb, cudaMemcpyHostToDevice), "dspark experts");
-            ck(cudaMemcpy(e.data.b(gb), f.tensor_data(U), gb, cudaMemcpyHostToDevice), "dspark experts");
-            ck(cudaMemcpy(e.data.b(2 * gb), f.tensor_data(D), db, cudaMemcpyHostToDevice), "dspark experts");
-            e.gate = e.data.b();
-            e.up = e.data.b(gb);
-            e.down = e.data.b(2 * gb);
-            bytes += 2 * gb + db;
+            if (e.gu_row > SIZE_MAX / size_t(c.ff) || e.d_row > SIZE_MAX / size_t(c.hidden))
+                throw std::runtime_error("ds41: DSpark expert row size overflow");
+            const size_t ge = e.gu_row * size_t(c.ff), de = e.d_row * size_t(c.hidden);
+            if (ge > SIZE_MAX / size_t(d.experts) || de > SIZE_MAX / size_t(d.experts))
+                throw std::runtime_error("ds41: DSpark expert tensor size overflow");
+            const size_t gb = ge * size_t(d.experts), db = de * size_t(d.experts);
+            if (gb > tensor_payload_bytes(G) || gb > tensor_payload_bytes(U) || db > tensor_payload_bytes(D))
+                throw std::runtime_error("ds41: DSpark expert tensor capacity bounds");
+            if (d.stream_experts) {
+                e.gate = f.tensor_data(G); e.up = f.tensor_data(U); e.down = f.tensor_data(D);
+                if (!d.expert_stage.p) {
+                    if (ge > (SIZE_MAX - de) / 2) throw std::runtime_error("ds41: DSpark expert stage size overflow");
+                    d.expert_stage_stride = 2 * ge + de;
+                    d.expert_stage_groups = d.batch_stage ? size_t(d.draft_limit) * size_t(d.top_k) : 1;
+                    const size_t slots = d.cache_experts ? d.expert_cache_slots : d.expert_stage_groups;
+                    if (!slots || d.expert_stage_stride > SIZE_MAX / slots ||
+                        (d.batch_stage && d.expert_stage_stride > SIZE_MAX / d.expert_stage_groups))
+                        throw std::runtime_error("ds41: DSpark expert staging size overflow");
+                    d.expert_stage = Dev(d.expert_stage_stride * slots);
+                    if (d.batch_stage && !d.pin_experts) {
+                        d.expert_host_stage_bytes = d.expert_stage_stride * d.expert_stage_groups;
+                        d.expert_host_stage = reinterpret_cast<uint8_t*>(pinned_keep(d.expert_host_stage_bytes));
+                    }
+                    bytes += d.expert_stage.bytes;
+                }
+            } else {
+                if (gb > (SIZE_MAX - db) / 2) throw std::runtime_error("ds41: DSpark expert device size overflow");
+                e.data = Dev(2 * gb + db);
+                ck(cudaMemcpy(e.data.b(), f.tensor_data(G), gb, cudaMemcpyHostToDevice), "dspark experts");
+                ck(cudaMemcpy(e.data.b(gb), f.tensor_data(U), gb, cudaMemcpyHostToDevice), "dspark experts");
+                ck(cudaMemcpy(e.data.b(2 * gb), f.tensor_data(D), db, cudaMemcpyHostToDevice), "dspark experts");
+                e.gate = e.data.b(); e.up = e.data.b(gb); e.down = e.data.b(2 * gb);
+                bytes += 2 * gb + db;
+            }
             d.ex.push_back(std::move(e));
         }
+        if (d.pin_experts) {
+            const auto tpin = std::chrono::steady_clock::now();
+            const long page_size = sysconf(_SC_PAGESIZE);
+            if (page_size <= 0) throw std::runtime_error("ds41: cannot determine page size for DSpark expert pinning");
+            const uintptr_t page = uintptr_t(page_size);
+            std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
+            for (const auto& e : d.ex) {
+                const size_t gb = e.gu_row * size_t(c.ff) * size_t(d.experts);
+                const size_t db = e.d_row * size_t(c.hidden) * size_t(d.experts);
+                for (const auto& item : {std::pair<const uint8_t*, size_t>{e.gate, gb}, {e.up, gb}, {e.down, db}}) {
+                    const uintptr_t a = reinterpret_cast<uintptr_t>(item.first);
+                    if (!page || a > UINTPTR_MAX - item.second || a + item.second > UINTPTR_MAX - (page - 1))
+                        throw std::runtime_error("ds41: DSpark expert pin range overflow");
+                    ranges.push_back({a / page * page, (a + item.second + page - 1) / page * page});
+                }
+            }
+            std::sort(ranges.begin(), ranges.end());
+            std::vector<std::pair<uintptr_t, uintptr_t>> merged;
+            for (const auto& r : ranges) {
+                if (!merged.empty() && r.first <= merged.back().second) merged.back().second = std::max(merged.back().second, r.second);
+                else merged.push_back(r);
+            }
+            size_t pinned_bytes = 0;
+            // Register in bounded pieces so sustained reclaim pressure can stop
+            // pinning before systemd-oomd kills the process. MemAvailable alone
+            // includes reclaimable cache and does not reflect this pressure.
+#if defined(__linux__)
+            auto pressure = [](const char* field) {
+                std::ifstream in("/proc/pressure/memory");
+                std::string line;
+                while (std::getline(in, line)) {
+                    if (line.compare(0, 5, "full ") != 0) continue;
+                    const std::string key = std::string(field) + "=";
+                    const size_t p = line.find(key);
+                    if (p != std::string::npos) return std::stod(line.substr(p + key.size()));
+                }
+                throw std::runtime_error("ds41: cannot read memory pressure for DSpark expert pinning");
+            };
+            if (pressure("avg60") > 10.0)
+                throw std::runtime_error("ds41: memory pressure too high to pin DSpark experts");
+#endif
+            const size_t piece = std::max<size_t>(page, ((size_t(64) << 20) / page) * page);
+            size_t pieces = 0;
+            for (const auto& [a, b] : merged) {
+                const size_t bytes = b - a;
+                const size_t count = bytes / piece + (bytes % piece != 0);
+                if (count > SIZE_MAX - pieces) throw std::runtime_error("ds41: DSpark pin count overflow");
+                pieces += count;
+            }
+            d.expert_registrations.ranges.reserve(pieces);
+            for (const auto& [a, b] : merged) {
+                for (uintptr_t p = a; p < b;) {
+#if defined(__linux__)
+                    if (pressure("avg10") > 10.0)
+                        throw std::runtime_error("ds41: memory pressure rose while pinning DSpark experts");
+#endif
+                    const size_t n = std::min<size_t>(b - p, piece);
+                    ck(cudaHostRegister(reinterpret_cast<void*>(p), n, 0x08 /* read-only */), "dspark expert pin");
+                    d.expert_registrations.ranges.push_back(reinterpret_cast<void*>(p));
+                    pinned_bytes += n;
+                    p += n;
+                }
+            }
+            std::cerr << "DS41 dspark pinned_GiB=" << double(pinned_bytes) / double(1ull << 30) << " s="
+                      << std::chrono::duration<double>(std::chrono::steady_clock::now() - tpin).count() << "\n";
+        }
         {   // markov_w1: rows by token, kept on the host (one row per drafted position)
-            const auto& t = *ts.at("markov_w1.weight");
-            if (t.type != GGML_TYPE_BF16) throw std::runtime_error("ds41: markov_w1 must be BF16");
+            const auto& t = w1;
             d.markov = int(t.shape[0]);
             d.w1.resize(size_t(t.shape[0]) * t.shape[1]);
             std::memcpy(d.w1.data(), f.tensor_data(t), d.w1.size() * 2);
@@ -6053,7 +7908,7 @@ public:
             bytes += d.w1.size() * 2;
         }
         if (const auto it = ts.find("conf_proj.weight"); it != ts.end()) {
-            const auto& t = *it->second;
+            const auto& t = checked("conf_proj.weight");
             d.conf = to_float(int(t.type), f.tensor_data(t), int64_t(t.shape[0]));
             if (int(d.conf.size()) != c.hidden + d.markov) d.conf.clear();
         }
@@ -6081,12 +7936,19 @@ public:
         d.logits = Dev(B * size_t(c.vocab) * 4);
         d.rowf = Dev(size_t(d.markov) * 4);
         d.bvec = Dev(size_t(c.vocab) * 4);
-        d.host = pinned_keep(std::max<size_t>(size_t(c.vocab), nt * 2 * 64 + 1024) * 4);
-        d.hx = pinned_keep(B * H * 4);
-        d.info = reinterpret_cast<int*>(pinned_keep(B * 16));
+        const size_t host_floats = std::max({size_t(c.vocab), nt * 2 * 64 + 1024, B * H, B * size_t(d.experts), size_t(d.markov)});
+        if (host_floats > SIZE_MAX / sizeof(float)) throw std::runtime_error("ds41: DSpark host scratch size overflow");
+        d.host_bytes = host_floats * sizeof(float);
+        d.host = pinned_keep(d.host_bytes);
+        d.hx_bytes = B * H * sizeof(float);
+        d.hx = pinned_keep(d.hx_bytes);
+        d.info_bytes = B * 16;
+        d.info = reinterpret_cast<int*>(pinned_keep(d.info_bytes));
         d.dtok = Dev((B + 1) * 4);
         d.dconf = Dev(B * 4);
-        d.htok = reinterpret_cast<int*>(pinned_keep((2 * B + 2) * 4));
+        if (d.w1_dev.p) d.head_error = Dev(sizeof(int));
+        d.htok_bytes = (2 * B + 2) * sizeof(int);
+        d.htok = reinterpret_cast<int*>(pinned_keep(d.htok_bytes));
         if (!d.conf.empty()) {
             d.conf_dev = Dev(d.conf.size() * 4);
             ck(cudaMemcpy(d.conf_dev.p, d.conf.data(), d.conf.size() * 4, cudaMemcpyHostToDevice), "conf proj");
@@ -6111,11 +7973,14 @@ public:
                 spec_v_[size_t(l)] = Dev(B * c.head_dim * 4);
                 spec_s_[size_t(l)] = Dev(B * c.head_dim * 4);
             }
+        validate_dspark_scratch(d.draft_limit);
         d.on = true;
         if (std::getenv("STRATA_DS41_DSPARK_TEST")) dspark_selftest(ts);
         std::cerr << "DS41 dspark layers=" << d.layers << " block=" << d.block << " experts=" << d.experts << " top_k=" << d.top_k
                   << " targets=" << d.targets.size() << " gpu_MiB=" << bytes / double(1 << 20) << " s="
-                  << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
+                  << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()
+                  << (d.stream_experts ? " streamed_experts=1" : "")
+                  << (d.draft_limit != d.block ? " draft_limit=" + std::to_string(d.draft_limit) : "") << "\n";
     }
 
     // STRATA_DS41_DSPARK_TEST=1: the few-token GEMVs against host references (an MXFP4 expert, a BF16 projection)
@@ -6131,13 +7996,20 @@ public:
         const int rows[3] = {0, 1, 2};
         {   // MXFP4: layer 0, expert 5's gate rows
             const auto& E = d.ex[0];
-            const int e = 5;
-            k::ds41_mxfp4_gemv_mt(E.gate + E.gu_row * size_t(c.ff) * e, E.gu_row, xd.f(), H, rows, n, yd.f(), c.ff, c.ff, H, stream_);
+            const int e = std::min(5, d.experts - 1);
+            const size_t ge = E.gu_row * size_t(c.ff);
+            const uint8_t* gate = E.gate + ge * size_t(e);
+            if (d.stream_experts) {
+                ck(cudaMemcpyAsync(d.expert_stage.p, gate, ge, cudaMemcpyHostToDevice, stream_), "dspark test stage");
+                gate = d.expert_stage.b();
+            }
+            k::ds41_mxfp4_gemv_mt(gate, E.gu_row, xd.f(), H, rows, n, yd.f(), c.ff, c.ff, H, stream_);
             std::vector<float> y(size_t(n) * c.ff);
+            ck(cudaStreamSynchronize(stream_), "dspark test gate");
             ck(cudaMemcpy(y.data(), yd.p, y.size() * 4, cudaMemcpyDeviceToHost), "test");
             const auto& G = *ts.at("blk.0.ffn_gate_exps.weight");
             double worst = 0;
-            for (int rr : {0, 1, 777, c.ff - 1}) {
+            for (int rr : {0, std::min(1, c.ff - 1), std::min(777, c.ff - 1), c.ff - 1}) {
                 const auto w = to_float(39, d.file->tensor_data(G) + (size_t(e) * c.ff + size_t(rr)) * E.gu_row, H);
                 for (int t = 0; t < n; ++t) {
                     double ref = 0;
@@ -6147,16 +8019,17 @@ public:
             }
             std::cerr << "DS41 dspark_test mxfp4 worst_rel=" << worst << "\n";
         }
-        {   // BF16: layer 0 q_a, the multi-token kernel against the per-token one
-            const Weight& W = weight("dspark.blk.0.attn_q_a.weight");
-            k::ds41_bf16_gemv_mt(W.data.h(), xd.f(), H, rows, n, yd.f(), c.q_rank, c.q_rank, H, stream_);
-            k::ds41_bf16_gemv(W.data.h(), xd.f(), y2.f(), c.q_rank, H, stream_, n);
+        {   // The actual q_a type, batched against one token at a time.
+            const std::string name = "dspark.blk.0.attn_q_a.weight";
+            dmat(name, xd.f(), H, n, yd.f(), c.q_rank);
+            for (int i = 0; i < n; ++i) dmat(name, xd.f(size_t(i) * H), H, 1, y2.f(size_t(i) * c.q_rank), c.q_rank);
             std::vector<float> a(size_t(n) * c.q_rank), b(a.size());
+            ck(cudaStreamSynchronize(stream_), "dspark test q_a");
             ck(cudaMemcpy(a.data(), yd.p, a.size() * 4, cudaMemcpyDeviceToHost), "test");
             ck(cudaMemcpy(b.data(), y2.p, b.size() * 4, cudaMemcpyDeviceToHost), "test");
             double worst = 0;
             for (size_t i = 0; i < a.size(); ++i) worst = std::max(worst, double(std::abs(a[i] - b[i]) / (std::abs(b[i]) + 1e-3f)));
-            std::cerr << "DS41 dspark_test bf16 worst_rel=" << worst << "\n";
+            std::cerr << "DS41 dspark_test q_a worst_rel=" << worst << "\n";
         }
     }
 
@@ -6190,13 +8063,45 @@ public:
     void dspark_inject(int p0, int n) {
         const auto& c = cfg_;
         auto& d = dsp_;
+        if (!d.on || p0 < 0 || n < 0 || p0 > context_ || n > context_ - p0)
+            throw std::runtime_error("ds41: DSpark injection position bounds");
+        if (n == 0) return;
+        auto checked_bytes = [](size_t a, size_t b) {
+            if (a && b > SIZE_MAX / a) throw std::runtime_error("ds41: DSpark injection size overflow");
+            return a * b;
+        };
+        if (c.hidden <= 0 || c.head_dim <= 0 || c.window <= 0 || d.layers < 1 || d.layers > c.layers || d.ring < 1 ||
+            d.rings.size() != size_t(d.layers) || d.targets.empty() || d.targets.size() > size_t(c.layers))
+            throw std::runtime_error("ds41: DSpark injection geometry bounds");
+        for (int target : d.targets)
+            if (target < 0 || target >= c.layers) throw std::runtime_error("ds41: DSpark injection target bounds");
+        const size_t H = size_t(c.hidden);
+        if (d.targets.size() > SIZE_MAX / H) throw std::runtime_error("ds41: DSpark injection feature width overflow");
+        const size_t F = d.targets.size() * H;
+        if (F > size_t(INT32_MAX)) throw std::runtime_error("ds41: DSpark injection leading dimension overflow");
+        const size_t feature_ring_bytes = checked_bytes(checked_bytes(size_t(kFeatRing), F), sizeof(float));
+        const size_t feature_batch_bytes = checked_bytes(checked_bytes(size_t(kInj), F), sizeof(float));
+        const size_t hidden_batch_bytes = checked_bytes(checked_bytes(size_t(kInj), H), sizeof(float));
+        const size_t kv_batch_bytes = checked_bytes(checked_bytes(size_t(kInj), size_t(c.head_dim)), sizeof(float));
+        const size_t rope_batch_bytes = checked_bytes(checked_bytes(size_t(kInj), size_t(128)), sizeof(float));
+        if (!d.fring.p || d.fring.bytes < feature_ring_bytes || !d.feat.p || d.feat.bytes < feature_batch_bytes ||
+            !d.fc.p || d.fc.bytes < hidden_batch_bytes || !d.g.p || d.g.bytes < hidden_batch_bytes ||
+            !d.kv.p || d.kv.bytes < kv_batch_bytes || !d.kvn.p || d.kvn.bytes < kv_batch_bytes ||
+            !d.cs.p || d.cs.bytes < rope_batch_bytes || !d.host || d.host_bytes < rope_batch_bytes)
+            throw std::runtime_error("ds41: DSpark injection scratch capacity bounds");
+        if (c.window > INT32_MAX - 16 || d.ring < c.window + 16)
+            throw std::runtime_error("ds41: DSpark injection ring geometry bounds");
+        const size_t ring_bytes = checked_bytes(checked_bytes(size_t(d.ring), size_t(c.head_dim)), sizeof(float));
+        for (const auto& ring : d.rings)
+            if (!ring.p || ring.bytes < ring_bytes) throw std::runtime_error("ds41: DSpark injection ring capacity bounds");
         const auto t0 = std::chrono::steady_clock::now();
-        const size_t H = size_t(c.hidden), F = d.targets.size() * H;
         const int nope = c.head_dim - c.rope_dim, pairs = c.rope_dim / 2;
         for (int a = 0; a < n; a += kInj) {
             const int m = std::min(kInj, n - a), q0 = p0 + a;
             for (int i = 0; i < m;) {   // gather the ring rows (contiguous runs)
                 const int slot = (q0 + i) % kFeatRing, run = std::min(m - i, kFeatRing - slot);
+                if (slot < 0 || slot >= kFeatRing || run < 1 || run > m - i || slot + run > kFeatRing)
+                    throw std::runtime_error("ds41: DSpark feature ring copy bounds");
                 ck(cudaMemcpyAsync(d.feat.f(size_t(i) * F), d.fring.f(size_t(slot) * F), size_t(run) * F * 4, cudaMemcpyDeviceToDevice, stream_), "features");
                 i += run;
             }
@@ -6211,6 +8116,8 @@ public:
                 k::ds41_rope(d.kvn.f(), m, c.head_dim, nope, pairs, d.cs.f(), stream_, 1, 128);
                 for (int i = 0; i < m;) {
                     const int slot = (q0 + i) % d.ring, run = std::min(m - i, d.ring - slot);
+                    if (slot < 0 || slot >= d.ring || run < 1 || run > m - i || slot + run > d.ring)
+                        throw std::runtime_error("ds41: DSpark key ring copy bounds");
                     ck(cudaMemcpyAsync(d.rings[size_t(l)].f(size_t(slot) * c.head_dim), d.kvn.f(size_t(i) * c.head_dim),
                                        size_t(run) * c.head_dim * 4, cudaMemcpyDeviceToDevice, stream_), "dspark ring");
                     i += run;
@@ -6226,6 +8133,100 @@ public:
         k::glm_rms_norm_rows(d.h.f(), nullptr, d.flat.f(), 4 * c.hidden, B, d.eps, stream_);
         dmat(p + "fn.weight", d.flat.f(), 4 * c.hidden, B, d.mix.f(), 24);
         k::ds41_hc_coeff(d.mix.f(), w(p + "scale.weight"), w(p + "base.weight"), coeff.f(), d.sinkhorn, d.hc_eps, stream_, B);
+    }
+
+    void validate_dspark_scratch(int B) const {
+        const auto& c = cfg_;
+        const auto& d = dsp_;
+        if (c.window > INT32_MAX - 16 || B < 1 || B > 7 || d.draft_limit < B || d.layers < 1 || d.layers > c.layers || d.targets.empty() ||
+            d.targets.size() > size_t(c.layers) || d.ex.size() != size_t(d.layers) || d.rings.size() != size_t(d.layers) ||
+            c.window + B > 4096 || d.ring < c.window + B)
+            throw std::runtime_error("ds41: DSpark pre-run geometry bounds");
+        auto product = [](std::initializer_list<size_t> dims) {
+            size_t n = sizeof(float);
+            for (size_t d : dims) {
+                if (d && n > SIZE_MAX / d) throw std::runtime_error("ds41: DSpark scratch size overflow");
+                n *= d;
+            }
+            return n;
+        };
+        auto require = [](const Dev& b, size_t need, const char* name) {
+            if (!b.p || b.bytes < need) throw std::runtime_error(std::string("ds41: DSpark pre-run device capacity: ") + name);
+        };
+        auto require_host = [](const void* p, size_t have, size_t need, const char* name) {
+            if (!p || have < need) throw std::runtime_error(std::string("ds41: DSpark pre-run host capacity: ") + name);
+        };
+        const size_t H = size_t(c.hidden), F = d.targets.size();
+        const size_t P = size_t(B) * size_t(d.top_k), width = size_t(c.heads) * size_t(c.head_dim);
+        const size_t host_floats = std::max({size_t(c.vocab), size_t(kInj) * 128 + 1024, size_t(B) * H,
+                                             size_t(B) * size_t(d.experts), size_t(d.markov)});
+        if (host_floats > SIZE_MAX / sizeof(float)) throw std::runtime_error("ds41: DSpark host capacity overflow");
+        require_host(d.host, d.host_bytes, host_floats * sizeof(float), "general scratch");
+        require_host(d.hx, d.hx_bytes, product({size_t(B), H}), "confidence hidden rows");
+        require_host(d.info, d.info_bytes, size_t(B) * 16, "attention info");
+        require_host(d.htok, d.htok_bytes, size_t(2 * B + 2) * sizeof(int), "device head tokens");
+        require(d.fring, product({size_t(kFeatRing), F, H}), "feature ring");
+        require(d.feat, product({size_t(kInj), F, H}), "feature batch");
+        require(d.fc, product({size_t(kInj), H}), "feature projection");
+        require(d.g, product({size_t(kInj), H}), "normalized features");
+        require(d.kv, product({size_t(kInj), size_t(c.head_dim)}), "injection keys");
+        require(d.kvn, product({size_t(kInj), size_t(c.head_dim)}), "normalized injection keys");
+        require(d.cs, product({size_t(kInj), 128}), "rope tables");
+        require(d.info_dev, size_t(B) * 16, "device attention info");
+        require(d.h, product({size_t(B), 4, H}), "stream state");
+        require(d.h2, product({size_t(B), 4, H}), "stream state ping-pong");
+        require(d.x, product({size_t(B), H}), "hidden rows");
+        require(d.xn, product({size_t(B), H}), "normalized hidden rows");
+        require(d.flat, product({size_t(B), 4, H}), "flattened streams");
+        require(d.mix, product({size_t(B), 24}), "mix projections");
+        require(d.ca, product({size_t(B), 24}), "attention coefficients");
+        require(d.cf, product({size_t(B), 24}), "FFN coefficients");
+        require(d.qa, product({size_t(B), size_t(c.q_rank)}), "query low rank");
+        require(d.qr, product({size_t(B), size_t(c.q_rank)}), "normalized query low rank");
+        require(d.q, product({size_t(B), width}), "queries");
+        require(d.att, product({size_t(B), width}), "attention output");
+        require(d.oa, product({size_t(B), size_t(c.out_groups), size_t(c.out_rank)}), "output projection rows");
+        require(d.y, product({size_t(B), H}), "hidden projection");
+        require(d.rl, product({size_t(B), size_t(d.experts)}), "router logits");
+        require(d.sg, product({size_t(B), size_t(c.ff)}), "shared gate");
+        require(d.su, product({size_t(B), size_t(c.ff)}), "shared up");
+        require(d.sh, product({size_t(B), size_t(c.ff)}), "shared activation");
+        require(d.eg, product({P, size_t(c.ff)}), "expert gate");
+        require(d.eu, product({P, size_t(c.ff)}), "expert up");
+        require(d.eh, product({P, size_t(c.ff)}), "expert activation");
+        require(d.ed, product({P, H}), "expert down");
+        require(d.moe, product({size_t(B), H}), "MoE output");
+        require(d.logits, product({size_t(B), size_t(c.vocab)}), "draft logits");
+        require(d.rowf, product({size_t(d.markov)}), "Markov row");
+        require(d.bvec, product({size_t(c.vocab)}), "draft bias logits");
+        require(d.dtok, size_t(B + 1) * sizeof(int), "device tokens");
+        require(d.dconf, size_t(B) * sizeof(float), "confidence values");
+        if (!d.conf.empty()) require(d.conf_dev, product({d.conf.size()}), "confidence weights");
+        if (d.w1_dev.p) {
+            require(d.w1_dev, d.w1.size() * sizeof(uint16_t), "device Markov table");
+            require(d.head_error, sizeof(int), "device-head error flag");
+        }
+        require(d.rids, P * sizeof(int), "expert routes");
+        require(d.rw, P * sizeof(float), "expert route weights");
+        require(d.ptok, P * sizeof(int), "expert token indices");
+        for (const auto& ring : d.rings) require(ring, product({size_t(d.ring), size_t(c.head_dim)}), "key ring");
+        if (d.stream_experts) {
+            for (const auto& e : d.ex)
+                if (!e.gate || !e.up || !e.down) throw std::runtime_error("ds41: DSpark pre-run expert pointer bounds");
+            const size_t ge = d.ex.front().gu_row * size_t(c.ff), de = d.ex.front().d_row * H;
+            if (ge > (SIZE_MAX - de) / 2) throw std::runtime_error("ds41: DSpark pre-run stage size overflow");
+            const size_t stride = 2 * ge + de;
+            const size_t groups = d.batch_stage ? size_t(d.draft_limit) * size_t(d.top_k) : 1;
+            const size_t slots = d.cache_experts ? d.expert_cache_slots : groups;
+            if (!stride || !slots || stride > SIZE_MAX / slots || d.expert_stage_stride != stride ||
+                d.expert_stage_groups != groups)
+                throw std::runtime_error("ds41: DSpark pre-run expert stage geometry bounds");
+            require(d.expert_stage, stride * slots, "expert device stage");
+            if (d.batch_stage && !d.pin_experts) {
+                if (stride > SIZE_MAX / groups) throw std::runtime_error("ds41: DSpark pre-run host stage size overflow");
+                require_host(d.expert_host_stage, d.expert_host_stage_bytes, stride * groups, "expert host stage");
+            }
+        }
     }
 
     // drafts n tokens: [anchor, MASK x (n - 1)] at positions pos.., slot i predicting position pos + i + 1
@@ -6261,12 +8262,18 @@ public:
     std::vector<int> dspark_draft(int anchor, int pos, int n) {
         const auto& c = cfg_;
         auto& d = dsp_;
+        if (!d.on || n < 1 || n > d.draft_limit || n > 7 || anchor < 0 || anchor >= c.vocab ||
+            pos < 0 || pos > context_ - n || pos > INT32_MAX - n || d.ring < c.window + n || d.ex.size() != size_t(d.layers))
+            throw std::runtime_error("ds41: DSpark draft bounds");
+        validate_dspark_scratch(n);
         const auto t0 = std::chrono::steady_clock::now();
         const int B = n;
         const size_t H = size_t(c.hidden);
         const int nope = c.head_dim - c.rope_dim, pairs = c.rope_dim / 2, width = c.heads * c.head_dim;
         const int group_in = c.heads / c.out_groups * c.head_dim;
-        std::vector<int> known{anchor};   // positions pos..: their tokens as the draft decides them
+        std::vector<int> known;
+        known.reserve(size_t(B) + 1);
+        known.push_back(anchor);   // positions pos..: their tokens as the draft decides them
         engram_prefetch(pos, known, pos, pos + 1);
         ck(cudaStreamSynchronize(stream_), "dspark");
         {   // embeddings
@@ -6310,27 +8317,52 @@ public:
             if (l == 0) {   // the same rows in every layer
                 for (int i = 0; i < B; ++i) {
                     const int first = std::max(0, pos + i - (c.window - 1));
-                    d.info[4 * i] = first % d.ring;
-                    d.info[4 * i + 1] = last - first + 1;
+                    const int first_slot = first % d.ring;
+                    const int rows = last - first + 1;
+                    if (first_slot < 0 || first_slot >= d.ring || rows < 1 || rows > d.ring || rows > 4096)
+                        throw std::runtime_error("ds41: DSpark attention window bounds");
+                    d.info[4 * i] = first_slot;
+                    d.info[4 * i + 1] = rows;
                     d.info[4 * i + 2] = 0;
                     d.info[4 * i + 3] = 0;
                 }
                 ck(cudaMemcpyAsync(d.info_dev.p, d.info, size_t(B) * 16, cudaMemcpyHostToDevice, stream_), "dspark info");
             }
+            bound = 1;
             for (int i = 0; i < B; ++i) bound = std::max(bound, d.info[4 * i + 1]);
+            if (bound < 1 || bound > d.ring || bound > 4096)
+                throw std::runtime_error("ds41: DSpark attention bound exceeds ring capacity");
             k::ds41_attention_multi(d.q.f(), B, c.heads, c.head_dim, d.rings[size_t(l)].f(), d.ring, d.info_dev.i(), bound, nullptr, 0,
-                                    d.info_dev.i(), 0, nullptr, w(p + "attn_sinks.weight"), scale, attn_scores_.f(), d.att.f(), stream_);
+                                    d.info_dev.i(), 0, nullptr, w(p + "attn_sinks.weight"), scale, attn_scores_.f(), d.att.f(), stream_,
+                                    attn_scores_.bytes);
             k::ds41_rope(d.att.f(), B * c.heads, c.head_dim, nope, pairs, d.cs.f(64), stream_, c.heads, 128);
             {   // grouped output projection: group g's out_rank rows read its heads' columns
                 const Weight& A = weight(p + "attn_output_a.weight");
-                if (fuse_)
+                if (A.in != group_in || A.out != c.out_groups * c.out_rank)
+                    throw std::runtime_error("ds41: DSpark grouped output projection shape");
+                if (A.type == GGML_TYPE_BF16 && fuse_)
                     k::ds41_bf16_gemv_mt_groups(reinterpret_cast<const uint16_t*>(A.data.p), size_t(c.out_rank) * A.row_bytes / 2, d.att.f(), width,
                                                 group_in, rows_idx, B, d.oa.f(), c.out_groups * c.out_rank, c.out_rank, c.out_rank, group_in,
                                                 c.out_groups, stream_);
-                else
+                else if (A.type == GGML_TYPE_BF16)
                 for (int g = 0; g < c.out_groups; ++g)
                     k::ds41_bf16_gemv_mt(reinterpret_cast<const uint16_t*>(A.data.b(size_t(g) * c.out_rank * A.row_bytes)), d.att.f(size_t(g) * group_in),
                                          width, rows_idx, B, d.oa.f(size_t(g) * c.out_rank), c.out_groups * c.out_rank, c.out_rank, group_in, stream_);
+                else if (k::native_mmvq_supported(A.type)) {
+                    const size_t col_all = k::native_q8_1_bytes(width, 1), col_group = k::native_q8_1_bytes(group_in, 1);
+                    if (col_all != col_group * size_t(c.out_groups) || q8_.bytes < col_all * size_t(B) ||
+                        q8g_.bytes < col_group * size_t(B) || oa_part_.bytes < size_t(B) * c.out_rank * sizeof(float))
+                        throw std::runtime_error("ds41: DSpark grouped output projection scratch");
+                    quantize(d.att.f(), q8_.p, width, B);
+                    for (int g = 0; g < c.out_groups; ++g) {
+                        ck(cudaMemcpy2DAsync(q8g_.p, col_group, q8_.b(size_t(g) * col_group), col_all, col_group,
+                                             size_t(B), cudaMemcpyDeviceToDevice, stream_), "dspark group pack");
+                        mmvq(A.type, A.data.b(size_t(g) * c.out_rank * A.row_bytes), q8g_.p, oa_part_.f(), group_in, c.out_rank, B);
+                        ck(cudaMemcpy2DAsync(d.oa.f(size_t(g) * c.out_rank), size_t(c.out_groups) * c.out_rank * 4,
+                                             oa_part_.p, size_t(c.out_rank) * 4, size_t(c.out_rank) * 4, size_t(B),
+                                             cudaMemcpyDeviceToDevice, stream_), "dspark group unpack");
+                    }
+                } else throw std::runtime_error("ds41: unsupported DSpark grouped output projection type");
             }
             dmat(p + "attn_output_b.weight", d.oa.f(), c.out_groups * c.out_rank, B, d.y.f(), c.hidden);
             k::ds41_hc_post(d.y.f(), d.h.f(), d.ca.f(4), d.ca.f(8), d.h2.f(), c.hidden, stream_, B);
@@ -6390,12 +8422,221 @@ public:
             }
             std::sort(pr.begin(), pr.end());
             const auto& E = d.ex[size_t(l)];
+            if (d.stream_experts) {
+                const size_t ge = E.gu_row * size_t(c.ff), de = E.d_row * H;
+                if (d.expert_stage_stride != 2 * ge + de || d.expert_stage.bytes < d.expert_stage_stride)
+                    throw std::runtime_error("ds41: DSpark expert stage too small");
+                std::vector<size_t> group_slots;
+                if (d.batch_stage && strata_env_is_one("STRATA_DS41_DSPARK_CACHE_SIM")) {
+                    constexpr std::array<size_t, 5> capacities = {16, 24, 45, 90, 100};
+                    for (size_t j0 = 0; j0 < pr.size();) {
+                        size_t j1 = j0 + 1;
+                        while (j1 < pr.size() && pr[j1].first == pr[j0].first) ++j1;
+                        const int e = pr[j0].first;
+                        if (e < 0 || e >= d.experts) throw std::runtime_error("ds41: DSpark cache simulation route bounds");
+                        const int key = l * d.experts + e;
+                        ++d.cache_accesses;
+                        for (size_t cidx = 0; cidx < d.cache_sim.size(); ++cidx) {
+                            auto& cache = d.cache_sim[cidx];
+                            auto it = std::find(cache.begin(), cache.end(), key);
+                            if (it != cache.end()) { ++d.cache_hits[cidx]; cache.erase(it); }
+                            else if (cache.size() == capacities[cidx]) cache.pop_front();
+                            cache.push_back(key);
+                        }
+                        j0 = j1;
+                    }
+                }
+                if (d.cache_experts) {
+                    // The router sync above completes the preceding layer's
+                    // reads before any slot can be reused. Keep all slots used
+                    // by this layer locked until its copies are enqueued.
+                    std::vector<uint8_t> locked(d.expert_cache_slots, 0);
+                    std::vector<int> misses;
+                    std::vector<size_t> miss_slots;
+                    group_slots.reserve(pr.size());
+                    for (size_t j0 = 0; j0 < pr.size();) {
+                        size_t j1 = j0 + 1;
+                        while (j1 < pr.size() && pr[j1].first == pr[j0].first) ++j1;
+                        const int e = pr[j0].first;
+                        if (e < 0 || e >= d.experts || group_slots.size() >= d.expert_stage_groups)
+                            throw std::runtime_error("ds41: DSpark cached expert route bounds");
+                        const int key = l * d.experts + e;
+                        size_t slot = d.expert_cache_slots;
+                        for (size_t s = 0; s < d.expert_cache_slots; ++s)
+                            if (d.expert_cache[s].key == key) { slot = s; break; }
+                        if (slot != d.expert_cache_slots) ++d.expert_cache_hits;
+                        else {
+                            for (size_t s = 0; s < d.expert_cache_slots; ++s)
+                                if (!locked[s] && (slot == d.expert_cache_slots || d.expert_cache[s].age < d.expert_cache[slot].age)) slot = s;
+                            if (slot == d.expert_cache_slots) throw std::runtime_error("ds41: DSpark expert cache has no free slot");
+                            d.expert_cache[slot].key = key;
+                            misses.push_back(e);
+                            miss_slots.push_back(slot);
+                            ++d.expert_cache_misses;
+                        }
+                        d.expert_cache[slot].age = ++d.expert_cache_clock;
+                        locked[slot] = true;
+                        group_slots.push_back(slot);
+                        j0 = j1;
+                    }
+                    if (!d.expert_host_stage || d.expert_host_stage_bytes < d.expert_stage_stride ||
+                        misses.size() > d.expert_stage_groups || misses.size() > d.expert_host_stage_bytes / d.expert_stage_stride ||
+                        d.expert_stage.bytes / d.expert_stage_stride < d.expert_cache_slots)
+                        throw std::runtime_error("ds41: DSpark expert cache staging bounds");
+                    auto copy_misses = [&](size_t worker, size_t workers) {
+                        for (size_t i = worker; i < misses.size(); i += workers) {
+                            const size_t e = size_t(misses[i]);
+                            uint8_t* host = d.expert_host_stage + i * d.expert_stage_stride;
+                            std::memcpy(host, E.gate + e * ge, ge);
+                            std::memcpy(host + ge, E.up + e * ge, ge);
+                            std::memcpy(host + 2 * ge, E.down + e * de, de);
+                        }
+                    };
+                    const size_t workers = std::min<size_t>(strata_env_is_one("STRATA_DS41_DSPARK_PARALLEL_STAGE") ? 4 : 1, misses.size());
+                    if (workers) {
+                        std::vector<std::jthread> threads;
+                        threads.reserve(workers - 1);
+                        for (size_t i = 1; i < workers; ++i) threads.emplace_back(copy_misses, i, workers);
+                        copy_misses(0, workers);
+                    }
+                    if (std::getenv("STRATA_DS41_DSPARK_TEST"))
+                        for (size_t i = 0; i < misses.size(); ++i) {
+                            const size_t e = size_t(misses[i]);
+                            const uint8_t* host = d.expert_host_stage + i * d.expert_stage_stride;
+                            if (std::memcmp(host, E.gate + e * ge, ge) || std::memcmp(host + ge, E.up + e * ge, ge) ||
+                                std::memcmp(host + 2 * ge, E.down + e * de, de))
+                                throw std::runtime_error("ds41: cached expert staging mismatch");
+                        }
+                    for (size_t i = 0; i < misses.size(); ++i)
+                        ck(cudaMemcpyAsync(d.expert_stage.b(miss_slots[i] * d.expert_stage_stride),
+                                           d.expert_host_stage + i * d.expert_stage_stride, d.expert_stage_stride,
+                                           cudaMemcpyHostToDevice, stream_), "dspark cached expert upload");
+                    if (std::getenv("STRATA_DS41_DSPARK_TEST")) {
+                        ck(cudaStreamSynchronize(stream_), "dspark cached expert test");
+                        size_t group = 0;
+                        for (size_t j0 = 0; j0 < pr.size();) {
+                            size_t j1 = j0 + 1;
+                            while (j1 < pr.size() && pr[j1].first == pr[j0].first) ++j1;
+                            const size_t e = size_t(pr[j0].first), slot = group_slots[group++];
+                            if (d.expert_cache[slot].key != l * d.experts + int(e))
+                                throw std::runtime_error("ds41: cached expert key mismatch");
+                            const uint8_t* source[] = {E.gate + e * ge, E.up + e * ge, E.down + e * de};
+                            const size_t offsets[] = {0, ge, 2 * ge}, lengths[] = {ge, ge, de};
+                            for (int part = 0; part < 3; ++part) {
+                                if (lengths[part] < 32) throw std::runtime_error("ds41: cached expert test bounds");
+                                for (size_t at : {size_t(0), lengths[part] - 32}) {
+                                    uint8_t sample[32];
+                                    ck(cudaMemcpy(sample, d.expert_stage.b(slot * d.expert_stage_stride + offsets[part] + at),
+                                                  sizeof sample, cudaMemcpyDeviceToHost), "dspark cached expert sample");
+                                    if (std::memcmp(sample, source[part] + at, sizeof sample))
+                                        throw std::runtime_error("ds41: cached expert device mismatch");
+                                }
+                            }
+                            j0 = j1;
+                        }
+                    }
+                } else if (d.batch_stage) {
+                    static const bool parallel_stage = strata_env_is_one("STRATA_DS41_DSPARK_PARALLEL_STAGE");
+                    size_t groups = 0;
+                    std::vector<int> stage_experts;
+                    if (parallel_stage && !d.pin_experts) stage_experts.reserve(pr.size());
+                    for (size_t j0 = 0; j0 < pr.size();) {
+                        size_t j1 = j0 + 1;
+                        while (j1 < pr.size() && pr[j1].first == pr[j0].first) ++j1;
+                        const int e = pr[j0].first;
+                        if (e < 0 || e >= d.experts || groups >= d.expert_stage_groups)
+                            throw std::runtime_error("ds41: DSpark expert batch bounds");
+                        if (d.pin_experts) {
+                            uint8_t* stage = d.expert_stage.b(groups * d.expert_stage_stride);
+                            ck(cudaMemcpyAsync(stage, E.gate + size_t(e) * ge, ge, cudaMemcpyHostToDevice, stream_), "dspark pinned gate");
+                            ck(cudaMemcpyAsync(stage + ge, E.up + size_t(e) * ge, ge, cudaMemcpyHostToDevice, stream_), "dspark pinned up");
+                            ck(cudaMemcpyAsync(stage + 2 * ge, E.down + size_t(e) * de, de, cudaMemcpyHostToDevice, stream_), "dspark pinned down");
+                        } else if (parallel_stage) {
+                            stage_experts.push_back(e);
+                        } else {
+                            uint8_t* host = d.expert_host_stage + groups * d.expert_stage_stride;
+                            std::memcpy(host, E.gate + size_t(e) * ge, ge);
+                            std::memcpy(host + ge, E.up + size_t(e) * ge, ge);
+                            std::memcpy(host + 2 * ge, E.down + size_t(e) * de, de);
+                        }
+                        ++groups;
+                        j0 = j1;
+                    }
+                    if (!d.pin_experts && parallel_stage) {
+                        if (!d.expert_host_stage || d.expert_host_stage_bytes < d.expert_stage_stride ||
+                            groups > d.expert_host_stage_bytes / d.expert_stage_stride ||
+                            groups > d.expert_stage.bytes / d.expert_stage_stride)
+                            throw std::runtime_error("ds41: DSpark host staging bounds");
+                        const size_t workers = std::min<size_t>(4, groups);
+                        auto copy_groups = [&](size_t worker) {
+                            for (size_t i = worker; i < groups; i += workers) {
+                                const size_t e = size_t(stage_experts[i]);
+                                uint8_t* host = d.expert_host_stage + i * d.expert_stage_stride;
+                                std::memcpy(host, E.gate + e * ge, ge);
+                                std::memcpy(host + ge, E.up + e * ge, ge);
+                                std::memcpy(host + 2 * ge, E.down + e * de, de);
+                            }
+                        };
+                        if (workers) {
+                            std::vector<std::jthread> threads;
+                            threads.reserve(workers - 1);
+                            for (size_t i = 1; i < workers; ++i) threads.emplace_back(copy_groups, i);
+                            copy_groups(0);
+                        } // join before the async copy reads the staging buffer
+                        if (std::getenv("STRATA_DS41_DSPARK_TEST"))
+                            for (size_t i = 0; i < groups; ++i) {
+                                const size_t e = size_t(stage_experts[i]);
+                                const uint8_t* host = d.expert_host_stage + i * d.expert_stage_stride;
+                                if (std::memcmp(host, E.gate + e * ge, ge) || std::memcmp(host + ge, E.up + e * ge, ge) ||
+                                    std::memcmp(host + 2 * ge, E.down + e * de, de))
+                                    throw std::runtime_error("ds41: parallel expert staging mismatch");
+                            }
+                    }
+                    if (!d.pin_experts)
+                        ck(cudaMemcpyAsync(d.expert_stage.p, d.expert_host_stage, groups * d.expert_stage_stride,
+                                           cudaMemcpyHostToDevice, stream_), "dspark expert batch stage");
+                }
+                size_t group = 0;
+                for (size_t j0 = 0; j0 < pr.size();) {
+                    size_t j1 = j0;
+                    while (j1 < pr.size() && pr[j1].first == pr[j0].first) ++j1;
+                    const int e = pr[j0].first, m = int(j1 - j0);
+                    if (e < 0 || e >= d.experts || m < 1 || m > 8) throw std::runtime_error("ds41: DSpark expert route bounds");
+                    int toks[8], rows[8];
+                    for (int j = 0; j < m; ++j) {
+                        const int t = pr[j0 + size_t(j)].second;
+                        if (t < 0 || t >= B) throw std::runtime_error("ds41: DSpark expert token bounds");
+                        toks[j] = t; rows[j] = int(j0) + j;
+                    }
+                    if (d.cache_experts && group >= group_slots.size()) throw std::runtime_error("ds41: DSpark cache group bounds");
+                    const size_t slot = d.cache_experts ? group_slots[group] : (d.batch_stage ? group : 0);
+                    if (slot >= d.expert_stage.bytes / d.expert_stage_stride) throw std::runtime_error("ds41: DSpark cache slot bounds");
+                    uint8_t* stage = d.expert_stage.b(slot * d.expert_stage_stride);
+                    if (!d.batch_stage) {
+                        // One stream orders each copy after the previous expert's kernels, allowing safe reuse.
+                        ck(cudaMemcpyAsync(stage, E.gate + size_t(e) * ge, ge, cudaMemcpyHostToDevice, stream_), "dspark gate stage");
+                        ck(cudaMemcpyAsync(stage + ge, E.up + size_t(e) * ge, ge, cudaMemcpyHostToDevice, stream_), "dspark up stage");
+                        ck(cudaMemcpyAsync(stage + 2 * ge, E.down + size_t(e) * de, de, cudaMemcpyHostToDevice, stream_), "dspark down stage");
+                    }
+                    k::ds41_mxfp4_gemv_mt(stage, E.gu_row, d.xn.f(), c.hidden, toks, m, d.eg.f(j0 * c.ff), c.ff, c.ff, c.hidden, stream_);
+                    k::ds41_mxfp4_gemv_mt(stage + ge, E.gu_row, d.xn.f(), c.hidden, toks, m, d.eu.f(j0 * c.ff), c.ff, c.ff, c.hidden, stream_);
+                    k::glm_swiglu(d.eg.f(j0 * c.ff), d.eu.f(j0 * c.ff), d.eh.f(j0 * c.ff), m * c.ff, d.clamp, stream_);
+                    k::ds41_mxfp4_gemv_mt(stage + 2 * ge, E.d_row, d.eh.f(), c.ff, rows, m, d.ed.f(j0 * H), c.hidden, c.hidden, c.ff, stream_);
+                    ++group;
+                    j0 = j1;
+                }
+            } else {
             for (size_t j0 = 0; j0 < pr.size();) {
                 size_t j1 = j0;
                 while (j1 < pr.size() && pr[j1].first == pr[j0].first) ++j1;
                 const int e = pr[j0].first, m = int(j1 - j0);
+                if (e < 0 || e >= d.experts || m < 1 || m > 8) throw std::runtime_error("ds41: DSpark expert route bounds");
                 int toks[8], prs[8];
-                for (int j = 0; j < m; ++j) { toks[j] = pr[j0 + size_t(j)].second; prs[j] = int(j0) + j; }
+                for (int j = 0; j < m; ++j) {
+                    const int t = pr[j0 + size_t(j)].second;
+                    if (t < 0 || t >= B) throw std::runtime_error("ds41: DSpark expert token bounds");
+                    toks[j] = t; prs[j] = int(j0) + j;
+                }
                 const size_t ge = E.gu_row * size_t(c.ff) * size_t(e);
                 k::ds41_mxfp4_gemv_mt(E.gate + ge, E.gu_row, d.xn.f(), c.hidden, toks, m, d.eg.f(j0 * c.ff), c.ff, c.ff, c.hidden, stream_);
                 k::ds41_mxfp4_gemv_mt(E.up + ge, E.gu_row, d.xn.f(), c.hidden, toks, m, d.eu.f(j0 * c.ff), c.ff, c.ff, c.hidden, stream_);
@@ -6408,12 +8649,15 @@ public:
                 size_t j1 = j0;
                 while (j1 < pr.size() && pr[j1].first == pr[j0].first) ++j1;
                 const int e = pr[j0].first, m = int(j1 - j0);
+                if (e < 0 || e >= d.experts || m < 1 || m > 8) throw std::runtime_error("ds41: DSpark expert route bounds");
                 int rows[8];
                 for (int j = 0; j < m; ++j) rows[j] = int(j0) + j;
                 k::ds41_mxfp4_gemv_mt(E.down + E.d_row * H * size_t(e), E.d_row, d.eh.f(), c.ff, rows, m, d.ed.f(j0 * H), c.hidden, c.hidden,
                                       c.ff, stream_);
                 j0 = j1;
             }
+            }
+            const int P = int(pr.size());
             for (int j = 0; j < P; ++j) k::ds41_axpy(d.ed.f(size_t(j) * H), wt[pr[size_t(j)]], d.y.f(size_t(pr[size_t(j)].second) * H), c.hidden, stream_);
             k::ds41_hc_post(d.y.f(), d.h.f(), d.cf.f(4), d.cf.f(8), d.h2.f(), c.hidden, stream_, B);
             std::swap(d.h, d.h2);
@@ -6433,27 +8677,35 @@ public:
         static const bool sched = std::getenv("STRATA_DS41_DSPARK_SCHED") && std::string(std::getenv("STRATA_DS41_DSPARK_SCHED")) == "1";
         const bool use_conf = (pmin > 0 || sched) && !d.conf.empty();
         std::vector<int> out;
+        out.reserve(size_t(B));
         if (d.w1_dev.p) {   // the chain on the device: one download of the tokens (and confidences) at the end
+            ck(cudaMemsetAsync(d.head_error.p, 0, sizeof(int), stream_), "device-head error clear");
             d.htok[0] = anchor;
             ck(cudaMemcpyAsync(d.dtok.p, d.htok, 4, cudaMemcpyHostToDevice, stream_), "anchor");
             for (int i = 0; i < B; ++i) {
-                k::ds41_markov_row(d.w1_dev.h(), d.markov, d.dtok.i(), i, d.rowf.f(), stream_);
+                k::ds41_markov_row(d.w1_dev.h(), d.markov, c.vocab, d.dtok.i(), i, d.rowf.f(), d.head_error.i(), stream_);
                 if (use_conf) k::ds41_confidence(d.conf_dev.f(), d.x.f(size_t(i) * H), c.hidden, d.rowf.f(), d.markov, d.dconf.f(), i, stream_);
                 dmat("dspark.markov_w2.weight", d.rowf.f(), d.markov, 1, d.bvec.f(), c.vocab);
-                k::ds41_add(d.logits.f(size_t(i) * c.vocab), d.bvec.f(), d.bvec.f(), c.vocab, stream_);
-                k::ds41_argmax_into(d.bvec.f(), c.vocab, d.dtok.i(), i, stream_);
+                k::ds41_add_argmax_into(d.logits.f(size_t(i) * c.vocab), d.bvec.f(), c.vocab, d.dtok.i(), i, d.head_error.i(), stream_);
             }
             float* hconf = reinterpret_cast<float*>(d.htok + B + 1);
+            int* hbad = d.htok + 2 * B + 1;
             ck(cudaMemcpyAsync(d.htok + 1, d.dtok.i() + 1, size_t(B) * 4, cudaMemcpyDeviceToHost, stream_), "drafts");
             if (use_conf) ck(cudaMemcpyAsync(hconf, d.dconf.p, size_t(B) * 4, cudaMemcpyDeviceToHost, stream_), "confidences");
+            ck(cudaMemcpyAsync(hbad, d.head_error.p, sizeof(int), cudaMemcpyDeviceToHost, stream_), "device-head status");
             ck(cudaStreamSynchronize(stream_), "draft");
+            if (*hbad) throw std::runtime_error("ds41: device draft head encountered an invalid token or non-finite logits");
+            for (int i = 0; i < B; ++i)
+                if (d.htok[i + 1] < 0 || d.htok[i + 1] >= c.vocab)
+                    throw std::runtime_error("ds41: device draft token outside vocabulary");
             int keep = B;
             for (int i = 0; i < B; ++i)
                 if (use_conf && pmin > 0 && hconf[i] < pmin) { keep = i; break; }
             if (sched && use_conf) keep = sched_prefix(hconf, keep);
             for (int i = 0; i < keep; ++i) {
                 out.push_back(d.htok[1 + i]);
-                engram_prefetch(pos, std::vector<int>(d.htok, d.htok + 2 + i), pos + 1 + i, pos + 2 + i);
+                known.push_back(d.htok[1 + i]);
+                engram_prefetch(pos, known, pos + int(known.size()) - 1, pos + int(known.size()));
             }
             d.draft_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             d.draft_head_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - th).count();
@@ -6502,6 +8754,12 @@ public:
     // STRATA_DS41_DSPARK_N (the block size): tokens drafted per step
     std::vector<int> spec_generate(int tok, int pos, int steps) {
         auto& d = dsp_;
+        if (tok < 0 || tok >= cfg_.vocab || pos < 0 || pos > context_ || steps < 0 || steps > context_ - pos ||
+            (!sess_ && size_t(pos) != history_.size()))
+            throw std::runtime_error("ds41: speculative decode position, token, or output bounds");
+        if (steps == 0) return {};
+        // Verify passes and the drafter's attention scratch can hold up to eight positions.
+        if (chunk_ < 8) throw std::runtime_error("ds41: speculative decoding requires decode chunk >= 8");
         const int m = std::min({pos, cfg_.window, kFeatRing});
         if (d.on) dspark_inject(pos - m, m);   // (lookup drafts alone: no drafter to feed)
         if (spec_v_.empty()) {   // lookup drafts alone: the verify pass's ratio-2 stash for rewind (load_dspark's, 8 positions)
@@ -6514,8 +8772,9 @@ public:
                 }
         }
         const char* nv = std::getenv("STRATA_DS41_DSPARK_N");
-        const int nd = std::max(1, std::min(d.block, nv ? std::atoi(nv) : d.block));
+        const int nd = std::max(1, std::min(d.draft_limit, nv ? std::atoi(nv) : d.draft_limit));
         const int V = cfg_.vocab;
+        const bool device_argmax = strata_env_is_one("STRATA_DS41_VERIFY_ARGMAX_GPU") && !std::getenv("STRATA_DS41_MARGINS");
         std::vector<int> out{tok};
         // STRATA_DS41_LOOKUP=1: draft from the token history first (prompt-lookup decoding): the longest suffix of
         // the last STRATA_DS41_LOOKUP_MAX (4) .. STRATA_DS41_LOOKUP_MIN (2) tokens that occurred before, its most recent
@@ -6531,15 +8790,27 @@ public:
         // STRATA_DS41_LOOKUP_BONUS 0.5) reaches DSpark's mean
         static const bool adapt = !(std::getenv("STRATA_DS41_LOOKUP_ADAPT") && std::string(std::getenv("STRATA_DS41_LOOKUP_ADAPT")) == "0");
         static const float bonus = std::getenv("STRATA_DS41_LOOKUP_BONUS") ? float(std::atof(std::getenv("STRATA_DS41_LOOKUP_BONUS"))) : 0.5f;
-        float ema_lk = 3.0f, ema_ds = 2.5f;
+        const bool auto_draft = strata_env_is_one("STRATA_DS41_DSPARK_AUTO");
+        const bool auto_backoff = auto_draft && strata_env_is_one("STRATA_DS41_DSPARK_AUTO_BACKOFF");
+        int auto_since_probe = 0, auto_skipped = 0;
+        int auto_interval = 15;
+        std::array<uint64_t, 8> accept_hist{};
+        const bool accept_hist_on = strata_env_is_one("STRATA_DS41_DSPARK_ACCEPT_HIST");
+        float ema_lk = 3.0f, ema_ds = auto_draft ? 1.0f : 2.5f;
         auto history_draft = [&](int cap) {
-            std::vector<int> seq(history_.begin(), history_.begin() + pos);   // positions < pos, then tok at pos
-            seq.push_back(tok);
-            const int L = int(seq.size());
-            for (int k = std::min(lk_max, L - 1); k >= lk_min; --k) {
+            if (cap <= 0 || pos < 0 || size_t(pos) > history_.size() || pos == INT32_MAX) return std::vector<int>{};
+            std::vector<int> seq(size_t(pos) + 1);   // positions < pos, then tok at pos
+            std::copy_n(history_.begin(), pos, seq.begin());
+            seq[size_t(pos)] = tok;
+            const int L = pos + 1;
+            const int max_k = std::min(lk_max, L - 1);
+            for (int k = max_k; k >= lk_min; --k) {
                 for (int j = L - k - 1; j >= 0; --j) {   // the most recent earlier occurrence of the last k tokens
                     if (!std::equal(seq.begin() + j, seq.begin() + j + k, seq.end() - k)) continue;
-                    std::vector<int> d(seq.begin() + j + k, seq.begin() + std::min(L, j + k + cap));
+                    const int start = j + k;
+                    const int take = std::min(cap, L - start);
+                    std::vector<int> d(static_cast<size_t>(take));
+                    std::copy_n(seq.begin() + start, take, d.begin());
                     if (!d.empty()) return d;
                 }
             }
@@ -6549,6 +8820,7 @@ public:
             const int cap = std::min(nd, steps - int(out.size()));
             std::vector<int> drafts;
             bool from_history = false;
+            bool skipped_draft = false;
             // without a DSpark drafter (STRATA_DS41_LOOKUP=1 alone, e.g. a GPU without room for it) a step tries the history
             // while its running mean of accepted tokens is at least STRATA_DS41_LOOKUP_GATE (1.0) - a rejected draft still
             // widens the pass, which the CPU lane pays for; otherwise a plain one-token pass (the mean recovers +0.25 each)
@@ -6566,29 +8838,50 @@ public:
                 }
             }
             if (!from_history && d.on) {
-                const double ds0 = d.draft_s;
-                drafts = dspark_draft(tok, pos, cap);
-                const double dms = (d.draft_s - ds0) * 1e3;
-                d.draft_ms = d.draft_ms > 0 ? 0.8 * d.draft_ms + 0.2 * dms : dms;
-                d.sched_cut += cap - int(drafts.size());
+                if (auto_draft && ema_ds < 0.75f && auto_since_probe < auto_interval) {
+                    skipped_draft = true;
+                    ++auto_since_probe;
+                    ++auto_skipped;
+                } else {
+                    auto_since_probe = 0;
+                    const double ds0 = d.draft_s;
+                    drafts = dspark_draft(tok, pos, cap);
+                    const double dms = (d.draft_s - ds0) * 1e3;
+                    d.draft_ms = d.draft_ms > 0 ? 0.8 * d.draft_ms + 0.2 * dms : dms;
+                    d.sched_cut += cap - int(drafts.size());
+                }
             }
             const int n = int(drafts.size());   // the confidence cutoff may draft fewer
             std::vector<int> v{tok};
             v.insert(v.end(), drafts.begin(), drafts.end());
             const auto v0 = std::chrono::steady_clock::now();
+            for (auto& v : spec_used_) v.clear();
+            for (auto& v : spec_missed_) v.clear();
             spec_save_ = true;
-            const auto& lg = forward(v.data(), n + 1, pos, true);
+            if (device_argmax) (void)forward_argmax(v.data(), n + 1, pos);
+            else (void)forward(v.data(), n + 1, pos, true);
             spec_save_ = false;
-            auto argmax = [&](int r) { return int(std::max_element(lg.begin() + size_t(r) * V, lg.begin() + size_t(r + 1) * V) - (lg.begin() + size_t(r) * V)); };
+            auto argmax = [&](int r) {
+                if (device_argmax) return verify_argmax_host_[size_t(r)];
+                const float* row = logits_host_.data() + size_t(r) * V;
+                return int(std::max_element(row, row + V) - row);
+            };
             int a = 0, next = argmax(0);
-            log_margin(lg.data(), V, int(out.size()));
+            if (!device_argmax) log_margin(logits_host_.data(), V, int(out.size()));
             while (a < n && next == drafts[size_t(a)]) {
                 out.push_back(next);
                 ++a;
                 next = argmax(a);
-                log_margin(lg.data() + size_t(a) * V, V, int(out.size()));
+                if (!device_argmax) log_margin(logits_host_.data() + size_t(a) * V, V, int(out.size()));
             }
             rewind(pos + a + 1);
+            for (int i = 0; i <= a; ++i) {
+                used_.insert(used_.end(), spec_used_[size_t(i)].begin(), spec_used_[size_t(i)].end());
+                missed_.insert(missed_.end(), spec_missed_[size_t(i)].begin(), spec_missed_[size_t(i)].end());
+                if (!rt_count_.empty())
+                    for (int expert : spec_used_[size_t(i)]) rt_count_[size_t(expert)] += 1;
+            }
+            { const auto a0 = std::chrono::steady_clock::now(); this->adapt(a + 1); prof_[3] += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count(); }
             const double vsec = std::chrono::duration<double>(std::chrono::steady_clock::now() - v0).count();
             d.verify_s += vsec;
             if (n + 1 < 16) d.verify_ms[n + 1] = d.verify_ms[n + 1] > 0 ? 0.8 * d.verify_ms[n + 1] + 0.2 * vsec * 1e3 : vsec * 1e3;
@@ -6596,10 +8889,17 @@ public:
             d.drafted += n;
             d.accepted += a;
             d.steps += 1;
+            if (accept_hist_on) {
+                if (a < 0 || size_t(a) >= accept_hist.size()) throw std::logic_error("ds41: draft acceptance histogram bounds");
+                ++accept_hist[size_t(a)];
+            }
             decoded(a + 1);
             if (from_history) { d.lookup_steps += 1; d.lookup_drafted += n; d.lookup_accepted += a; ema_lk = 0.7f * ema_lk + 0.3f * float(a); }
             else {
-                if (d.on) ema_ds = 0.7f * ema_ds + 0.3f * float(a);
+                if (d.on && !skipped_draft) {
+                    ema_ds = 0.7f * ema_ds + 0.3f * float(a);
+                    if (auto_backoff) auto_interval = a == 0 ? std::min(60, auto_interval * 2) : 15;
+                }
                 if (lookup && adapt) ema_lk = std::min(ema_lk + 0.25f, 4.0f);   // a lookup chance again after DSpark / plain steps
             }
             out.push_back(next);
@@ -6612,17 +8912,28 @@ public:
                   << " draft_s=" << d.draft_s << " (layers " << d.draft_layers_s << " of which router waits " << d.draft_route_s << ", head "
                   << d.draft_head_s << ") verify_s=" << d.verify_s << " inject_s=" << d.inject_s << " cut=" << d.sched_cut << " verify_ms_by_width=";
         for (int t = 1; t < 9; ++t) std::cerr << (t > 1 ? "," : "") << d.verify_ms[t];
+        if (accept_hist_on) {
+            std::cerr << " accept_hist=";
+            for (size_t i = 0; i < accept_hist.size(); ++i) std::cerr << (i ? "," : "") << accept_hist[i];
+        }
         if (lookup)
             std::cerr << " lookup_steps=" << d.lookup_steps << " lookup_drafted=" << d.lookup_drafted << " lookup_accepted=" << d.lookup_accepted
                       << " lookup_s=" << d.lookup_s;
+        if (auto_draft) std::cerr << " auto_skipped=" << auto_skipped;
         std::cerr << "\n";
+        if (d.cache_accesses)
+            std::cerr << "DS41 dspark_cache_sim accesses=" << d.cache_accesses << " hits_16=" << d.cache_hits[0]
+                      << " hits_24=" << d.cache_hits[1] << " hits_45=" << d.cache_hits[2] << " hits_90=" << d.cache_hits[3]
+                      << " hits_100=" << d.cache_hits[4] << "\n";
+        if (d.cache_experts)
+            std::cerr << "DS41 dspark_cache hits=" << d.expert_cache_hits << " misses=" << d.expert_cache_misses << "\n";
         return out;
     }
 
     // forget positions >= pos (after a verify pass covering them): the token history, and the open compressor group
     void rewind(int pos) {
         const auto& c = cfg_;
-        if (pos > int(history_.size())) throw std::logic_error("ds41: rewind forward");
+        if (pos < 0 || size_t(pos) > history_.size()) throw std::logic_error("ds41: rewind outside history");
         if (pos == int(history_.size())) return;
         history_.resize(size_t(pos));
         const int last = pos - 1, i = last - pos0_;
@@ -6780,6 +9091,7 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
     const auto p1 = std::chrono::steady_clock::now();
     std::fill(std::begin(d.prof_), std::end(d.prof_), 0.0);
     d.tier_hits_ = d.tier_all_ = 0;
+    d.canon_routes_ = d.canon_cpu_routes_ = d.canon_streamed_ = 0;
     d.prefill_done();
     std::fill(std::begin(d.xt_), std::end(d.xt_), 0.0);
     std::fill(std::begin(d.dtime_), std::end(d.dtime_), 0.0);
@@ -6923,6 +9235,66 @@ int run(int argc, char** argv) {
     // --engram-profile=OUT: no model weights; the Engram rows every position of the token streams (argv[2]: @file, or
     // several @file separated by ';') would read, counted per table and written ranked (STRATA_DS41_ENGRAM_ROWS)
     if (!engram_profile.empty()) return engram_profile_run(argv[1], argv[2], engram_profile);
+    (void)cpu_trim_threshold();   // reject invalid tuning before allocating model resources
+    if (strata_env_is_one("STRATA_DS41_DSPARK_CACHE_EXPERTS")) {
+        const int slots = dspark_cache_slots();
+        if (const char* path = std::getenv("STRATA_DS41_DSPARK"); path && *path) {
+            // Check cache capacity against draft metadata before loading target
+            // weights or allocating any device staging buffers.
+            GgufFile draft(path);
+            auto value = [&](const char* key, double fallback) {
+                const auto* v = draft.get(key);
+                return v ? (v->is_num() ? v->num() : v->items.empty() ? fallback : v->items[0].num()) : fallback;
+            };
+            const double block = value("dflash.block_size", 5), top = value("dflash.expert_used_count", 3);
+            if (!std::isfinite(block) || !std::isfinite(top) || block < 1 || block > 7 || top < 1 || top > 16 ||
+                slots < (strata_env_is_one("STRATA_DS41_DSPARK_EXTEND") ? 7 : int(block)) * int(top))
+                throw std::invalid_argument("ds41: DSpark cache cannot hold one draft batch");
+        }
+    }
+#if defined(__HIP_PLATFORM_AMD__)
+    const char* draft_path = std::getenv("STRATA_DS41_DSPARK");
+    if (draft_path && *draft_path && strata_env_is_one("STRATA_DS41_DSPARK_STREAM_EXPERTS")) {
+        if (strata_env_is_one("STRATA_DS41_DSPARK_PIN_EXPERTS"))
+            throw std::runtime_error("ds41: DSpark mapped expert pinning is disabled on AMD; use batch staging without pinning");
+        const char* hybrid = std::getenv("STRATA_DS41_PREFILL_HYBRID");
+        if (strata_env_is_one("STRATA_DS41_RAM_COPY") || strata_env_is_one("STRATA_DS41_DENSE_MMQ") ||
+            strata_env_is_one("STRATA_DS41_DECODE_MMQ") || (hybrid && std::atoi(hybrid) > 0))
+            throw std::runtime_error("ds41: streamed DSpark cannot use unbounded or unvalidated AMD memory paths");
+        const char* pin_gb = std::getenv("STRATA_DS41_PIN_GB");
+        char* end = nullptr;
+        const double pin = pin_gb ? std::strtod(pin_gb, &end) : 60.0;
+        if (!pin_gb || end == pin_gb || *end || !std::isfinite(pin) || pin != 0.0 ||
+            strata_env_is_one("STRATA_DS41_PIN_EXPERTS"))
+            throw std::runtime_error("ds41: streamed DSpark on AMD requires STRATA_DS41_PIN_GB=0 and no mapped expert pinning");
+        const char* populate = std::getenv("STRATA_DS41_POPULATE");
+        if (!populate || std::string(populate) != "0")
+            throw std::runtime_error("ds41: streamed DSpark on AMD requires STRATA_DS41_POPULATE=0 to avoid bulk page faults");
+        const char* chunk_env = std::getenv("STRATA_DS41_PREFILL_CHUNK");
+        const int safe_chunk = chunk_env ? std::atoi(chunk_env) : 0;
+        if (!strata_env_is_one("STRATA_DS41_DSPARK_BATCH_STAGE") || safe_chunk < 8 || safe_chunk > 64 ||
+            strata_env_is_one("STRATA_DS41_GROW"))
+            throw std::runtime_error("ds41: streamed DSpark on AMD requires batch staging, prefill chunk 8..64 and GROW off");
+#if defined(__linux__)
+        std::ifstream pressure("/proc/pressure/memory"), meminfo("/proc/meminfo");
+        std::string line;
+        double avg10 = -1, avg60 = -1;
+        unsigned long long available_kib = 0;
+        while (std::getline(pressure, line)) if (line.compare(0, 5, "full ") == 0) {
+            std::istringstream fields(line.substr(5));
+            std::string field;
+            while (fields >> field) {
+                if (field.rfind("avg10=", 0) == 0) avg10 = std::stod(field.substr(6));
+                if (field.rfind("avg60=", 0) == 0) avg60 = std::stod(field.substr(6));
+            }
+        }
+        while (std::getline(meminfo, line)) if (line.rfind("MemAvailable:", 0) == 0)
+            std::istringstream(line.substr(13)) >> available_kib;
+        if (avg10 < 0 || avg60 < 0 || avg10 > 5 || avg60 > 5 || available_kib < (16ull << 20))
+            throw std::runtime_error("ds41: insufficient host memory headroom or excessive memory pressure for streamed DSpark");
+#endif
+    }
+#endif
     // several prompts separated by ';' (each @file or text) run one after another from an empty sequence (their
     // logits appended to --save-all-logits in turn); the generation continues the last one
     std::vector<std::vector<int>> prompts;
@@ -7066,9 +9438,13 @@ int run(int argc, char** argv) {
               << " engram=" << d.prof_[4] << " index_host=" << d.prof_[5] << " head=" << d.prof_[6] << "\n";    d.hybrid_line();
     std::fill(std::begin(d.prof_), std::end(d.prof_), 0.0);
     d.tier_hits_ = d.tier_all_ = 0;
+    d.canon_routes_ = d.canon_cpu_routes_ = d.canon_streamed_ = 0;
+    std::fill(std::begin(d.own_ms_), std::end(d.own_ms_), 0.0);
     d.prefill_done();
     d.miss_test_drop();
     const auto t2b = std::chrono::steady_clock::now();
+    std::fill(std::begin(d.dtime_), std::end(d.dtime_), 0.0);
+    d.dtokens_ = 0;
     std::cerr << "DS41 prefill_done_s=" << std::chrono::duration<double>(t2b - t2).count() << "\n";
     if (!check_dir.empty())
         std::cerr << "CHECK worst rel=" << worst << " at " << worst_at << " mean_KL=" << kl_sum / std::max(kl_n, 1)
@@ -7079,7 +9455,7 @@ int run(int argc, char** argv) {
     }
     std::vector<int> out;
     int pos = int(prompt.size());
-    const double attn_host0 = d.attn_host_s_, ffn_host0 = d.ffn_host_s_, loop0 = d.loop_s_;
+    const double attn_host0 = d.attn_host_s_, ffn_host0 = d.ffn_host_s_, route_wait0 = d.route_wait_s_, loop0 = d.loop_s_;
     std::fill(std::begin(d.xt_), std::end(d.xt_), 0.0);
     const double peer_gpu0 = d.peer_gpu_ms(), peer_late0 = d.peer_late_ms();
     // STRATA_DS41_DSPARK_OFF=1: the drafter loaded (the same residency) but plain decoding, to compare against
@@ -7102,7 +9478,9 @@ int run(int argc, char** argv) {
         std::cerr << "DS41 decode_gpu_ms_per_pass";
         for (int q = 0; q < 10; ++q) std::cerr << " " << names[q] << "=" << d.dtime_[q] / d.dtokens_;
         std::cerr << " passes=" << d.dtokens_ << " host_ms_per_pass attention=" << (d.attn_host_s_ - attn_host0) * 1e3 / d.dtokens_
-                  << " ffn=" << (d.ffn_host_s_ - ffn_host0) * 1e3 / d.dtokens_ << " layers=" << (d.loop_s_ - loop0) * 1e3 / d.dtokens_
+                  << " ffn=" << (d.ffn_host_s_ - ffn_host0) * 1e3 / d.dtokens_
+                  << " route_sync=" << (d.route_wait_s_ - route_wait0) * 1e3 / d.dtokens_
+                  << " layers=" << (d.loop_s_ - loop0) * 1e3 / d.dtokens_
                   << " (ffn: enqueue " << d.xt_[0] * 1e3 / d.dtokens_ << " lane " << d.xt_[1] * 1e3 / d.dtokens_ << " peer " << d.xt_[2] * 1e3 / d.dtokens_
                   << " peer_gpu " << (d.peer_gpu_ms() - peer_gpu0) / d.dtokens_ << " peer_late " << (d.peer_late_ms() - peer_late0) / d.dtokens_ << ")";
         const double* ps = d.peer_split_ms();   // (reset at prefill_done: decode's calls)
@@ -7110,9 +9488,15 @@ int run(int argc, char** argv) {
                   << " down=" << ps[3] / d.dtokens_ << " tail=" << ps[4] / d.dtokens_ << "\n";
     }
     std::cerr << "DS41 profile_s step=" << d.prof_[0] << " gpu_to_router=" << d.prof_[1] << " cpu_experts=" << d.prof_[2]
-              << " gpu_tier_hit=" << (d.tier_all_ > 0 ? d.tier_hits_ / d.tier_all_ : 0) << " promotions=" << d.promotions_ << " adapt=" << d.prof_[3] << " engram=" << d.prof_[4]
+              << " gpu_tier_hit=" << (d.tier_all_ > 0 ? d.tier_hits_ / d.tier_all_ : 0)
+              << " canon_hit=" << (d.canon_cpu_routes_ ? double(d.canon_routes_) / double(d.canon_cpu_routes_) : 0.0)
+              << " canon_streamed=" << (d.canon_cpu_routes_ ? double(d.canon_streamed_) / double(d.canon_cpu_routes_) : 0.0) << " promotions=" << d.promotions_ << " adapt=" << d.prof_[3] << " engram=" << d.prof_[4]
               << " index_host=" << d.prof_[5] << " head=" << d.prof_[6] << " stage_copy=" << d.prof_[7] << " stream_wait=" << d.stream_wait_s_ << "\n";
     d.miss_line(double(out.size()));
+    if (d.own_ms_[3] > 0)
+        std::cerr << "DS41 remote_own_decode layer_calls=" << d.own_ms_[3] << " total_s gpu_sync=" << d.own_ms_[0] / 1e3
+                  << " worker_wait=" << d.own_ms_[1] / 1e3 << " merge=" << d.own_ms_[2] / 1e3 << " (per layer call ms "
+                  << d.own_ms_[0] / d.own_ms_[3] << " / " << d.own_ms_[1] / d.own_ms_[3] << " / " << d.own_ms_[2] / d.own_ms_[3] << ")\n";
     std::cout << "tokens:";
     for (int t : out) std::cout << ' ' << t;
     std::cout << "\n";

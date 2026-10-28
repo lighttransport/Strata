@@ -29,11 +29,20 @@ inline constexpr uint32_t kTpMagic = 0x34505453; // "STP4"
 // A request with njobs < 0 is a fetch: the worker sends back its stored blobs of experts [nt, nt - njobs) of `layer`
 // (kTagFetch, one message, each blob tp_blob_stride bytes), which the decoder's streamed prompt puts beside its own rows.
 inline constexpr uint32_t kTpMagicDs41 = 0x31445354; // "STD1"
+// DeepSeek-V4.1 whole-expert ownership ("STD2", STRATA_DS41_REMOTE_OWN): the worker holds a set of WHOLE experts.
+// The setup's TpLayer gives experts = the layer's owned count, split = 0 and pad = the layer's expert count; after the
+// layers come every layer's owned expert ids (int32, ascending, layer by layer). Weights: one kTagWeights message per
+// owned expert in that order, the whole packed blob [gate ff rows | up ff rows | down hidden rows]. A request is
+// STD1's (every token's top_k routes, -1 where the worker owns no expert); the reply is the raw, unweighted output of
+// every route with an expert >= 0, one hidden-wide f32 row each in route order (kReplyRaw), which the decoder sums with
+// its own routes in its order. TpSetup.pad = 1: the owned ids are followed by one float per owned expert (same order),
+// the decoder's profile count, from which the worker fills its GPU tier before it reports ready.
+inline constexpr uint32_t kTpMagicDs41Own = 0x32445354; // "STD2"
 inline constexpr uint32_t kTagSetup = 1, kTagReady = 2, kTagWeights = 3, kTagAccept = 4, kTagRequest = 10, kTagReply = 11,
                           kTagFetch = 12;
 inline size_t tp_blob_stride(size_t bytes) { return (bytes + 4095) & ~(size_t)4095; } // a worker blob's slot
 
-enum : uint32_t { kReplyF32 = 0, kReplyF16 = 1 };
+enum : uint32_t { kReplyF32 = 0, kReplyF16 = 1, kReplyRaw = 2 };
 enum : uint32_t { kWeightsDummy = 0, kWeightsStreamed = 1 };
 struct TpSetup {
     uint32_t magic, layers, hidden, reply; // reply: kReplyF32, or kReplyF16 (per token: f32 scale, hidden f16 values)

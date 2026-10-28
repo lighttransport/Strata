@@ -1,5 +1,6 @@
 // src/ds41/expert_lane.cpp - DeepSeek-V4.1's CPU expert lane (strata/ds41/expert_lane.hpp).
 #include "strata/ds41/expert_lane.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/pool.hpp"
 
 #include <algorithm>
@@ -365,6 +366,7 @@ void ExpertLane::phase_work(int t) {
     const int T = async_ ? threads_ - 1 : threads_;   // begin(): threads 1.. only
     if (async_) --t;
     const cpu::NativeFmt& f = layer_->f;
+    static const bool skip_unused = strata_env_is_one("STRATA_DS41_LANE_SKIP_UNUSED");
     const size_t act_bytes = f.act_bytes, h_bytes = f.h_bytes;
     const size_t gate_bytes = layer_->gate_stride ? layer_->gate_stride : f.gu_row * size_t(ff_);
     const size_t down_bytes = layer_->down_stride ? layer_->down_stride : f.d_row * size_t(hidden_);
@@ -406,7 +408,8 @@ void ExpertLane::phase_work(int t) {
         barrier();
         const int entries = nt_ * top_k_;
         for (int e = entries * t / T; e < entries * (t + 1) / T; ++e)
-            cpu::native_quant_h(f, hidden_buf_.data() + size_t(e) * size_t(ff_), hq_.data() + size_t(e) * h_bytes);
+            if (!skip_unused || ids_[e] >= 0)
+                cpu::native_quant_h(f, hidden_buf_.data() + size_t(e) * size_t(ff_), hq_.data() + size_t(e) * h_bytes);
         barrier();
         items(hidden_, [&](const Group& g, int r0, int r1) {
             const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
@@ -454,7 +457,8 @@ void ExpertLane::phase_work(int t) {
     {
         const int entries = nt_ * top_k_;
         for (int e = entries * t / T; e < entries * (t + 1) / T; ++e)
-            cpu::native_quant_h(f, hidden_buf_.data() + size_t(e) * size_t(ff_), hq_.data() + size_t(e) * h_bytes);
+            if (!skip_unused || ids_[e] >= 0)
+                cpu::native_quant_h(f, hidden_buf_.data() + size_t(e) * size_t(ff_), hq_.data() + size_t(e) * h_bytes);
     }
     barrier();
     // 3. down: this thread's hidden rows of every selected expert
@@ -483,11 +487,14 @@ void ExpertLane::phase_work(int t) {
 void ExpertLane::prepare(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k) {
     if (layer.f.n_embd != hidden_ || layer.f.n_ff != ff_) throw std::invalid_argument("ds41 expert lane: format geometry");
     layer_ = &layer;
+    ids_ = ids;  // valid through run() or begin()/finish(), including worker quantization
     nt_ = nt;
     top_k_ = top_k;
     // group the routes by expert (the order of the groups does not change any value)
-    // STRATA_DS41_VERIFY_EXACT=1: one group per route, so a token's rows round as when it is alone
-    static const bool split = std::getenv("STRATA_DS41_VERIFY_EXACT") && std::string(std::getenv("STRATA_DS41_VERIFY_EXACT")) == "1";
+    // Exact verification normally uses one group per route so each token
+    // rounds as when alone. The opt-in grouping probe measures weight reuse.
+    static const bool split = strata_env_is_one("STRATA_DS41_VERIFY_EXACT") &&
+                              !strata_env_is_one("STRATA_DS41_LANE_GROUP_EXACT");
     groups_.clear();
     if (split) {
         for (int e = 0; e < nt * top_k; ++e)
@@ -580,6 +587,19 @@ void ExpertLane::run(const LaneLayer& layer, const float* z, int nt, const int32
     collect(ids, w, y);
 }
 
+void ExpertLane::run_raw(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k, float* routes) {
+    if (nt < 1 || top_k < 1 || !routes) throw std::invalid_argument("ds41 expert lane: token count");
+    if (std::all_of(ids, ids + size_t(nt) * size_t(top_k), [](int32_t i) { return i < 0; })) return;
+    async_ = false;
+    prepare(layer, z, nt, ids, top_k);
+    start_.fetch_add(1, std::memory_order_acq_rel);
+    start_.notify_all();
+    phase_work(0);
+    size_t r = 0;
+    for (int e = 0; e < nt * top_k; ++e)
+        if (ids[e] >= 0) std::copy_n(out_.data() + size_t(e) * size_t(hidden_), hidden_, routes + (r++) * size_t(hidden_));
+}
+
 void ExpertLane::begin(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, const float* w, int top_k, float* y) {
     if (nt < 1 || top_k < 1) throw std::invalid_argument("ds41 expert lane: token count");
     ids_ = ids;
@@ -607,6 +627,66 @@ void ExpertLane::finish() {
         ++async_jobs_;
     }
     collect(ids_, w_, y_);
+}
+
+void ExpertLane::finish_with_external2(const int32_t* original_ids, const int32_t* entries, const float* values, int count,
+                                       const int32_t* entries2, const float* values2, int count2, int top_k) {
+    if (count2 <= 0) { finish_with_external(original_ids, entries, values, count, top_k); return; }
+    if (count <= 0) { finish_with_external(original_ids, entries2, values2, count2, top_k); return; }
+    if (!original_ids || !entries || !values || !entries2 || !values2 || !ids_ || !w_ || !y_ || nt_ < 1 || nt_ > 4096 ||
+        top_k < 1 || top_k > 16 || count + count2 > nt_ * top_k || hidden_ < 1 || hidden_ > 5120)
+        throw std::invalid_argument("ds41 expert lane: invalid external route geometry");
+    const int total = nt_ * top_k;
+    std::vector<uint8_t> external(size_t(total), 0);
+    for (int i = 0; i < count + count2; ++i) {
+        const int e = i < count ? entries[i] : entries2[i - count];
+        if (e < 0 || e >= total || external[size_t(e)] || ids_[e] >= 0 || original_ids[e] < 0)
+            throw std::invalid_argument("ds41 expert lane: invalid external route index");
+        external[size_t(e)] = 1;
+    }
+    for (int i = 0; i < total; ++i)
+        if ((external[size_t(i)] ? original_ids[i] < 0 : original_ids[i] != ids_[i]))
+            throw std::invalid_argument("ds41 expert lane: inconsistent external routes");
+    const bool was_idle = idle_;
+    finish();
+    if (was_idle) {
+        top_k_ = top_k;
+        out_.assign(size_t(total) * size_t(hidden_), 0.f);
+    } else if (top_k_ != top_k || out_.size() < size_t(total) * size_t(hidden_)) {
+        throw std::logic_error("ds41 expert lane: external output capacity mismatch");
+    }
+    for (int i = 0; i < count; ++i) std::copy_n(values + size_t(i) * hidden_, hidden_, out_.data() + size_t(entries[i]) * hidden_);
+    for (int i = 0; i < count2; ++i) std::copy_n(values2 + size_t(i) * hidden_, hidden_, out_.data() + size_t(entries2[i]) * hidden_);
+    collect(original_ids, w_, y_);
+}
+
+void ExpertLane::finish_with_external(const int32_t* original_ids, const int32_t* entries,
+                                      const float* values, int count, int top_k) {
+    if (!original_ids || !entries || !values || !ids_ || !w_ || !y_ || nt_ < 1 || nt_ > 4096 ||
+        top_k < 1 || top_k > 16 || count < 1 || count > nt_ * top_k || hidden_ < 1 || hidden_ > 5120)
+        throw std::invalid_argument("ds41 expert lane: invalid external route geometry");
+    const int total = nt_ * top_k;
+    std::vector<uint8_t> external(size_t(total), 0);
+    for (int i = 0; i < count; ++i) {
+        const int e = entries[i];
+        if (e < 0 || e >= total || external[size_t(e)] || ids_[e] >= 0 || original_ids[e] < 0)
+            throw std::invalid_argument("ds41 expert lane: invalid external route index");
+        external[size_t(e)] = 1;
+    }
+    for (int i = 0; i < total; ++i)
+        if ((external[size_t(i)] ? original_ids[i] < 0 : original_ids[i] != ids_[i]))
+            throw std::invalid_argument("ds41 expert lane: inconsistent external routes");
+    const bool was_idle = idle_;
+    finish();
+    if (was_idle) {
+        top_k_ = top_k;
+        out_.assign(size_t(total) * size_t(hidden_), 0.f);
+    } else if (top_k_ != top_k || out_.size() < size_t(total) * size_t(hidden_)) {
+        throw std::logic_error("ds41 expert lane: external output capacity mismatch");
+    }
+    for (int i = 0; i < count; ++i)
+        std::copy_n(values + size_t(i) * hidden_, hidden_, out_.data() + size_t(entries[i]) * hidden_);
+    collect(original_ids, w_, y_);
 }
 
 }  // namespace strata::ds41

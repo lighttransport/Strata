@@ -1075,6 +1075,58 @@ unresolved bug; it is not in the tree. Next: 64-row tiles with the k dimension s
 K/V 32 KB + scores 4 KB + P 2 KB = 54 KB) - the same staged bytes per row but twice the MACs per element and half the
 syncs - and the vectorized staging debugged.
 
+**64-row scalar staging experiment (2026-10-27).** Streamed K and V in two 256-dimension chunks, with 64-row
+softmax and eight-wave atomic QK reduction. On the RX 9070 XT, the second 8K pass took **26.08 s (314 tok/s)**;
+`PREFILL_TIMING` measured attention 11.36 s and experts 11.24 s. Logits against the tiled path had mean KL 0.0028,
+p99 0.003 and top-1 agreement 100%. The first pass took 54.32 s with unusually high Q and attention times; it is not a
+warm timing. This scalar-staging implementation was reverted: it loses to the recorded 32-row WMMA (23.6 s) and tiled
+(20.1 s) runs. Those comparisons are individual runs, not repeated measurements. A later 64-row vector-staged version measured 23.48 s
+warm, mean KL 0.0032; replacing atomics with partial sums measured 19.29 s, mean KL 0.0028. Both were slower than the
+32-row approach below. The scalar run used two GPU and six host 64 MiB stream slots and the default desktop reserve.
+
+The subsequent `STRATA_DS41_GPU_BENCH=1` expert comparison exited with SIGSEGV after the device-to-device test, before
+printing the expert timings. The tier had not been initialized in the layout the benchmark expected; the focused
+prefill mode below now uses a loaded tier expert.
+
+**8K prefill above 500 tok/s (2026-10-27).** On the RX 9070 XT / Threadripper 1950X, 128 GiB RAM, with the
+UD-IQ1_S model and warm page cache, the opt-in `STRATA_DS41_ATTN_WMMA=2` uses 32-row gfx12 WMMA attention: aligned
+8-value staging, four-way QK partial sums instead of LDS atomics, and a swizzled K tile reused for V. Set
+`STRATA_DS41_MMQ_ROWS=256` for this run: at an 8192-token pass this sets a 4096-row expert-product cap. An expert with
+more rows is split into consecutive products; all its routes remain in the sum. The smaller buffers let the pass use
+**three 128 MiB GPU stream slots** within the 2 GiB desktop reserve, against two 64 MiB slots at the default scratch cap.
+The other flags were `DECODE_GROUPED=1`, `GROW=0`, `GPU_RESERVE_MIB=1536`, `FUSE=1`, `SHARE_Q8=1`,
+the route profile, `ENGRAM_DIRECT=1`, `STREAM_MIN=256`, `ENGRAM_THREADS=256`, and
+`PREFILL_HALVES=1`, `PREFILL_TILE=4096`, `PROMPT_BATCH=8192`, `ENGRAM_TILE=256`,
+`SHEXP_TILE=2048`, `OUTA_TILE=4096`, `SCORE_MIB=16`, `STAGE_MIB=128`, `STAGE_SLOTS=6`, `PIN_GB=100`, `KV=f16`, and
+`INDEX_GEMM_MIN=64` (all with the `STRATA_DS41_` prefix), plus `STRATA_IQ1S_FAST=1` and `STRATA_Q6_V2=1`.
+The normal truncation slack stayed at 1024.
+
+Three identical 8K prompts in one process took **18.41 s for the first pass, then 15.28 and 15.22 s warm (536 and 538 tok/s)**.
+After a benchmark-only buffer fix and rebuild, a repeat took 18.01 s, then **15.64 and 14.66 s (524 and 559 tok/s)**.
+Both runs used `PREFILL_TIMING=1`; the same-day earlier tiled baseline was 20.08 s warm (408 tok/s), with the larger default scratch
+cap. On the last warm pass, attention was 1.83 s, output projection 1.49 s, and experts 9.71 s including 2.66 s of GPU
+copy waits; 116.1 GB crossed the copy stream in 9.28 s. These are two processes with two warm repetitions each, not a broader statistical run. For the two dumped next-token logits, mean KL versus the earlier tiled reference was 0.0021 and top-1
+agreement 100%; the split and unsplit optimized runs agreed to the comparator's printed precision. This gate covers those
+two positions, not a corpus-wide quality evaluation.
+
+The default-path 8K token output matched the saved two-prompt baseline byte-for-byte before the benchmark-only fix; this
+checks the generated token line, not every intermediate or logit. The final repeat HIP decoder SHA-256 was
+`573e8df88281c3e3988fd7e417d2c281d968a8887d9ac5ee3718f4f330d90113`; the attention and decoder source SHA-256s were
+`64dd366621ff85fa290c8426265f8f37ab1c15a85118f34afe620ce6d738e06d` and
+`9abb58aeb9a5e834d14a63ac67b43467e2726c928e9d766bb12e59e5300a7530`. RAM speed was not recorded in this run.
+
+At 16K, the same configuration had two 128 MiB GPU slots; the warm prompt took **33.31 s (492 tok/s)** across two 8K
+chunks, against **38.22 s (429 tok/s)** for a same-day tiled run with the same split-expert settings. The two dumped
+next-token logits had mean KL 0.0010 and 100% top-1 agreement against that tiled run. An attempt to lower truncation
+slack to 768 failed the 8K quality gate (mean KL 0.0204); 512 also failed (0.0668). The 1024 default is unchanged.
+
+The first isolated resident-expert comparison was invalid: its output buffer was too small for the down projection.
+After fixing it, one 20-repetition run with `GPU_BENCH=prefill` measured IQ1_S gate/up and Q2_K down dequantization at
+0.034 and 0.020 ms respectively. At M=128, MMQ including activation quantization took 0.151 / 0.085 ms, while the
+already-dequantized FP16 hipBLAS GEMM took 0.102 / 0.042 ms. These timings omit routing and per-expert launch costs and
+do not by themselves justify changing the streamed path. The earlier general GPU benchmark crashed when invoked without
+its contiguous resident layout; it now rejects that situation, and the `prefill` mode uses a loaded tier expert.
+
 **Measured issue rate at these shapes** (`tools/hip/wmma_attn_probe.hip`, one block per token, 16 heads x 64-row tiles
 x 512 dims, 8 waves with a 64-dim k slice each and an LDS partial-sum reduction, QK + PV): **26-45 TF/s** (44.5 at
 steady state, 8192 blocks) against ~10 TFLOPS for the CUDA-core kernel - a 3-4x headroom on the attention. The probe
@@ -1102,3 +1154,217 @@ against the current logits.
 
 Reproduce: `python3 tools/glm_ds41f_sim.py validate | report | packs --machine tr16 | a64fx --nodes 6 8 12`;
 `python3 -m unittest tools.test_sim_ds41f`; `python3 tools/test_ds41f_pack.py`; `build-ds41f/iq1s_w1a8_bench [--bench]`.
+
+**Route-gated streamed prefill follow-up (2026-10-27).** With `STRATA_DS41_PREFILL_HYBRID=0`, the producer waits for each layer's router and avoids copying experts not selected in that layer. On this 8K prompt it skipped 82.52 GB of transfers (corrected byte accounting; 89.48 GB were copied), but the warm prompts took 14.34 and 14.19 s (571 and 577 tok/s) with timing enabled. A second run without detailed GPU timing took 15.57 and 14.21 s; this variation does not establish a repeatable speedup over the ungated 524-559 tok/s runs. The two-position logit check was mean KL 0.0021, p99 0.002, top-1 100%. `PREFILL_HYBRID=0` is safe; values >=1 remain prohibited on this desktop.
+
+Two follow-up sweeps did not improve the result: `OUTA_TILE=8192` retained ~1.55 s output projection and warm passes of 15.58 and 15.62 s (same quality gate); `STAGE_MIB=160 STAGE_SLOTS=4` fit only two GPU slots and took 16.08 and 14.27 s warm. Keep `OUTA_TILE=4096` and 128 MiB stage buffers. With route gating on, the present bottleneck remains streamed expert compute/transfer (about 9 s of expert products and 12.6 s copy-stream event time on the fastest warm gated pass); copy event intervals also include idle and host routing waits, so they are not active-DMA measurements. These are short repeated-in-process trials, not a stable multi-run benchmark. The 600 tok/s goal remains unverified.
+
+**Expert row-cap follow-up (2026-10-27).** Raising the cap to 8192 removed more expert splits, but scratch allocation reduced the stream ring from three 128 MiB slots to two 64 MiB slots. With safe route gating, warm 8K passes took 14.55 and 14.71 s; KL remained 0.0021 / p99 0.002 / top-1 100%. This is slower than the best 4096-cap gated pass (14.19 s), so retain `MMQ_ROWS=256` (4096 effective cap) for the measured setup.
+
+**Expert-kernel and smaller-slot probes (2026-10-27).** The focused resident IQ1_S benchmark on the RX 9070 XT compared MMQ (including activation quantization) with dequantization to FP16 plus cuBLAS GEMM. At M=64, gate/up was 0.080 ms MMQ versus 0.092 ms dequant+GEMM; down was 0.045 versus 0.047 ms. At M=128, dequant+GEMM sums were 0.136 ms gate/up and 0.063 ms down, versus 0.150 and 0.073 ms MMQ. At M=256, MMQ was faster: 0.220 versus 0.297 ms gate/up and 0.106 versus 0.086 ms down. These are sums of separate weight-dequant and GEMM event timings with synthetic inputs; they omit the FP16 activation conversion, grouped launch behavior and prompt routing, and are not a quality test. The small M=128 advantage does not justify replacing the grouped MMQ path.
+
+Reducing staging from 128 to 96 MiB increased the ring from three to four GPU slots, but the ungated 8K warm passes took 15.84 and 15.60 s (517 and 525 tok/s), with mean KL 0.0021 / p99 0.002 / top-1 100%. The copy stream carried 116.1 GB in 9.64-9.68 s (about 12.0 GB/s) and GPU waits were about 2.14 s. Keep 128 MiB slots. The 600 tok/s target remains unverified.
+
+Combining route gating with 96 MiB slots kept four GPU slots and measured 14.36/14.33 s warm (571/572 tok/s), mean KL 0.0021 / p99 0.002 / top-1 100%. It did not beat the best 128 MiB gated result. The measured 8K result remains above 500 tok/s; 600 tok/s is still unproven.
+
+**Route-packing and projection-tile probes (2026-10-27).** A counted contiguous route-pack implementation preserved the generated token line and the two-position logit result (mean KL 0.0021, top-1 100%) but did not improve host enqueue time or warm throughput: two runs measured 15.78/15.76 s and 15.85/15.67 s. The change was reverted; keep the existing per-expert route packing. `SHEXP_TILE=4096` reduced shared-expert chunk count but used enough scratch to cut the ring from three 128 MiB slots to two; warm passes were 17.51/16.34 s (KL 0.0016). `ENGRAM_TILE=512` likewise fit only two slots and measured 16.41/16.17 s (KL 0.0021), with no change to the ~0.53 s per-pass Engram time. Retain `SHEXP_TILE=2048` and `ENGRAM_TILE=256` for this configuration. Neither tile experiment supports a performance gain.
+
+**Latest projection and index-buffer sweeps (2026-10-27).** The larger shared-expert tile and Engram tile did not help: 4096 shared-expert rows reduced the stream ring to two 128 MiB slots and the warm passes were 17.51/16.34 s (KL 0.0016); 512 Engram rows also left two slots and measured 16.41/16.17 s (KL 0.0021), with Engram time unchanged. Keep 2048 / 256.
+
+Increasing `SCORE_MIB` from 16 to 64 cut the measured 8K index phase from about 0.44 to 0.25-0.27 s, but 64 MiB of score storage reduced the ring to two 128 MiB slots. Pairing it with 96 MiB staging restored three slots but warm passes were 15.80 s. `SCORE_MIB=32` kept three 128 MiB slots and index time fell to 0.34 s, but warm runs were 15.53 and 16.83 s; no throughput gain was demonstrated. Keep the proven 16 MiB setting until an index change can retain overlap and show repeated end-to-end improvement. The two-position quality checks were KL 0.0020-0.0022 with 100% top-1.
+
+**Profile and six-slot transfer follow-up (2026-10-27).** Replacing the 1008-token route profile with a captured 8193-token profile for the same prompt raised the reported tier profile hit from 0.639 to 0.676, but streamed 116.1 GB as before and warm passes were 16.47/15.71 s; no prefill gain was demonstrated. `STAGE_MIB=64` fit six GPU slots and reduced GPU wait from roughly 2.5 to 1.6 s, but doubled per-pass stream items (910 to 1862), reduced copy throughput to 11.8 GB/s, and warm passes were 16.39/16.46 s. Keep the 1008-token profile and 128 MiB slots for the current measured setup. Two-position logits checks remained KL 0.0021 and top-1 100%.
+
+**Pinned-host and full-trunk-tile probes (2026-10-27).** Increasing the pinned expert budget from 100 to 105 GiB pinned 39/40 layers and reduced host-stage copy time from ~0.83 to ~0.30 s, but 8K warm passes were 16.06 and 17.42 s; keep 100 GiB. A single 8192-row trunk tile without extra scratch reduction was safely refused by the allocator (free memory was below the reserve plus slot margin). Combining it with `MIX_TILE=1024` ran with only two 32 MiB GPU slots: attention fell to ~1.52 s and output projection to ~0.75 s, but expert time rose to ~11.3 s, with warm passes 16.37/16.16 s and KL 0.0022. Keep the two 4096-row trunk tiles. The reserve stayed intact.
+
+**MMQ grouping follow-up (2026-10-27).** With safe route gating and the same 8K setup, baseline warm passes were 14.74 and 14.04 s. `STRATA_DS41_MMQ_COMPACT=1` measured 13.83 and 13.95 s; the warm pair without detailed GPU event timing was 15.75 and 13.85 s. The logits were byte-identical to the non-compact run and passed the tiled reference check (mean KL 0.0021, p99 0.002, top-1 100%). The baseline's own spread and the no-timing spread mean compact grouping has not shown a repeatable end-to-end gain. Reducing the MMQ effective row cap from 4096 to 2048 measured 14.69 and 13.89 s, also without a repeatable gain; logits passed the same check. Keep compact grouping opt-in and the measured 4096 cap. Fastest measured result in this follow-up was 592 tok/s; 600 tok/s requires about 13.65 s per 8K pass, and higher targets remain unverified. These are short in-process trials on the RX 9070 XT with the 2 GiB reserve, 128 MiB stream slots, and warm page cache, not a stable multi-run result.
+
+**Scatter and staging follow-up (2026-10-27).** A parallel atomic scatter was tested on the RX 9070 XT under safe route gating, then removed: warm passes were 14.16/14.12 s versus 13.63/13.71 s for the ordered scatter, with the same 2 GiB reserve and three 128 MiB GPU slots. The candidate logits passed the tiled check (mean KL 0.0023, p99 0.002, top-1 100%) but differed slightly from ordered accumulation, and it did not improve speed. The 8-thread host staging baseline was compared with 16 threads (13.82/13.87 s) and 4 threads (13.69/13.73 s); neither showed a repeatable improvement. Retain 8 threads. A single 8-thread baseline pass measured 13.63 s (601 tok/s), the second 13.71 s (598 tok/s), and the pair averaged just below 600. A full 8193-token route profile raised the tier's reported profile hit from 0.639 to 0.676, but streamed bytes stayed 89.48 GB; warm times were 13.65 and 17.13 s. It did not show an end-to-end improvement. The reliable measured target remains 500+; 600+ is not yet repeatable.
+
+**Ordered grouped-scatter probe (2026-10-27).** Reordered each streamed down-product's output by token, then accumulated each token's routes sequentially in their original order. The logits were byte-identical to the ordered-scatter baseline and passed the tiled reference check (mean KL 0.0021, p99 0.002, top-1 100%), but both implementations were slower: stable bucketing measured 14.19/14.01 s warm versus the recent ordered-scatter pair 13.63/13.71 s. GPU expert time was about 9.0 s versus 8.65 s. Comparison-sort preprocessing was also slower and noisier (14.10/16.98 s); replacing the sort with linear counting improved host work but not end-to-end time. The opt-in kernel and metadata path were removed. Keep the ordered scatter.
+
+Next kernel candidate: a gfx12 WMMA gate/up implementation for streamed IQ1_S experts. In the current pass the routed expert phase is about 8.65 s, and the earlier rocprof trace identified IQ1_S MMQ as the largest kernel family. Validate any prototype against the existing MMQ output and repeated 8K timings with the same reserve; leave MMQ as default/fallback until it demonstrates an end-to-end gain.
+
+**Paired MMQ compact follow-up (2026-10-27).** Repeated safe-gated 8K passes with a 2 GiB VRAM reserve, 128 MiB staging slots, and the same prompt/model. The warm pass was 13.083 s with normal grouping and 12.763 s with `STRATA_DS41_MMQ_COMPACT=1`; repeating in reverse order gave 12.669 s normal and 12.648 s compact. The four timings average 12.876 s normal / 12.706 s compact (636 / 645 tok/s); this small difference is not enough to identify compact grouping as the cause. All four clear 600 tok/s in these paired warm passes. The fastest was 647.8 tok/s, just below 650 (12.60 s); 700 and 750 remain unverified. Normal and compact logits were byte-identical, and the two-position tiled check remained mean KL 0.0021, p99 0.002, top-1 100%. This is a two-pair in-process result, not a long-run distribution. Keep compact grouping opt-in until more repeats show a consistent gain.
+
+**RDNA4 IQ1_S MMQ tile probes (2026-10-27).** On the same card, 8K prompt, and 2 GiB reserve, changing the large IQ1_S tile from 256x128 to 128x64 gave a single warmed pass of 14.93 s (549 tok/s), versus the recent 12.65-13.08 s baseline passes; logits were byte-identical. The resident gate/up microbench at M=128 improved from the earlier 0.150 ms to 0.123 ms, but the full path did not. Its other GPU phases and copy throughput were also slower in that pass, so clock/transfer variability limits the causal inference. Separate occupancy-only variants (occupancy 4 or 1, retaining 256x128) measured M=256 gate/up at 0.320 / 0.322 ms, versus the earlier 0.220 ms baseline; M=128 was unchanged around 0.151 ms. These were microbench screens, not full-prompt measurements. Restoring the original config rebuilt successfully; the restored baseline's next warm pass was 12.96 s (632 tok/s) with logits identical to the previous baseline. No MMQ config change is retained. The next substantial gain likely needs a new IQ1_S kernel path, since simple tile/occupancy tuning did not produce one.
+
+**IQ1_S codebook-loader probe (2026-10-27).** In a temporary HIP build, replaced each MMQ loader's IQ1_S grid lookup plus shifts/masks and two scalar stores with one lookup into a pre-split 16 KiB pair table and one aligned vector store. The resident gate/up microbench was noisy but generally close to the original (M=64 0.074 ms, M=128 0.144 ms, M=256 0.210 ms). The safe-gated 8K warm pass was 13.47 s, slower than the restored baseline's 12.96 s; the GPU expert sum was 8.53 vs 8.14 s. Logits remained byte-identical, so this was a performance-only loss. Restored the original loader byte-for-byte and rebuilt HIP. The direct table doubled codebook traffic and did not improve the end-to-end path; a useful new expert kernel will need to avoid more than unpack instructions alone.
+
+**IQ1_S stream-K probe (2026-10-27).** Enabled GGML stream-K in the non-fallback gfx12 IQ1_S configs to split each product's K reduction among more CTAs. The resident microbench was mixed: M=128 improved (~0.124 vs ~0.150 ms) while M=16/32/64 slowed; M=256 was flat. In the safe-gated 8K run the warm pass was 13.20 s (620 tok/s) versus 12.96 s (632 tok/s) baseline, and the expert kernel sum was 8.39 vs 8.14 s. Logits had mean KL 0.0002, p99 0.000, top-1 100%. Crucially, the MMQ scratch pool bypassed the decoder's reserve guard: sampled peak use was 16.65 GB of 17.10 GB, leaving only 0.45 GB free instead of the required 2 GiB. This stream-K configuration must not be used. Restored the original MMQ config byte-for-byte, rebuilt HIP, and confirmed idle VRAM use returned to 1.57 GB. A future stream-K attempt would first need reserve-aware scratch allocation and a faster full-pass result.
+
+**Guarded DSpark expert cache (2026-10-27).** `STRATA_DS41_DSPARK_CACHE_EXPERTS=1` is an opt-in GPU cache (45 slots by default; `STRATA_DS41_DSPARK_CACHE_SLOTS` can lower it) for the streamed draft's MXFP4 experts. It requires unpinned batch staging and adds about 538 MiB of GPU allocation for this draft; its allocation uses the physical-VRAM reserve guard. On RX 9070 XT / Threadripper 1950X, with UD-IQ1_S, a 2 GiB target expert tier, 128 input and 32 generated code tokens, two cached runs measured 9.71/9.78 tok/s versus 8.80 without the cache; same-tier greedy measured 9.78. All output IDs matched. On a 256-token prefix, cache/no-cache/greedy single runs were 9.50/9.67/9.20 tok/s with matching IDs; that comparison did not establish a cache gain. Cache self-tests checked host copies and device samples across hits and misses. The smallest sampled free physical VRAM in these screens was 5.50 GB, with a 3 GiB watchdog floor; no new GPU fault or OOM was found in the subsequent kernel log. These short screens do not establish the 30 tok/s target or universal memory safety. Keep the cache opt-in and monitor both physical VRAM and host memory pressure.
+
+**Low-weight CPU-route trim (2026-10-27).** `STRATA_DS41_CPU_TRIM` is an opt-in fraction from 0 to 0.25: on multi-token decode/verify passes, skip CPU-only expert picks from the third pick onward when their original normalized weight is below that fraction. Kept weights are not renormalized; GPU-held routes retain their weights. A zero setting was byte-identical to the fixed-tier unmodified logits over 128 positions. With the guarded draft cache and a 2 GiB target expert tier on RX 9070 XT / Threadripper 1950X, one 128-input/32-output screen measured 9.03, 10.52 and 11.90 tok/s at thresholds 0.08, 0.10 and 0.12; untrimmed cached runs were 9.71/9.78. Against fixed-tier teacher-forced logits for those same 128 input positions, top-1 agreement was 94.5%, 89.8% and 82.8%, respectively; mean KL was 0.0408, 0.1425 and 0.2772. Generated IDs matched the untrimmed run only for the 0.10 screen. This is a single short prompt, not a general quality evaluation, and the speed numbers do not establish 30 tok/s. Do not enable by default.
+
+The 24-slot setting passed cache byte checks and matched the 45-slot output in short tests. On the same 128-input/32-output screen, it measured 9.29 tok/s with 46 hits in 182 accesses, versus 9.71/9.78 with 45 slots. Its reported draft GPU allocation was 1,148 MiB versus 1,524 MiB, saving about 377 MiB; the smallest sampled free physical VRAM was 5.90 GB. Capacity must be at least the draft block size times its top-k, and is checked before model allocation.
+
+**Wider draft and fallback screens (2026-10-27).** `STRATA_DS41_DSPARK_EXTEND=1` allows up to seven draft positions with the existing eight-position verifier; cache capacity is checked against the wider draft batch before target allocation. The draft was trained with a five-position block, so the extension is opt-in. On RX 9070 XT / Threadripper 1950X with the guarded cache and a 3,203 MiB target tier, 256 input / 32 generated code tokens measured 10.51/10.54 tok/s versus 9.47/9.83 with the five-position window, with matching IDs and 10.03 same-tier greedy. On a wiki prefix, seven positions were slower: 4.31 versus 4.57, with matching IDs and low acceptance. `STRATA_DS41_DSPARK_AUTO=1` temporarily uses single-token target steps after low draft acceptance and periodically probes the draft again; on that wiki screen it measured 7.96 versus 11.94 greedy and matched the 32 IDs, while on the code screen it skipped no steps and measured 10.28. Minimum sampled free physical VRAM for the wider-window screens was above 4.27 GB under a 3 GiB watchdog floor. These short screens do not establish broad output equivalence or the 30 tok/s goal.
+
+With seven-position drafting, the cache, auto fallback and `CPU_TRIM=0.08`, two 256-input/64-output code screens measured 13.82/13.84 tok/s, versus 11.67 untrimmed speculation and 10.36 same-tier greedy; all 64 IDs matched on this prompt. Fixed-tier 256-position quality checks gave trim 0.08 mean KL 0.0358, top-1 93.8%, perplexity 4.969 versus 4.920 on code, and KL 0.0587, top-1 95.3%, perplexity 2.757 versus 2.654 on wiki. These are two short samples, not a general quality claim. Free physical VRAM sampled above 4.27 GB with a 3 GiB watchdog floor, and no new GPU fault or OOM appeared after the runs. The 30 tok/s goal remains unverified.
+
+### Guarded 8K prefill follow-up (2026-10-28)
+
+The AMD `Dev` allocator now checks physical VRAM before every device allocation and refuses any allocation that would leave less than 2,560 MiB (2 GiB desktop reserve plus 512 MiB headroom). The gfx12 WMMA attention validates row geometry, cache-selection indices and buffer spans before loading; an opt-in device flag reports rejected rows after stream synchronization. `ds41_attention_multi` checks its full scratch capacity, and the optional two-stage top-k scratch now has overflow and VRAM-reserve checks.
+
+`tools/ds41f_prefill_guard.sh` runs in a systemd scope with `MemoryHigh=64G`, `MemoryMax=72G`, swap disabled and `OOMPolicy=kill`. It refuses startup below 8 GiB free physical VRAM, 96 GiB `MemAvailable`, or 10% full memory PSI over 60 seconds. It stops below 2.5 GiB free VRAM or 32 GiB `MemAvailable`, near 56 GiB scope use, above 50% full PSI over 10 seconds, on a new AMD gfxhub fault or kernel OOM/reset, or after the run timeout. It disables direct expert pinning and bulk page population. The first guard version compared events by boot timestamp; the current cursor-based monitor is described below.
+
+HIP and CUDA decoder builds passed. A single guarded 8K screen split into two 4K batches was stopped by the PSI guard at 51.72%; it reached 22.35 GiB peak scope memory, had at least 109.1 GiB host memory available and at least 4.63 GiB free VRAM. The timestamp-based kernel monitor saw no new AMD fault or OOM event. This is an interrupted run, not a throughput result. The prior paired warm result remains 645 tok/s by configuration average, with 647.8 tok/s the fastest individual pass; this guard update establishes no new prefill speed or quality result. The historical TCP permission fault remains unidentified.
+
+The HIP decoder SHA-256 is `ca8b83fa711545255824700f1ed52725b779eb8c0f33afc9c6b0ca4dec072de2`; the CUDA decoder is `41b89ffa6f15f345c2af276cc7c20ce21e354d538691905d95929fcc16f07d58`. The guard script is `51c8111d55500c5ac24c4e354b2edb5892b0b95f77b0d4ab5dafb3b61e23efc1`; `ds41.cu` is `aacb60e9b392b3736e986dd9b25fc95f7c45afa57533189e8615342ebfb43457`, and `ds41_decode.cpp` is `2e6c012e1f120a9e56c8429de54cf5536de65d2a6795dd9bf6d86c04b82337d5`.
+
+**Decode GPU-fault guard (2026-10-28).** The kernel journal retained repeated AMD `gfxhub` page faults attributed to `strata-glm-decode`; the latest was Oct 27 at 13:32 local time and reported `PERMISSION_FAULTS:0x3`. This is a GPU read permission fault; the log does not prove an out-of-bounds access. Two decoder segfaults were also recorded later that afternoon. The root cause is not established. The decode runner now refuses to start if the last 24 hours of kernel logs contain an AMD page/protection fault, reset, OOM or segfault, and it checks again after scope setup. The decoder waits behind a launch gate until systemd confirms `MemoryHigh=48G`, `MemoryMax=64G`, swap disabled, valid cgroup counters, and healthy live RAM/VRAM/PSI. It stops near 44 GiB scope use, watches cgroup OOM counters and new kernel faults, enables the existing gfx12 WMMA attention row/selection bounds check, keeps 2 GiB for the desktop plus 512 MiB physical headroom, and disables bulk page population and host expert pinning. The current log contains matching recent decoder faults, so no new decode run is permitted yet. The WMMA check covers its row/selection metadata and is not a general GPU memory sanitizer.
+
+**Prefill OOM/OOB guard hardening (2026-10-28).** The guarded runner now uses a kernel-journal cursor and checks cgroup memory events from scope startup through completion. It bounds prompt size, context, batch, output count and expert tier, and refuses extra arguments that could override those limits. Engine checks now cap MMQ expert rows, validate streamed route and staging spans before dispatch, and apply the physical VRAM reserve to the expert arena. MMQ validates product geometry and scratch arithmetic; the prefill identity-table planner includes the documented 128-row MMQ read tail. HIP and CUDA decoder builds passed, and shell syntax and whitespace checks passed. Several attempts with an 8K batch were refused by the physical VRAM reserve before valid prefill. A bounds-checked 8K run in two 4K chunks stopped at 55.30% full memory PSI (50% limit), with 38.2 GiB peak scope memory, 109.7 GiB minimum `MemAvailable` and 3.44 GiB minimum free VRAM; the runner reported no new kernel fault or OOM. This is a safe interruption, not a speed or complete OOB-validation result. The prior qualified result remains 645 tok/s average and 647.8 tok/s fastest, with 650+ unverified. The historical AMD permission fault remains unexplained.
+
+The prefill runner now scans 24 hours of kernel logs and refuses to start after an AMD page/protection fault, OOM, reset or decoder segfault. It starts a waiting shell in the cgroup and releases the decoder only after the memory limits, event counters, live RAM/VRAM and PSI checks pass; MMQ device-bounds validation now defaults on for this runner. The present log matches the quarantine, so no new prefill was launched. This validation is diagnostic overhead and does not establish a new throughput result. The WMMA and MMQ checks cover specific metadata and dispatch bounds; they are not a general GPU memory sanitizer.
+
+### Decode cache follow-up (2026-10-28)
+
+The streamed DSpark cache remains opt-in and defaults to 45 slots. Its bounded setting now allows up to 100 slots; cache metadata and the per-pass lock bitmap are sized dynamically, and the device allocation still goes through the physical-VRAM reserve check. Only 45 and 90 slots have been measured; 100 slots is a new, unmeasured capacity point. Mapped expert pinning remains rejected on AMD because that path has coincided with permission faults and reclaim pressure.
+
+On RX 9070 XT / Threadripper 1950X, a warmed 600-token code prefix and 128 generated tokens, with the target expert tier fixed at 2,560 MiB, `DEFER_ALL=1`, `CPU_TOPK=2`, grouped GPU routing and five-position drafts measured 23.03 tok/s at 45 cache slots and 27.32 tok/s at 90 slots. Draft time fell from 1.594 s to 0.795 s; cache hits/misses changed from 347/234 to 483/98. The generated token IDs were identical. The 90-slot draft allocation was 2,268 MiB, about 807 MiB above the 45-slot allocation; minimum free physical VRAM was 2.81 GiB, above the 2.5 GiB desktop-plus-headroom floor. This is one matched pair, not a repeated speed result. The route configuration is highly lossy and the generated text repeats token cycles; a prior fixed-tier check for CPU top-two measured mean KL 0.826, top-1 71.5%, and perplexity 5.537 versus 2.791. Do not enable this route by default. The 30 tok/s target remains unmet and 40 tok/s was not reached.
+
+A scheduled seven-position screen with the same cache and route settings was stopped before inference when free VRAM fell to 2.07 GiB. Lowering the requested target tier to 1,792 MiB let it complete at 23.46 tok/s for 128 outputs, with 3.23 GiB minimum free VRAM; the wider verify passes took longer and the target tier hit rate fell. A 64-output five-position screen at the 2,560 MiB tier was also stopped before generation when free VRAM briefly reached 2.49 GiB. At a 2,048 MiB target tier it completed at 19.40 tok/s and kept 2.72 GiB free. All guarded runs reported no new AMD page fault, kernel OOM or cgroup memory event. These screens show the reserve guard stopping safely when concurrent or scratch allocations reduce its margin; they do not qualify 30+ tok/s. HIP and CUDA decoder builds passed after the cache change, along with `bash -n` and `git diff --check`.
+
+**Next decode screen (2026-10-28).** The best 90-slot run spent 3.84 s verifying and 0.80 s drafting for 128 output tokens; it had 98 cache misses in 581 accesses. The opt-in cache ceiling is expanded to 100 slots, adding an estimated 180 MiB from the measured 45-to-90 allocation slope; this point is not measured. The cache simulator now models 16/24/45/90/100 slots, including while the real cache is active, with zero device-memory cost; first compare simulated 90-slot hits with the real count. HIP and CUDA decoder targets compile. Do not run while the 24-hour kernel-fault quarantine finds the Oct 27 AMD faults and decoder segfaults. Once it clears, screen `STRATA_DS41_DSPARK_SCHED=1` at 90 slots, use the simulated 100-slot hit rate to decide whether to allocate the additional staging buffer, then measure the selected candidate under the same prompt and 2.5 GiB free-VRAM guard. The 30 tok/s target remains open.
+
+**Prefill guard tightening (2026-10-28).** The guarded prefill runner now parses bounded decimal settings without Bash octal or overflow behavior, rejects negative prompt IDs, and refuses an explicit request to disable MMQ validation. Its systemd scope is capped at 56 GiB `MemoryHigh`, 64 GiB `MemoryMax`, and no swap; the live watchdog stops at 48 GiB scope use, 32 GiB `MemAvailable`, 2.5 GiB free physical VRAM, or 20% memory PSI full avg10. Prefill entry checks the token pointer, count, vocabulary range and context span before dispatch. The slow MMQ diagnostic checks product geometry, monotonic row bounds, active row IDs against an explicit destination capacity, and caps diagnostic metadata at one million rows; prefill, DS41 decode, worker and parity call sites provide that capacity. The MMQ identity table retains its 128-entry readable tail. The guarded wrapper always enables MMQ bounds validation after rejecting an explicit opt-out. HIP and CUDA builds passed for the decoder, worker and MMQ parity/benchmark callers. Shell syntax and tracked diff whitespace checks passed. The local guard probe refused before launch because the user systemd manager is unavailable; the independent 24-hour kernel scan still matches the Oct 27 AMD permission faults and decoder segfaults. No GPU inference was run. The checks cover these dispatch and metadata bounds, not every GPU memory access; the faulting kernel remains unknown. The previous prefill result remains 645 tok/s average, with 647.8 tok/s fastest; no new 650+ measurement is qualified.
+
+**Decode guard and screen audit (2026-10-28).** Rechecked the 600-token code-prefix decode logs. The unpinned five-position draft with 90 cache slots, a 2,560 MiB target tier, `DEFER_ALL=1` and `CPU_TOPK=2` remains the fastest 128-output result at 27.32 tok/s: 103/122 draft proposals accepted, 0.795 s drafting, 3.837 s verification, 483 cache hits / 98 misses, and 2.81 GiB minimum free physical VRAM. An 80-slot top-two screen measured 25.05 tok/s with NUMA interleave and 24.74 without it; a 75-slot top-one screen measured 21.78 tok/s with 65.1% acceptance. Seven-position drafting measured 23.46 tok/s at a smaller target tier. Retain 90 slots and five positions for the next control; compare the still-unmeasured 100-slot cache with the same prompt, cache simulation and adaptive schedule under the 2.5 GiB free-VRAM floor.
+
+A 64-output batch with 6.72 GiB of mapped draft experts measured 29.13 tok/s, but its 128-output repeat measured 20.04 tok/s. AMD mapped expert pinning is rejected, so this is not a safe or repeatable candidate. The decode runner now bounds decimal arguments and prompt size, count, token representation and context span; it rejects extra decoder options that could override those bounds and forces MMQ metadata validation. The recent 24-hour kernel scan still matches AMD faults, and the user systemd manager is unavailable. No new decode run was launched. 30 tok/s remains unmet and 40 tok/s remains unverified.
+
+**Decode and prefill OOM/OOB launch gates (2026-10-28).** Both runners now validate prompt IDs against the GGUF tokenizer count and confirm the input embedding table has the same vocabulary width, using a bounded metadata scan before starting the GPU process. The prelaunch physical-VRAM minimum is the larger of 8 GiB and the requested expert tier plus the 2.5 GiB reserve and 1 GiB startup margin. Before release, each scope must confirm no swap, `memory.oom.group=1`, and zero `high`, `max`, `oom`, `oom_kill` and `oom_group_kill` counters; `MemoryHigh` is 48 GiB for decode and 56 GiB for prefill, both with 64 GiB `MemoryMax`. Runtime monitoring includes group OOM events and additional kernel OOM/allocation-failure patterns. The MMQ row-ID and gfx12 WMMA metadata checks cover their known dispatch paths; this is not a general GPU memory sanitizer. The Oct 27 page-fault cluster and decoder segfaults remain inside the 24-hour quarantine. Separately, the required user systemd manager is unavailable. No GPU run was launched. Bash syntax, Python AST parsing and whitespace checks passed.
+
+**Decode speed follow-up (2026-10-28).** The best current lossy 128-output screen remains 27.32 tok/s; its profile reports 3.84 s of target verification and 0.80 s of drafting. The guarded runner now accepts strict 0/1 opt-ins for `FUSE`, `SHARE_Q8`, `IQ1S_FAST` and `Q6_V2`, which it previously dropped when constructing the clean decoder environment. Earlier same-machine exact decode screens measured `FUSE+SHARE_Q8` at +6–8% and `IQ1S_FAST` at +5–7% with unchanged token IDs, but those numbers do not qualify these options on the current lossy configuration. Next compare the opt-ins and `STRATA_DS41_DSPARK_SCHED=1` on the same 600-token/128-output prompt, then run the 90/100-slot cache simulator as an unscored GPU diagnostic. The simulator uses no additional VRAM but consumes CPU time during real drafting, so keep it out of throughput A/Bs. Retain the 2.5 GiB free-VRAM floor. The Oct 27 fault/segfault events remain within 24 hours and the user systemd manager is unavailable, so no GPU run was launched. 30+ tok/s remains unachieved; 40+ tok/s remains a stretch.
+
+**WMMA bounds fail-fast (2026-10-28).** Guarded DS41 runs now copy and check the gfx12 WMMA attention bounds-error flag after each batched attention layer, before later layers can consume output from a rejected batch. This is a targeted metadata check; it cannot detect every GPU out-of-bounds access or establish the cause of the Oct 27 page faults. No GPU run is permitted while those faults and decoder segfaults remain in the 24-hour quarantine or the user systemd manager is unavailable.
+
+HIP `strata-glm-decode` compiled and linked after this change. The CUDA build was stopped for the planned hardware reboot at step 187/192; a dry run shows five decoder compile/link steps remain. Static shell syntax, Python AST and whitespace checks passed. This is compile validation only; no GPU inference or runtime OOB check was performed.
+
+**Cross-boot fault quarantine (2026-10-28).** After reboot, the current-boot kernel log was clean but the retained previous boot still contained the Oct 27 page faults and decoder segfaults. Both launchers now use `journalctl --boot=all` for their 24-hour preflight scan so a reboot cannot hide a recent GPU fault. The all-boots scan confirms the latest event is the decoder segfault at Oct 27 14:31:49 JST, so the quarantine remains active until after Oct 28 14:31:49 JST if no newer fault appears. In this shell, `systemctl --user` returns `Operation not permitted`; that means the user bus cannot be accessed here, not that the manager is confirmed stopped. CUDA and HIP `strata-glm-decode` targets now both compile and link. Shell syntax, Python AST parsing and whitespace checks pass. No GPU inference was run; 27.32 tok/s remains the best recorded decode result and the 30 tok/s goal remains unmet.
+
+**Guarded scope access (2026-10-28).** A read-only `systemctl --user show-environment` query succeeded with the approved elevated shell, confirming the user manager is available when the sandbox permits its bus connection. The normal workspace shell still receives `Operation not permitted`; future guarded launch commands must use the approved execution context. At 05:43 JST, host memory showed 115 GiB available, memory PSI was 0%, and free physical VRAM was about 14.9 GiB. These are point-in-time readings, not authorization to run: the 24-hour all-boots fault scan still matches the Oct 27 events. No inference was run.
+
+**Scope OOM journal quarantine (2026-10-28).** A wider journal scan found a DS41 decode systemd scope ending with `Failed with result 'oom-kill'` at Oct 27 19:35:48 JST, later than the retained AMD page faults and decoder segfaults. The 24-hour quarantine therefore extends until after 19:35:48 JST Oct 28, provided a fresh scan finds no later fault or OOM. Both decode and prefill guards now check all-boots kernel records plus the full system journal for DS41 scope OOM and `systemd-oomd` kills. Preflight uses `journalctl --grep` so it returns only matching OOM messages. The runtime cursor covers both and advances after every poll so it reads only new entries. Shell syntax and whitespace checks passed, and the filter matched the retained OOM event; no inference was launched.
+
+**Decode route-sync timing (2026-10-28).** With `STRATA_DS41_DECODE_TIMING=1`, the decoder now reports host wall time spent waiting on `route_ev_` in milliseconds per speculative verification pass. This isolates the synchronous GPU-route ID handoff identified in the source review; timing unset leaves output unchanged. HIP and CUDA decoder targets compile. The metric has not been measured on the RX 9070 XT because the recent scope OOM is still inside the 24-hour quarantine.
+
+**Decode host-buffer reuse and post-reboot checkpoint (2026-10-28 06:20 JST).** The serial MoE path reuses route-ID/weight, CPU-mask, and grouped-GPU scratch across layers and verification passes. In GPU-route mode it skips filling grouped-GPU arrays because those resident products already ran into `g_sum_`; CPU route masks and tier counters remain active. Routing math and bounds checks are unchanged. HIP and CUDA `strata-glm-decode` builds pass; runtime impact is unmeasured. After the 05:32 JST reboot, the all-boots 24-hour scan at 06:17 still finds the Oct 27 AMD page faults, decoder segfaults, and the later scope `oom-kill` at 19:35:48 JST. No newer matching event is present. Inference remains gated until after 19:35:48 JST, followed by a fresh clear scan. At 06:17, `MemAvailable` was 115 GiB, memory PSI full avg10 0%, and free physical VRAM 14.99 GiB; these are transient. The best result remains 27.32 tok/s. After the gate clears, use the guarded 90-slot control, test scheduling and kernel switches one at a time, then collect the separate `route_sync` profile. Keep at least 2.5 GiB physically free; 30 tok/s remains unmet and 40 tok/s remains a stretch.
+
+**Draft-head optimization candidate (2026-10-28).** The CPU DSpark Markov-head path copies a full vocabulary row to host and synchronizes once per drafted position. The existing opt-in `STRATA_DS41_DSPARK_DEVICE_HEAD=1` keeps Markov projection and argmax on GPU and transfers only draft token IDs (plus confidence values when scheduling is enabled); the guarded runner already passes it through, and the added Markov table uses normal checked device allocation. After the 90-slot matched control, compare this option alone on the same prompt/output count, including token IDs/quality, draft-head time and total throughput. There is no result yet on this lossy configuration, so leave it opt-in unless the guarded A/B is faster and acceptable.
+
+**Decode gate recheck (2026-10-28 06:22 JST).** The all-boots 24-hour scan still finds the Oct 27 AMD faults, decoder segfaults and scope OOM; no newer match is present. Live point-in-time readings were 114.7 GiB `MemAvailable`, PSI full avg10 0%, and about 15.86 GiB free physical VRAM. `systemctl --user show-environment` succeeds in the approved elevated context after reboot; the normal sandbox cannot access the user bus. The quarantine remains the only launch blocker at this check. No inference was run.
+
+**Device draft-head OOB guard (2026-10-28 06:29 JST; capacity and non-finite checks rebuilt 06:32).** The opt-in GPU Markov head checks the token index against the validated vocabulary before row pointer arithmetic. Invalid IDs produce a zero row and set a device error flag. The argmax kernel flags any non-finite logit; if no usable index remains (such as an all-NaN or all-`-inf` row), it writes token 0 so later draft positions stay in range. After stream synchronization the host rejects a flagged draft and range-checks copied token IDs. The Markov-table and one-int flag capacities are checked by pre-run scratch validation; allocations use the checked device allocator. HIP and CUDA decoder targets build; whitespace and shell syntax checks pass. This protects this specific draft-head path and does not establish general kernel memory safety. The 06:32 all-boots scan still finds the Oct 27 scope OOM, so no GPU run was launched; after 19:35:48 JST, repeat the scan and keep the 2.5 GiB free-VRAM floor.
+
+**Device-head prefix reuse (2026-10-28 06:35 JST).** Engram prefetch in the GPU draft-head path now uses DSpark's bounded `known` token-prefix vector rather than constructing and copying a temporary vector for each accepted draft token. It supplies the same tokens and prefetch range; output capacity is reserved for B tokens and prefix capacity for B+1. HIP and CUDA decoder targets build; no runtime speed result exists yet. The 06:35 all-boots scan still finds the Oct 27 scope OOM, so leave inference gated until after 19:35:48 JST and a fresh clean scan. Keep the 2.5 GiB free-VRAM floor.
+
+## 8l. Two nodes, whole-expert ownership over IB (STD2, 2026-10-29)
+
+The row split of 8c is not bitwise the single node's (split summation order) and cannot run beside the canonical
+tier (it needs `fl_ == ff`). STD2 (`include/strata/net/expert_tp.hpp`, opt-in) gives the B550 whole experts instead:
+- `STRATA_DS41_REMOTE_OWN=ADDR:PORT STRATA_DS41_REMOTE_OWN_MIB=N` (decoder): the most-used experts per byte of the
+  profile (`STRATA_DS41_REMOTE_OWN_PROFILE`, else `STRATA_DS41_CANON_PROFILE`) after the canonical tier's, up to N MiB,
+  are sent at setup (pread, 40 GiB in 73-97 s over IB) and dropped from TR16's page cache. Per layer, the owned routes
+  and the activations go out right after the router; the reply is every owned route's raw output, merged with the
+  canonical tier's in the lane's route order (`finish_with_external`). Owned experts are excluded from canonical
+  streaming. Prompt passes go to the worker too (CPU lane there).
+- `strata-ds41-worker` (CUDA, built on the B550 because of its glibc): STD2 keeps the owned blobs (anonymous,
+  pinned, hugetlb or `--weights-dir=/dev/shm` by fingerprint) and runs passes of up to 8 tokens' tier-held routes with
+  the canonical kernels (`ds41_canon_dot` / `ds41_canon_swiglu`, CUDA build), the rest on its expert lane
+  (`ExpertLane::run_raw`). Its tier adapts (scores, promotions, a refill after prompt passes); placement never changes
+  a value. `STRATA_DS41_WORKER_TIER_SLOTS` caps it, `--gpu-reserve-mib` leaves VRAM to others.
+- B550's glibc 2.39 `expf` matches TR16's 2.43 on all 2^32 inputs (both differ from the port in the same two).
+
+Verified with the miners running on the B550 (no timing): c_osd 1,000 teacher-forced positions byte-identical to the
+all-CPU exact reference with 2 GiB (CPU only), 4 GiB (200-slot GPU tier, hit 0.78) and 40 GiB owned (5,687 experts,
+722-slot tier on the 5060 Ti beside a 5.7 GB miner, B550 memory PSI 0); 128-token DSpark decodes with 8 and 40 GiB
+owned generate the same IDs as the single-node exact greedy run. Launcher: `experiment/ds41f_tr16_decode/two_node.sh`
+(worker in a `systemd-run --user --scope` with MemoryMax / no swap; `MODE=own`).
+
+Deferred until the B550 is idle: timing of owned-set size and tier, hugetlb rows to ~59 GiB, TR16 page-cache relief.
+
+**Measured (2026-10-29, B550 miners stopped; DSpark best.env, 128 tokens, all IDs equal to exact greedy):**
+
+| | c_osd (4.57 tok/step) | c_llama (3.28 tok/step) | TR16 wait on the worker per call |
+|---|---|---|---|
+| TR16 alone | 14.02 | 7.62 | - |
+| + B550 owns 8 GiB (1,144 experts) | 14.32 | 10.39 | 3.9-4.5 ms |
+| + 24 GiB (3,415) | 14.81 | 11.06 | 8.1 ms |
+| + 40 GiB (5,688) | 15.42 | 12.41 | 11.9 ms |
+
+Worker: 15 lane threads, 1,620-slot tier (13.8 GiB) on the 5060 Ti; transfer 8/24/40 GiB in 12/43/79 s (kept in
+/dev/shm for the second prompt). The worker's overall tier hit was only 0.10-0.17 (prompt passes, run on its CPU lane,
+are counted too) and TR16 waits ~12 ms per call at 40 GiB: the B550 side is now the bound. Next: fill the worker tier
+from the profile at setup, run its prompt passes on the GPU, and split the owned set by measured per-node throughput.
+
+**Worker improvements (2026-10-29, B550 idle; all IDs equal to exact greedy; c_osd 1,000-position capture with 40 GiB
+owned byte-identical):**
+- Tier pre-fill: STD2 setup carries the owned experts' profile counts (`TpSetup.pad = 1`); the worker fills its GPU
+  tier from them before `TpReady`. Worker tier hit 0.10-0.13 -> 0.62-0.89.
+- Prompt chunks (up to 64 tokens) on the worker GPU: tier-held routes with the canonical kernels, misses on its lane.
+  Prompt 17-20 -> 26-30 tok/s at 40 GiB owned.
+- `STRATA_DS41_REMOTE_OWN_LOAD=f` (owned set by load share instead of the hottest band): slower at every f
+  (c_osd 12.0/12.6/12.8, c_llama 9.2/9.6/9.7 for f = 0.3/0.45/0.6): with its tier the B550 is the faster node per
+  byte, so it should own the hot band (the default, load share 0.94 at 40 GiB).
+- `STRATA_DS41_WORKER_GPU_MIN_NT=9` (decode passes on the worker CPU only): slower (12.6 / 9.2 vs 15.1 / 11.3).
+- Best two-node decode stays ~15 (c_osd) / 11-12 (c_llama) tok/s at 40 GiB band (single node 14.0 / 7.6). 48 GiB in
+  /dev/shm does not fit its 52 GB tmpfs with a 4 GiB reserve (needs --rows=anon/hugetlb).
+
+**Larger shares and the decode split (2026-10-29, B550 idle; all IDs equal to exact greedy).** Rows in the worker's
+anonymous memory (`--rows=anon --reserve-gib=3`, worker scope MemoryMax=58G; /dev/shm caps at 48 GiB):
+
+| B550 owns | TR16 canonical streaming | c_osd | c_llama |
+|---|---|---|---|
+| 40 GiB | 4 experts/layer | 14.94 | 10.87 |
+| 48 GiB | 4 | 15.97 | 11.84 |
+| 52 GiB | 4 | 15.86 | 12.25 |
+| 52 GiB | 2 | 16.60 | 12.59 |
+| 52 GiB | 0 | **17.61** | **14.52** (prompt 36.5 tok/s) |
+
+Decode-only split of a 6-wide verify pass (c_osd, 48 GiB, streaming 4, ~222 ms): per layer TR16's host spent ~1.8 ms
+issuing the streamed experts' pageable copies and ~1.2 ms waiting for its GPU chain (~120 ms a pass, the largest
+part), ~1.3 ms waiting for the worker (whose decode request takes 2.9 ms: 2.0 ms CPU lane, 57-59 % of its routes on its
+GPU) and ~0.26 ms merging. With the B550 taking the hot band TR16's lane has room, so streaming no longer pays; at
+streaming 0 the worker reply wait rises to 1.9-2.2 ms per layer and the B550 becomes the bound. Two-node best:
+`STRATA_DS41_REMOTE_OWN_MIB=53248 STRATA_DS41_CANON_STREAM=0` with experiment/ds41f_tr16_decode/best.env.
+
+**Two-node optimization loop (2026-10-29, `experiment/ds41f_tr16_decode/trial.sh`, c_osd 128 tokens, all IDs exact).**
+Kept (exact):
+- Worker per-layer tier pools sized to each layer's blob (1,619 -> 2,003 slots in 14.2 GiB), STD1 buffers not
+  allocated in STD2 mode: 18.2 -> 19.0 tok/s.
+- Incremental tier refill (residents still wanted keep their slots): the after-prompt refill had re-uploaded 14.2 GiB
+  (~1 s) inside the first decode request: 19.0 -> 22.8 tok/s (best single run; repeats 20.2-22.8 as the session went on).
+- Canonical dot kernel: 4-way integer dots (`STRATA_DP4A`; IQ1_S as 8 sum g x - 8 sum x + delta sum x, IQ2_XXS signs
+  folded per byte), activations staged in LDS, independent loads first: 149 -> ~70 us per call (single-token passes).
+- `STRATA_DS41_REMOTE_OWN_SKIP_MIB` (owned band independent of the canonical tier's final size),
+  `STRATA_DS41_MULTI_ROWS`, `ExpertLane::finish_with_external2` (one copy per source), TR16 14 lane threads.
+Measured and dropped: worker `--stream=1..6` (its DMA + kernel slower than its lane), load-share ownership, 16-40 GiB
+owned (TR16's lane becomes the bound), DSpark N=4 / N=7, device head + GPU argmax, 75-90 draft-cache slots (canonical
+tier shrinks), multi-entry and row-staged and thread-per-block canonical kernels (all slower than v9), dense GEMV 4 rows.
+Lossy routing fails the C++ agreement gate even at tiny settings (c_osd: window affinity 0.01 95.4 %, route affinity
+0.005 95.9 %) and gave no speed (stacked affinity + trim: 21.6 tok/s).
+Where a 6-wide verify pass goes (~160-180 ms): trunk GPU ~45 ms; per layer the FFN waits ~1.5 ms for the worker
+(whose CPU lane at DDR4-2133 and GPU chain are both ~1.4-1.9 ms), ~0.55 ms for TR16's canonical chain, ~0.4 ms merge;
+drafting ~38 ms a step. 30 tok/s needs ~150 ms a step.
+
+**Kernel work (2026-10-29).** `experiment/ds41f_tr16_decode/kbench` times the canonical dot against a candidate,
+bitwise, on verify-like groups (10 groups x 2 entries; IQ1_S and IQ2_XXS; HIP and CUDA builds). The RTX 5060 Ti ran the
+single-entry kernel ~2.5x slower than the RX 9070 XT (1.40 vs 0.56 ms per layer-sized call pair). The multi-entry
+kernel (`ds41_canon_dot_multi_kernel<8, 2, 4>`: weights decoded once for 2 entries, each wave walks 4 rows per staged
+activation) is 30-40 % faster on the 5060 Ti in every multi-entry case and bitwise equal; default on CUDA
+(`STRATA_DS41_CANON_MULTI`, off by default on HIP where it is mixed). Two-node c_osd: 22.78 / 22.98 tok/s (exact), the
+worker's GPU now finishing before its CPU lane (0.14 ms wait). Worker `--stream=1/2` stays slower (20.8 / 20.6): a
+7-9 MB expert's DMA (~0.6 ms) costs more than it saves. Thread-per-block and row-staged variants were slower.
+
+**Remaining exact levers (2026-10-29).** DSpark expert cache 75 slots (the canonical tier shrinks to ~340 experts,
+verification does not slow): draft 1.07 -> 0.66 s per 128 tokens, c_osd 24.8 / 24.7 tok/s; 90 slots equal, 100 worse.
+Worker 16 lane threads: 24.9 (24 threads: 22.8). B550 owns 44 GiB: worse. Current two-node best configuration:
+`experiment/ds41f_tr16_decode/best2n.env` + `trial.sh` defaults (TR16 14 lane threads, worker `--threads=16
+--weights-dir=/dev/shm --reserve-gib=3 --gpu-reserve-mib=1024`, B550 owns 48 GiB, skip 3,328 MiB, draft cache 75):
+best 24.9 tok/s, repeats 21.3-24.9 exact (spread from desktop load on TR16 and other sessions' builds on the B550;
+trial.sh now waits for quiet nodes). 30 tok/s was not reached: per 6-wide verify pass ~155-170 ms (trunk ~45 ms GPU,
+per layer ~1.4 ms waiting for the worker whose CPU lane at ~27 GB/s is the bound, ~0.5 ms TR16 GPU, ~0.4 ms merge),
+plus ~24 ms drafting per step.

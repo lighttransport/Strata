@@ -21,6 +21,7 @@
 #include <utility>
 #include <cstdlib>
 #include <type_traits>
+#include <stdexcept>
 
 namespace strata::kernels {
 namespace {
@@ -3992,5 +3993,405 @@ namespace strata::kernels {
 void native_mmvq_set_iq2xxs_exact(bool exact) {
     const int v = exact ? 1 : 0;
     cudaMemcpyToSymbol(g_iq2xxs_exact, &v, sizeof v);
+}
+}  // namespace strata::kernels
+
+namespace strata::kernels {
+namespace {
+// Reconstruct the CPU's eight independent integer lanes for every Q8_K block,
+// then perform its ordered FP32 FMAs and horizontal reduction.
+__global__ void ds41_cpu_order_dot_kernel(int type, const uint8_t* weights, const block_q8_K* act,
+                                          float* out, int nb, size_t pair_stride, float* pair_out) {
+    const int row = blockIdx.x, tid = threadIdx.x;
+    if (blockIdx.y) { weights += pair_stride; out = pair_out; }
+    __shared__ int sums[20 * 8];
+    __shared__ float scales[20];
+    if (tid < nb * 8) {
+        const int block = tid / 8, lane = tid % 8, stride = type == 19 ? 50 : 66;
+        const uint8_t* p = weights + (size_t(row) * nb + block) * stride;
+        int sum = 0;
+        for (int ib = 0; ib < 8; ++ib) {
+            int scale; unsigned grid, signs;
+            if (type == 19) {
+                unsigned h = unsigned(p[34 + 2*ib]) | (unsigned(p[35 + 2*ib]) << 8);
+                const int gi = lane / 2;
+                unsigned ix = p[2 + 4*ib + gi] | (((h >> (3*gi)) & 7) << 8);
+                grid = iq1s_grid_gpu[ix];
+                scale = 2 * ((h >> 12) & 7) + 1;
+                signs = h >> 15;
+            } else {
+                const uint8_t* q = p + 2 + 8*ib;
+                const unsigned h = unsigned(q[4]) | (unsigned(q[5]) << 8) | (unsigned(q[6]) << 16) | (unsigned(q[7]) << 24);
+                const int gi = lane / 2;
+                unsigned s = (h >> (7*gi)) & 127; s |= (__popc(s) & 1) << 7;
+                signs = s;
+                const uint64_t v = iq2xxs_grid[q[gi]];
+                grid = unsigned(v >> (32 * (lane % 2)));
+                scale = 2 * (h >> 28) + 1;
+            }
+            for (int j = 0; j < 4; ++j) {
+                const int sub = 4 * (lane % 2) + j;
+                int weight, x = act[block].qs[32*ib + 4*lane + j];
+                if (type == 19) {
+                    const int g = int((grid >> (8*(sub%4) + 4*(sub/4))) & 15) - 1;
+                    weight = 8*g + (signs ? -1 : 1);
+                    if (weight < 0) x = int8_t(-x);
+                    weight = weight < 0 ? -weight : weight;
+                } else {
+                    weight = (grid >> (8*j)) & 255;
+                    if ((signs >> sub) & 1) x = int8_t(-x);
+                }
+                sum += weight * x * scale;
+            }
+        }
+        sums[tid] = sum;
+        if (lane == 0) {
+            const unsigned short bits = unsigned(p[0]) | (unsigned(p[1]) << 8);
+            const __half h = *reinterpret_cast<const __half*>(&bits);
+            scales[block] = __fmul_rn(__fmul_rn(__half2float(h), 0.125f), act[block].d);
+        }
+    }
+    __syncthreads();
+    __shared__ float lanes[8];
+    if (tid < 8) {
+        float a = 0.f;
+        for (int b = 0; b < nb; ++b) a = fmaf(scales[b], float(sums[8*b + tid]), a);
+        lanes[tid] = a;
+    }
+    __syncthreads();
+    if (tid == 0) {
+        const float p0 = __fadd_rn(lanes[0],lanes[4]), p1 = __fadd_rn(lanes[1],lanes[5]);
+        const float p2 = __fadd_rn(lanes[2],lanes[6]), p3 = __fadd_rn(lanes[3],lanes[7]);
+        out[row] = __fadd_rn(__fadd_rn(p0,p1), __fadd_rn(p2,p3));
+    }
+}
+__global__ void ds41_cpu_order_swiglu_kernel(const float* g, const float* u, float* out, int n, float limit) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        const float a = fminf(g[i], limit), b = fmaxf(-limit, fminf(u[i], limit));
+        // A double-precision exponential rounded to float can be closer to
+        // the host libm result than the device float approximation. This
+        // remains experimental and is not a universal bit-parity guarantee.
+        const float e = float(exp(-double(a)));
+        out[i] = __fmul_rn(a / __fadd_rn(1.f, e), b);
+    }
+}
+}  // namespace
+
+void ds41_cpu_order_iq_dot(int type, const uint8_t* weights, size_t weight_bytes,
+                           const uint8_t* q8k, size_t q8k_bytes, float* output,
+                           size_t output_bytes, int columns, int rows, void* stream) {
+    if ((type != 16 && type != 19) || !weights || !q8k || !output || columns <= 0 ||
+        columns % 256 || columns > 5120 || rows <= 0 || rows > 5120 ||
+        weight_bytes < size_t(rows) * size_t(columns / 256) * size_t(type == 19 ? 50 : 66) ||
+        q8k_bytes < size_t(columns / 256) * sizeof(block_q8_K) || output_bytes < size_t(rows) * sizeof(float))
+        throw std::invalid_argument("ds41 CPU-order IQ dot: invalid dimensions or buffer capacity");
+    ds41_cpu_order_dot_kernel<<<rows, 256, 0, (cudaStream_t)stream>>>(type, weights, (const block_q8_K*)q8k, output, columns/256, 0, nullptr);
+    check("ds41 CPU-order IQ dot");
+}
+void ds41_cpu_order_iq_dot_pair(int type, const uint8_t* weights, size_t weight_bytes,
+                                const uint8_t* q8k, size_t q8k_bytes, float* gate, size_t gate_bytes,
+                                float* up, size_t up_bytes, int columns, int rows, void* stream) {
+    if ((type != 16 && type != 19) || !weights || !q8k || !gate || !up || columns <= 0 ||
+        columns % 256 || columns > 5120 || rows <= 0 || rows > 5120)
+        throw std::invalid_argument("ds41 CPU-order IQ pair: invalid dimensions or pointers");
+    const size_t stride = size_t(rows) * size_t(columns / 256) * size_t(type == 19 ? 50 : 66);
+    if (stride > weight_bytes / 2 || q8k_bytes < size_t(columns / 256) * sizeof(block_q8_K) ||
+        gate_bytes < size_t(rows) * sizeof(float) || up_bytes < size_t(rows) * sizeof(float))
+        throw std::invalid_argument("ds41 CPU-order IQ pair: invalid buffer capacity");
+    ds41_cpu_order_dot_kernel<<<dim3(rows, 2), 256, 0, (cudaStream_t)stream>>>(
+        type, weights, (const block_q8_K*)q8k, gate, columns/256, stride, up);
+    check("ds41 CPU-order IQ pair");
+}
+void ds41_cpu_order_swiglu(const float* gate, const float* up, float* out, int count, float limit, void* stream) {
+    if (!gate || !up || !out || count <= 0 || count > 5120 || !(limit > 0.f) || !std::isfinite(limit))
+        throw std::invalid_argument("ds41 CPU-order SwiGLU: invalid dimensions or clamp");
+    ds41_cpu_order_swiglu_kernel<<<(count+255)/256, 256, 0, (cudaStream_t)stream>>>(gate, up, out, count, limit);
+    check("ds41 CPU-order SwiGLU");
+}
+}  // namespace strata::kernels
+
+namespace strata::kernels {
+namespace {
+// Grouped CPU-order dot: one 32-thread wave per output row, kCanonRows rows per block; grid (row blocks, group, part).
+// Group g's weights start at wptr[g] (+ part * part_stride); its entries gstart[g] .. gstart[g+1]-1 read activation
+// act[eact[e] * nb ..] and write out[part][e * rows + row].  The wave spreads the (block, lane) integer cells of the
+// CPU kernel over its threads; integer sums do not depend on that order.  The float steps keep the CPU's order: each
+// of the 8 lanes chains fmaf over the blocks, then the fixed pairwise sum.
+constexpr int kCanonRows = 8;
+__global__ void ds41_canon_dot_kernel(int type, const uint8_t* const* wptr, const int* gstart, const int* eact,
+                                      const block_q8_K* act, float* out, size_t part_out, int rows, int nb,
+                                      size_t row_bytes, size_t part_stride) {
+    __shared__ int sums[kCanonRows][20 * 8];
+    __shared__ float scl[kCanonRows][20];   // a row's block scales (weight d / 8 x activation d), in parallel
+    __shared__ float lanes[kCanonRows][8];
+    __shared__ int xs[20 * 64];      // the entry's Q8_K values (nb blocks x 256 int8), staged once for the block's rows
+    __shared__ float xd[20];         // and its block scales
+    const int w = threadIdx.x / 32, t = threadIdx.x % 32, g = blockIdx.y, part = blockIdx.z;
+    const int row = blockIdx.x * kCanonRows + w;
+    const bool live = row < rows;
+    const uint8_t* wr = wptr[g] + size_t(part) * part_stride + size_t(live ? row : 0) * row_bytes;
+    float* o = out + size_t(part) * part_out;
+    const int stride = type == 19 ? 50 : 66;
+    for (int e = gstart[g]; e < gstart[g + 1]; ++e) {
+        const block_q8_K* a = act + size_t(eact[e]) * nb;
+        for (int i = threadIdx.x; i < nb * 64; i += blockDim.x)
+            xs[i] = reinterpret_cast<const int*>(a[i / 64].qs)[i % 64];
+        if (threadIdx.x < nb) xd[threadIdx.x] = a[threadIdx.x].d;
+        __syncthreads();
+        if (live)
+#pragma unroll 2
+            for (int cell = t; cell < nb * 8; cell += 32) {
+                const int block = cell / 8, lane = cell % 8, gi = lane / 2;
+                const uint8_t* p = wr + size_t(block) * stride;
+                const int* xq = xs + block * 64;
+                int sum = 0;
+                if (type == 19) {
+                    // every index first (independent loads in flight), then the grid, then the dots
+                    unsigned hh[8], ix[8], gr[8];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) hh[ib] = unsigned(p[34 + 2*ib]) | (unsigned(p[35 + 2*ib]) << 8);
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) ix[ib] = p[2 + 4*ib + gi] | (((hh[ib] >> (3*gi)) & 7) << 8);
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) gr[ib] = iq1s_grid_gpu[ix[ib]];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) {
+                        // 4-way integer dots: w = 8 (g - 1) + delta, so sum w x = 8 sum g x - 8 sum x + delta sum x
+                        const int xw = xq[8*ib + lane];
+                        const int g4 = int((gr[ib] >> (4 * (lane % 2))) & 0x0F0F0F0Fu);
+                        const int dg = STRATA_DP4A(g4, xw, 0), dx = STRATA_DP4A(0x01010101, xw, 0);
+                        sum += (8 * (dg - dx) + ((hh[ib] >> 15) ? -dx : dx)) * (2 * int((hh[ib] >> 12) & 7) + 1);
+                    }
+                } else {
+                    unsigned hw[8], qi[8];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) {
+                        const uint8_t* q = p + 2 + 8*ib;
+                        hw[ib] = unsigned(q[4]) | (unsigned(q[5]) << 8) | (unsigned(q[6]) << 16) | (unsigned(q[7]) << 24);
+                        qi[ib] = q[gi];
+                    }
+                    uint64_t gv[8];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) gv[ib] = iq2xxs_grid[qi[ib]];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) {
+                        // w = +-grid byte (8..43): the sign folded per byte, (g ^ 0xff) + 1 = -g carries out of no byte
+                        const int xw = xq[8*ib + lane];
+                        unsigned sg = (hw[ib] >> (7*gi)) & 127; sg |= (__popc(sg) & 1) << 7;
+                        const unsigned s4 = (sg >> (4 * (lane % 2))) & 15u;
+                        const unsigned tt = (s4 * 0x00204081u) & 0x01010101u, m = tt * 0xffu;
+                        const unsigned grid = unsigned(gv[ib] >> (32 * (lane % 2)));
+                        sum += STRATA_DP4A(int((grid ^ m) + tt), xw, 0) * (2 * int(hw[ib] >> 28) + 1);
+                    }
+                }
+                sums[w][cell] = sum;
+                if (lane == 0) {
+                    const unsigned short bits = unsigned(p[0]) | (unsigned(p[1]) << 8);
+                    const __half hd = *reinterpret_cast<const __half*>(&bits);
+                    scl[w][block] = __fmul_rn(__fmul_rn(__half2float(hd), 0.125f), xd[block]);
+                }
+            }
+        __syncthreads();
+        if (live && t < 8) {
+            float acc = 0.f;
+            for (int b = 0; b < nb; ++b) acc = fmaf(scl[w][b], float(sums[w][8*b + t]), acc);
+            lanes[w][t] = acc;
+        }
+        __syncthreads();
+        if (live && t == 0) {
+            const float* L = lanes[w];
+            const float p0 = __fadd_rn(L[0],L[4]), p1 = __fadd_rn(L[1],L[5]);
+            const float p2 = __fadd_rn(L[2],L[6]), p3 = __fadd_rn(L[3],L[7]);
+            o[size_t(e) * rows + row] = __fadd_rn(__fadd_rn(p0,p1), __fadd_rn(p2,p3));
+        }
+        __syncthreads();
+    }
+}
+
+__global__ void ds41_canon_swiglu_kernel(const float* g, const float* u, float* out, int n, float limit);
+
+// The multi-entry form (B550's RTX 5060 Ti: 30-40 % faster on verify-sized groups, bitwise the same): a cell decodes its
+// 32 weights once and applies them to up to ENT entries staged together; each wave walks RWN rows so one staging serves
+// ROWS x RWN rows. Benchmarked in experiment/ds41f_tr16_decode/kbench.
+template<int ROWS, int ENT, int RWN>
+__global__ void ds41_canon_dot_multi_kernel(int type, const uint8_t* const* wptr, const int* gstart, const int* eact,
+                            const block_q8_K* act, float* out, size_t part_out, int rows, int nb,
+                            size_t row_bytes, size_t part_stride) {
+    __shared__ int sums[ROWS][ENT][20 * 8];
+    __shared__ float scl[ROWS][ENT][20];
+    __shared__ float lanes[ROWS][ENT][8];
+    __shared__ int xs[ENT][20 * 64];
+    __shared__ float xd[ENT][20];
+    const int w = threadIdx.x / 32, t = threadIdx.x % 32, g = blockIdx.y, part = blockIdx.z;
+    float* o = out + size_t(part) * part_out;
+    for (int e0 = gstart[g]; e0 < gstart[g + 1]; e0 += ENT) {
+        const int ne = min(ENT, gstart[g + 1] - e0);
+        for (int i = threadIdx.x; i < ne * nb * 64; i += blockDim.x) {
+            const int k = i / (nb * 64), r = i % (nb * 64);
+            xs[k][r] = reinterpret_cast<const int*>(act[size_t(eact[e0 + k]) * nb + r / 64].qs)[r % 64];
+        }
+        if (threadIdx.x < ne * nb) xd[threadIdx.x / nb][threadIdx.x % nb] = act[size_t(eact[e0 + threadIdx.x / nb]) * nb + threadIdx.x % nb].d;
+        __syncthreads();
+      for (int rr = 0; rr < RWN; ++rr) {
+        const int row = (blockIdx.x * RWN + rr) * ROWS + w;
+        const bool live = row < rows;
+        const uint8_t* wr = wptr[g] + size_t(part) * part_stride + size_t(live ? row : 0) * row_bytes;
+        if (live)
+#pragma unroll 2
+            for (int cell = t; cell < nb * 8; cell += 32) {
+                const int block = cell / 8, lane = cell % 8, gi = lane / 2;
+                const uint8_t* p = wr + size_t(block) * (type == 19 ? 50 : 66);
+                int sum[ENT];
+#pragma unroll
+                for (int k = 0; k < ENT; ++k) sum[k] = 0;
+                if (type == 19) {
+                    unsigned hh[8], ix[8], gr[8];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) hh[ib] = unsigned(p[34 + 2*ib]) | (unsigned(p[35 + 2*ib]) << 8);
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) ix[ib] = p[2 + 4*ib + gi] | (((hh[ib] >> (3*gi)) & 7) << 8);
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) gr[ib] = iq1s_grid_gpu[ix[ib]];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) {
+                        const int g4 = int((gr[ib] >> (4 * (lane % 2))) & 0x0F0F0F0Fu);
+                        const int sc = 2 * int((hh[ib] >> 12) & 7) + 1;
+                        const bool neg = (hh[ib] >> 15) != 0;
+#pragma unroll
+                        for (int k = 0; k < ENT; ++k) {
+                            if (k < ne) {
+                                const int xw = xs[k][block * 64 + 8*ib + lane];
+                                const int dg = STRATA_DP4A(g4, xw, 0), dx = STRATA_DP4A(0x01010101, xw, 0);
+                                sum[k] += (8 * (dg - dx) + (neg ? -dx : dx)) * sc;
+                            }
+                        }
+                    }
+                } else {
+                    unsigned hw[8], qi[8];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) {
+                        const uint8_t* q = p + 2 + 8*ib;
+                        hw[ib] = unsigned(q[4]) | (unsigned(q[5]) << 8) | (unsigned(q[6]) << 16) | (unsigned(q[7]) << 24);
+                        qi[ib] = q[gi];
+                    }
+                    uint64_t gv[8];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) gv[ib] = iq2xxs_grid[qi[ib]];
+#pragma unroll
+                    for (int ib = 0; ib < 8; ++ib) {
+                        unsigned sg = (hw[ib] >> (7*gi)) & 127; sg |= (__popc(sg) & 1) << 7;
+                        const unsigned s4 = (sg >> (4 * (lane % 2))) & 15u;
+                        const unsigned tt = (s4 * 0x00204081u) & 0x01010101u, m = tt * 0xffu;
+                        const int w4 = int((unsigned(gv[ib] >> (32 * (lane % 2))) ^ m) + tt), sc = 2 * int(hw[ib] >> 28) + 1;
+#pragma unroll
+                        for (int k = 0; k < ENT; ++k)
+                            if (k < ne) sum[k] += STRATA_DP4A(w4, xs[k][block * 64 + 8*ib + lane], 0) * sc;
+                    }
+                }
+#pragma unroll
+                for (int k = 0; k < ENT; ++k) if (k < ne) sums[w][k][cell] = sum[k];
+                if (lane == 0) {
+                    const unsigned short bits = unsigned(p[0]) | (unsigned(p[1]) << 8);
+                    const float dw = __fmul_rn(__half2float(*reinterpret_cast<const __half*>(&bits)), 0.125f);
+#pragma unroll
+                    for (int k = 0; k < ENT; ++k) if (k < ne) scl[w][k][block] = __fmul_rn(dw, xd[k][block]);
+                }
+            }
+        __syncthreads();
+        if (live && t < 8 * ne) {
+            const int k = t / 8, ln = t % 8;
+            float acc = 0.f;
+            for (int b = 0; b < nb; ++b) acc = fmaf(scl[w][k][b], float(sums[w][k][8*b + ln]), acc);
+            lanes[w][k][ln] = acc;
+        }
+        __syncthreads();
+        if (live && t < ne) {
+            const float* L = lanes[w][t];
+            const float p0 = __fadd_rn(L[0],L[4]), p1 = __fadd_rn(L[1],L[5]);
+            const float p2 = __fadd_rn(L[2],L[6]), p3 = __fadd_rn(L[3],L[7]);
+            o[size_t(e0 + t) * rows + row] = __fadd_rn(__fadd_rn(p0,p1), __fadd_rn(p2,p3));
+        }
+        __syncthreads();
+      }
+    }
+}
+
+// glibc's expf (sysdeps/ieee754/flt-32/e_expf.c: 32-entry 2^(i/32) table, degree-3 polynomial in double), so the
+// SwiGLU matches the CPU lane's std::exp bitwise.  Checked exhaustively over every float input against glibc 2.43 on
+// TR16 and 2.39 on the B550: two inputs where both libms round the other way are listed; another libm can differ.
+__constant__ uint64_t kCanonExp2Tab[32] = { 0x3ff0000000000000ULL, 0x3fefd9b0d3158574ULL, 0x3fefb5586cf9890fULL, 0x3fef9301d0125b51ULL, 0x3fef72b83c7d517bULL, 0x3fef54873168b9aaULL, 0x3fef387a6e756238ULL, 0x3fef1e9df51fdee1ULL, 0x3fef06fe0a31b715ULL, 0x3feef1a7373aa9cbULL, 0x3feedea64c123422ULL, 0x3feece086061892dULL, 0x3feebfdad5362a27ULL, 0x3feeb42b569d4f82ULL, 0x3feeab07dd485429ULL, 0x3feea47eb03a5585ULL, 0x3feea09e667f3bcdULL, 0x3fee9f75e8ec5f74ULL, 0x3feea11473eb0187ULL, 0x3feea589994cce13ULL, 0x3feeace5422aa0dbULL, 0x3feeb737b0cdc5e5ULL, 0x3feec49182a3f090ULL, 0x3feed503b23e255dULL, 0x3feee89f995ad3adULL, 0x3feeff76f2fb5e47ULL, 0x3fef199bdd85529cULL, 0x3fef3720dcef9069ULL, 0x3fef5818dcfba487ULL, 0x3fef7c97337b9b5fULL, 0x3fefa4afa2a490daULL, 0x3fefd0765b6e4540ULL };
+__device__ float canon_expf(float x) {
+    const uint32_t ix = __float_as_uint(x);
+    if (ix == 0x4202422fu) return __uint_as_float(0x56fc9f1cu);
+    if (ix == 0xc27c65d9u) return __uint_as_float(0x11fa2993u);
+    const uint32_t abstop = (ix >> 20) & 0x7ff;
+    if (abstop >= 0x42b) {   // |x| >= 88
+        if (ix == 0xff800000u) return 0.0f;
+        if (abstop >= 0x7f8) return x + x;
+        if (x > 0x1.62e42ep6f) return __uint_as_float(0x7f800000u);
+        if (x < -0x1.9fe368p6f) return 0.0f;
+    }
+    const double InvLn2N = 0x1.71547652b82fep+0 * 32, SHIFT = 0x1.8p+52;
+    const double C0 = 0x1.c6af84b912394p-5 / 32 / 32 / 32, C1 = 0x1.ebfce50fac4f3p-3 / 32 / 32, C2 = 0x1.62e42ff0c52d6p-1 / 32;
+    const double z = __dmul_rn(InvLn2N, double(x));
+    double kd = __dadd_rn(z, SHIFT);
+    const uint64_t ki = uint64_t(__double_as_longlong(kd));
+    kd = __dsub_rn(kd, SHIFT);
+    const double r = __dsub_rn(z, kd);
+    const double s = __longlong_as_double((long long)(kCanonExp2Tab[ki % 32] + (ki << 47)));
+    const double r2 = __dmul_rn(r, r);
+    double y = __fma_rn(__fma_rn(C0, r, C1), r2, __fma_rn(C2, r, 1.0));
+    return float(__dmul_rn(y, s));
+}
+__global__ void ds41_canon_swiglu_kernel(const float* g, const float* u, float* out, int n, float limit) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        const float a = fminf(g[i], limit), b = fmaxf(-limit, fminf(u[i], limit));
+        out[i] = __fmul_rn(__fdiv_rn(a, __fadd_rn(1.f, canon_expf(-a))), b);   // the CPU's g / (1 + exp(-g)) * u
+    }
+}
+}  // namespace
+
+void ds41_canon_dot(int type, const uint8_t* const* wptr, const int* gstart, const int* eact, int groups, int parts,
+                    const uint8_t* q8k, size_t q8k_bytes, int act_count, float* out, size_t out_bytes, int entries,
+                    int columns, int rows, size_t part_stride, void* stream) {
+    const int nb = columns / 256;
+    if ((type != 16 && type != 19) || !wptr || !gstart || !eact || !q8k || !out || groups < 1 || groups > 65535 ||
+        parts < 1 || parts > 2 || entries < 1 || act_count < 1 || columns <= 0 || columns % 256 || columns > 5120 ||
+        rows <= 0 || rows > 5120 || q8k_bytes < size_t(act_count) * size_t(nb) * sizeof(block_q8_K) ||
+        out_bytes < size_t(parts) * size_t(entries) * size_t(rows) * sizeof(float))
+        throw std::invalid_argument("ds41 canonical dot: invalid dimensions or buffer capacity");
+    if ((part_stride | size_t(columns / 256) * size_t(type == 19 ? 50 : 66)) % 2)
+        throw std::invalid_argument("ds41 canonical dot: rows must stay 2-byte aligned");
+    const size_t row_bytes = size_t(nb) * size_t(type == 19 ? 50 : 66);
+    // STRATA_DS41_CANON_MULTI (default 1 on CUDA, 0 on HIP): the multi-entry kernel when groups average more than one
+    // entry (speculative verification); both kernels give bitwise the same outputs
+    static const int multi = [] {
+        const char* v = std::getenv("STRATA_DS41_CANON_MULTI");
+#if defined(__HIP_PLATFORM_AMD__)
+        return v ? std::atoi(v) : 0;
+#else
+        return v ? std::atoi(v) : 1;
+#endif
+    }();
+    if (multi && entries > groups) {
+        constexpr int R = 8, EN = 2, RWN = 4;
+        ds41_canon_dot_multi_kernel<R, EN, RWN><<<dim3(unsigned((rows + R * RWN - 1) / (R * RWN)), unsigned(groups), unsigned(parts)), 32 * R, 0,
+                                                    (cudaStream_t)stream>>>(type, wptr, gstart, eact, (const block_q8_K*)q8k, out,
+                                                                            size_t(entries) * size_t(rows), rows, nb, row_bytes, part_stride);
+        check("ds41 canonical dot (multi-entry)");
+        return;
+    }
+    ds41_canon_dot_kernel<<<dim3(unsigned((rows + kCanonRows - 1) / kCanonRows), unsigned(groups), unsigned(parts)),
+                            32 * kCanonRows, 0, (cudaStream_t)stream>>>(
+        type, wptr, gstart, eact, (const block_q8_K*)q8k, out, size_t(entries) * size_t(rows), rows, nb, row_bytes, part_stride);
+    check("ds41 canonical dot");
+}
+void ds41_canon_swiglu(const float* gate, const float* up, float* out, int count, float limit, void* stream) {
+    if (!gate || !up || !out || count <= 0 || count > 1024 * 5120 || !(limit > 0.f) || !std::isfinite(limit))
+        throw std::invalid_argument("ds41 canonical SwiGLU: invalid dimensions or clamp");
+    ds41_canon_swiglu_kernel<<<(count+255)/256, 256, 0, (cudaStream_t)stream>>>(gate, up, out, count, limit);
+    check("ds41 canonical SwiGLU");
 }
 }  // namespace strata::kernels

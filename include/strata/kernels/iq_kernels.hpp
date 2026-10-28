@@ -93,4 +93,23 @@ void native_expert_set_mode(int mode, int phase);
 void iq_set_old_kernels(bool old);
 bool iq_old_kernels();
 
+// Experimental DS41 staged-expert primitive. The caller supplies byte capacities;
+// dimensions are bounded to the tested 5120/2304 geometry and Q8_K blocks.
+void ds41_cpu_order_iq_dot(int type, const uint8_t* weights, size_t weight_bytes,
+                           const uint8_t* q8k, size_t q8k_bytes, float* output,
+                           size_t output_bytes, int columns, int rows, void* stream);
+void ds41_cpu_order_iq_dot_pair(int type, const uint8_t* weights, size_t weight_bytes,
+                                const uint8_t* q8k, size_t q8k_bytes, float* gate, size_t gate_bytes,
+                                float* up, size_t up_bytes, int columns, int rows, void* stream);
+void ds41_cpu_order_swiglu(const float* gate, const float* up, float* out,
+                           int count, float limit, void* stream);
+// The canonical GPU tier (STRATA_DS41_CANON_MIB): the CPU-order dot for many experts at once.  Group g's weights
+// start at wptr[g] (device pointers; part 1 at + part_stride: gate then up); its entries gstart[g]..gstart[g+1]-1
+// (device arrays) take Q8_K activation row eact[e] of q8k and write out[part * entries * rows + e * rows + row].
+void ds41_canon_dot(int type, const uint8_t* const* wptr, const int* gstart, const int* eact, int groups, int parts,
+                    const uint8_t* q8k, size_t q8k_bytes, int act_count, float* out, size_t out_bytes, int entries,
+                    int columns, int rows, size_t part_stride, void* stream);
+// ds41_cpu_order_swiglu over `count` values (all entries of a layer at once).
+void ds41_canon_swiglu(const float* gate, const float* up, float* out, int count, float limit, void* stream);
+
 }  // namespace strata::kernels

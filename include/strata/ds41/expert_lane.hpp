@@ -48,6 +48,17 @@ public:
     /// finish(), which waits for them and writes y). ids, w, z and y must stay valid until finish().
     void begin(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, const float* w, int top_k, float* y);
     void finish();
+    /// Finish an asynchronous job and insert bounded externally computed raw
+    /// route outputs before collecting in the original route order.
+    void finish_with_external(const int32_t* original_ids, const int32_t* entries,
+                              const float* values, int count, int top_k);
+    /// finish_with_external with two sources of raw route outputs (e.g. a GPU tier's and a remote worker's), each copied
+    /// once into place.
+    void finish_with_external2(const int32_t* original_ids, const int32_t* entries, const float* values, int count,
+                               const int32_t* entries2, const float* values2, int count2, int top_k);
+    /// The raw (unweighted) output of every route with ids >= 0, one hidden-wide row each in route order into `routes`
+    /// (a remote node's whole experts: the caller merges them in its own collect order).
+    void run_raw(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k, float* routes);
     int threads() const { return threads_; }
 
     /// STRATA_DS41_MISS_READ=N (opt-in): queued parallel reads for experts that may have left the page cache. An
