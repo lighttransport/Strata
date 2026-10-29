@@ -1,0 +1,16 @@
+{
+  "log_sha256": "a1fb06c93ba2194b41b4b9932bfcce55baae35eaf5d551a523bf7300cf33421b",
+  "passed": true,
+  "task": "parse_u64",
+  "scope": "one C++ coding task",
+  "compile": {
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "run": {
+    "returncode": 0,
+    "stdout": "PASS 400532 cases\n",
+    "stderr": ""
+  }
+}

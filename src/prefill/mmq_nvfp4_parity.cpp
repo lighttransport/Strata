@@ -82,16 +82,17 @@ int product(const uint8_t* w_host, int64_t rows, int64_t cols, int T, const char
     ck(cudaMalloc(&dq, mmq::q8_bytes(T, cols)), "xq");
     ck(cudaMalloc(&dys, T * sizeof(float)), "yscale");
     ck(cudaMalloc(&dd, (size_t) T * rows * sizeof(float)), "dst");
-    ck(cudaMalloc(&dids, T * sizeof(int32_t)), "ids");
+    ck(cudaMalloc(&dids, (T + 128) * sizeof(int32_t)), "ids");
     ck(cudaMalloc(&dbounds, 2 * sizeof(int32_t)), "bounds");
     const int32_t bounds[2] = {0, T};
     ck(cudaMemcpy(dbounds, bounds, sizeof bounds, cudaMemcpyHostToDevice), "bounds");
-    mmq::iota(dids, T, nullptr);
+    mmq::iota(dids, T + 128, nullptr);
     mmq::quantize(dx, nullptr, dq, GGML_TYPE_NVFP4, cols, cols, T, nullptr, dys);
     mmq::Context ctx;
     mmq::Product p;
     p.w = dw; p.type = GGML_TYPE_NVFP4; p.w_rows = rows; p.w_cols = cols; p.expert_bytes = wbytes; p.n = 1;
     p.xq = dq; p.bounds = dbounds; p.ids = dids; p.total_rows = T; p.max_rows = T; p.dst = dd; p.ld_dst = rows;
+    p.dst_rows = T;
     p.y_scale = mmq::fp4_activations(GGML_TYPE_NVFP4) ? dys : nullptr;
     ctx.run(p, nullptr);
     ck(cudaDeviceSynchronize(), "run");
@@ -188,10 +189,10 @@ int group(const char* path) {
     ck(cudaMalloc(&ddn, (size_t) std::max(nB, 1) * N * 4), "dn");
     ck(cudaMalloc(&dxq, mmq::q8_bytes(T, N)), "xq"); ck(cudaMalloc(&dhq, mmq::q8_bytes(std::max(nB, 1), FF)), "hq");
     ck(cudaMalloc(&dys, T * 4), "ys"); ck(cudaMalloc(&dhs, std::max(nB, 1) * 4), "hs");
-    ck(cudaMalloc(&dids, T * 4), "ids"); ck(cudaMalloc(&dbounds, (E + 1) * 4), "b"); ck(cudaMalloc(&drel, 5 * 4), "rel");
+    ck(cudaMalloc(&dids, (T + 128) * 4), "ids"); ck(cudaMalloc(&dbounds, (E + 1) * 4), "b"); ck(cudaMalloc(&drel, 5 * 4), "rel");
     ck(cudaMemcpy(dbounds, bounds.data(), (E + 1) * 4, cudaMemcpyHostToDevice), "b");
     ck(cudaMemcpy(drel, relB.data(), 5 * 4, cudaMemcpyHostToDevice), "rel");
-    mmq::iota(dids, T, nullptr);
+    mmq::iota(dids, T + 128, nullptr);
     const bool fp4 = mmq::fp4_activations(GGML_TYPE_NVFP4);
     mmq::quantize(dx, nullptr, dxq, GGML_TYPE_NVFP4, N, N, T, nullptr, dys);
     mmq::Context ctx;
@@ -200,6 +201,7 @@ int group(const char* path) {
         p.w = dG + (grp ? 16 * gub : 0); p.type = GGML_TYPE_NVFP4; p.w_rows = 2 * FF; p.w_cols = N; p.expert_bytes = gub;
         p.n = grp ? 4 : 16; p.xq = dxq; p.bounds = dbounds + (grp ? 16 : 0); p.ids = dids; p.total_rows = T;
         p.max_rows = grp ? maxB : maxA; p.dst = dgu; p.ld_dst = 2 * FF; p.y_scale = fp4 ? dys : nullptr;
+        p.dst_rows = T;
         ctx.run(p, nullptr);
     }
     mmq::quantize(dh, nullptr, dhq, GGML_TYPE_NVFP4, FF, FF, nB, nullptr, dhs);
@@ -208,6 +210,7 @@ int group(const char* path) {
         p.w = dD + 16 * db; p.type = GGML_TYPE_NVFP4; p.w_rows = N; p.w_cols = FF; p.expert_bytes = db; p.n = 4;
         p.xq = dhq; p.bounds = drel; p.ids = dids; p.total_rows = nB; p.max_rows = maxB; p.dst = ddn; p.ld_dst = N;
         p.y_scale = fp4 ? dhs : nullptr;
+        p.dst_rows = nB;
         ctx.run(p, nullptr);
     }
     ck(cudaDeviceSynchronize(), "run");

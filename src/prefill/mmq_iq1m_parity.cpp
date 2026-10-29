@@ -104,6 +104,7 @@ int product(int64_t rows, int64_t cols, int T, const char* what, std::mt19937& r
     mmq::Product p;
     p.w = dw; p.type = GGML_TYPE_IQ1_M; p.w_rows = rows; p.w_cols = cols; p.expert_bytes = wbytes; p.n = 1;
     p.xq = dq; p.bounds = dbounds; p.ids = dids; p.total_rows = T; p.max_rows = T; p.dst = dd; p.ld_dst = rows;
+    p.dst_rows = T;
     ctx.run(p, nullptr);
     ck(cudaDeviceSynchronize(), "run");
     std::vector<float> got(size_t(T) * rows);

@@ -9,8 +9,10 @@
 
 #include "strata/prefill/mmq_kq_abi.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 #include <cstring>
@@ -362,9 +364,13 @@ struct ExternalPool : ggml_cuda_pool {
     std::vector<Buffer> buffers;
     ExternalPool(void* p, size_t n) : data((char*)p), capacity(n) {}
     void* alloc(size_t bytes, size_t* actual) override {
+        if (bytes > std::numeric_limits<size_t>::max() - 255)
+            throw std::runtime_error("MMQ: external scratch size overflow");
+        if (capacity != 0 && data == nullptr)
+            throw std::runtime_error("MMQ: external scratch pointer is null");
         for (auto& b : buffers) if (!b.used && b.bytes >= bytes) { b.used = true; *actual = b.bytes; return b.p; }
         bytes = (bytes + 255) / 256 * 256;
-        if (cursor + bytes > capacity) {
+        if (cursor > capacity || bytes > capacity - cursor) {
             for (const auto& b : buffers) if (b.used) throw std::runtime_error("MMQ: external scratch exhausted");
             buffers.clear(); cursor = 0;
         }
@@ -382,9 +388,65 @@ Context::Context(void* scratch, size_t bytes) : Context() {
 Context::~Context() { delete (ggml_backend_cuda_context*) ctx_; }
 
 void Context::run(const Product& p, void* stream) {
-    if (p.n <= 0 || p.max_rows <= 0) return;
+    if (p.n < 0 || p.max_rows < 0) throw std::invalid_argument("MMQ: negative product geometry");
+    if (p.n == 0 || p.max_rows == 0) return;
     const ggml_type t = (ggml_type) p.type;
-    const int64_t qk = ggml_blck_size(t), bpr = p.w_cols / qk;
+    const int64_t qk = ggml_blck_size(t);
+    const size_t type_bytes = ggml_type_size(t);
+    if (!supported(p.type) || qk <= 0 || type_bytes == 0 || p.w == nullptr || p.xq == nullptr || p.bounds == nullptr ||
+        p.ids == nullptr || p.dst == nullptr || p.w_rows <= 0 || p.w_cols <= 0 || p.w_cols % qk != 0 ||
+        p.total_rows <= 0 || p.total_rows > std::numeric_limits<int32_t>::max() || p.max_rows > p.total_rows ||
+        p.ld_dst < p.w_rows || p.dst_rows < 0 || p.expert_bytes % type_bytes != 0)
+        throw std::invalid_argument("MMQ: invalid product pointers, type, or geometry");
+    const size_t blocks_per_row = size_t(p.w_cols / qk);
+    if (size_t(p.w_rows) > std::numeric_limits<size_t>::max() / blocks_per_row ||
+        size_t(p.w_rows) * blocks_per_row > std::numeric_limits<size_t>::max() / type_bytes)
+        throw std::invalid_argument("MMQ: product weight size overflow");
+    const size_t matrix_size = size_t(p.w_rows) * blocks_per_row * type_bytes;
+    if (p.expert_bytes < matrix_size || p.expert_bytes / type_bytes > size_t(std::numeric_limits<int64_t>::max()))
+        throw std::invalid_argument("MMQ: product weight stride is smaller than its matrix");
+
+    // Optional slow diagnostic for bounded runs. Product bounds and their
+    // routed row IDs are copied only in this mode; validate them before MMQ can
+    // dereference an invalid row range or write an invalid destination row.
+    // Normal performance runs do not synchronize here.
+    static const bool validate_bounds = [] {
+        const char* value = std::getenv("STRATA_MMQ_VALIDATE_BOUNDS");
+        return value != nullptr && std::strcmp(value, "1") == 0;
+    }();
+    if (validate_bounds) {
+        if (size_t(p.n) > 65536 || size_t(p.n) > std::numeric_limits<size_t>::max() / sizeof(int32_t) - 1 ||
+            size_t(p.total_rows) > (size_t(1) << 20))
+            throw std::invalid_argument("MMQ: diagnostic row metadata is too large");
+        if (p.dst_rows <= 0)
+            throw std::invalid_argument("MMQ: diagnostic product has no declared destination capacity");
+        std::vector<int32_t> host_bounds(size_t(p.n) + 1);
+        const cudaStream_t s = (cudaStream_t) stream;
+        ck(cudaMemcpyAsync(host_bounds.data(), p.bounds, host_bounds.size() * sizeof(int32_t), cudaMemcpyDeviceToHost, s),
+           "product bounds copy");
+        ck(cudaStreamSynchronize(s), "product bounds sync");
+        int32_t largest = 0;
+        for (size_t i = 0; i < host_bounds.size(); ++i) {
+            const int32_t value = host_bounds[i];
+            if (value < 0 || value > p.total_rows || (i && value < host_bounds[i - 1]))
+                throw std::invalid_argument("MMQ: product bounds are negative, decreasing, or outside the input rows");
+            if (i) largest = std::max(largest, value - host_bounds[i - 1]);
+        }
+        if (largest > p.max_rows)
+            throw std::invalid_argument("MMQ: product bounds exceed the declared maximum expert rows");
+        const size_t first_row = size_t(host_bounds.front());
+        const size_t row_span = size_t(host_bounds.back()) - first_row;
+        std::vector<int32_t> host_ids(row_span);
+        if (row_span != 0) {
+            ck(cudaMemcpyAsync(host_ids.data(), p.ids + first_row, row_span * sizeof(int32_t), cudaMemcpyDeviceToHost, s),
+               "product row IDs copy");
+            ck(cudaStreamSynchronize(s), "product row IDs sync");
+            for (int32_t id : host_ids)
+                if (id < 0 || id >= p.dst_rows)
+                    throw std::invalid_argument("MMQ: product row ID is outside the declared destination rows");
+        }
+    }
+    const int64_t bpr = p.w_cols / qk;
     const mmq_args a = {(const char*) p.w, t, (const int*) p.xq, p.ids, p.bounds, p.dst, p.y_scale,
                         p.w_cols, p.w_rows, p.total_rows, bpr, p.total_rows, p.ld_dst,
                         p.n, p.n, (int64_t) (p.expert_bytes / ggml_type_size(t)), 0, 0,

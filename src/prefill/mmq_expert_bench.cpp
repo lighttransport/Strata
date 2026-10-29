@@ -74,15 +74,16 @@ double run_case(const Case& c, int R, std::mt19937& rng, float* ms_out) {
     ck(cudaMalloc(&dq, mmq::q8_bytes(T, c.cols)), "xq");
     ck(cudaMalloc(&dys, (size_t) T * 4), "ys");
     ck(cudaMalloc(&dd, (size_t) T * c.rows * 4), "dst");
-    ck(cudaMalloc(&dids, (size_t) T * 4), "ids");
+    ck(cudaMalloc(&dids, (size_t) (T + 128) * 4), "ids");
     ck(cudaMalloc(&db, (E + 1) * 4), "bounds");
     ck(cudaMemcpy(db, bounds.data(), (E + 1) * 4, cudaMemcpyHostToDevice), "bounds");
-    mmq::iota(dids, T, nullptr);
+    mmq::iota(dids, T + 128, nullptr);
     mmq::quantize(dx, nullptr, dq, c.t, c.cols, c.cols, T, nullptr, dys);
     mmq::Context ctx;
     mmq::Product p;
     p.w = dw; p.type = c.t; p.w_rows = c.rows; p.w_cols = c.cols; p.expert_bytes = per; p.n = E;
     p.xq = dq; p.bounds = db; p.ids = dids; p.total_rows = T; p.max_rows = R; p.dst = dd; p.ld_dst = c.rows;
+    p.dst_rows = T;
     p.y_scale = mmq::fp4_activations(c.t) ? dys : nullptr;
     cudaEvent_t e0, e1;
     cudaEventCreate(&e0); cudaEventCreate(&e1);

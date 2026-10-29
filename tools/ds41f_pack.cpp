@@ -781,9 +781,11 @@ std::vector<TrunkItem> trunk_items(const Checkpoint& c, ggml_type trunk_type, gg
     for (const auto& [name, t] : c.index) {
         if (strata_ds41f_is_routed_expert(name.c_str()) || strata_ds41f_is_engram_table(name.c_str()) || ends_with(name, ".scale")) continue;
         const bool matrix = t.shape.size() == 2 && t.shape[0] >= 256 && t.shape[1] >= 256;
+        // a row must be whole blocks of the format (the vision patch embedding is 1024 x 588): otherwise unquantized
+        const auto fits = [&](ggml_type type) { return t.shape.size() == 2 && t.shape[1] % uint64_t(ggml_blck_size(type)) == 0; };
         const st::Tensor* scale = c.find(name.substr(0, name.size() - 7) + ".scale");
-        if (t.dtype == "F8_E4M3") { if (!scale) throw std::runtime_error("FP8 tensor without scale: " + name); items.push_back({name, &t, scale, matrix ? trunk_type : GGML_TYPE_F32}); }
-        else if (t.dtype == "BF16") items.push_back({name, &t, nullptr, name == "head.weight" ? head_type : (matrix && name != "embed.weight" ? trunk_type : GGML_TYPE_BF16)});
+        if (t.dtype == "F8_E4M3") { if (!scale) throw std::runtime_error("FP8 tensor without scale: " + name); items.push_back({name, &t, scale, matrix && fits(trunk_type) ? trunk_type : GGML_TYPE_F32}); }
+        else if (t.dtype == "BF16") items.push_back({name, &t, nullptr, name == "head.weight" && fits(head_type) ? head_type : (matrix && name != "embed.weight" && name != "head.weight" && fits(trunk_type) ? trunk_type : GGML_TYPE_BF16)});
         else if (t.dtype == "F32") items.push_back({name, &t, nullptr, GGML_TYPE_F32});
         else if (t.dtype == "I8" || t.dtype == "F8_E8M0") continue;   // vision tower or DSpark packed tensors: not part of the text trunk
         else throw std::runtime_error("unsupported dtype " + t.dtype + " for " + name);

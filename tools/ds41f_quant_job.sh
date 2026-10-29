@@ -13,7 +13,11 @@
 #   DS41F_FORMATS   the pack tool's format/imatrix arguments, e.g. "--gate=q2_k --up=q2_k --down=q3_k --uncalibrated"
 #   DS41F_LAYERS    layer range, default 0-39
 #   DS41F_THREADS   default = SLURM_CPUS_PER_TASK or 36
-#   DS41F_PACK      the strata-ds41f-pack binary, default build-ds41f/strata-ds41f-pack next to the repo root
+#   DS41F_PACK      the strata-ds41f-pack binary, default build-ds41f/strata-ds41f-pack next to the repo root (inside a
+#                   job the script runs from Slurm's spool copy: give DS41F_PACK, or submit from the repo so DS41F_SELF finds it)
+#   DS41F_SELF      this script's path for the requeue, default Slurm's Command= of the job (not the spool copy)
+#   DS41F_TRUNK     "TRUNK/HEAD" types, e.g. q4_k/q8_0: once the experts are complete, also pack the trunk into
+#                   DS41F_TRUNK_OUT (default <chunks>/../trunk-<trunk>-<head>.gguf); skipped when that file exists
 #   DS41F_FETCH     "1" to run tools/ds41f_fetch.py --out $DS41F_CKPT first (needs the venv python in DS41F_PYTHON)
 #   DS41F_MARGIN_S  seconds kept free before EndTime, default 600
 #   DS41F_MAX_JOBS  stop requeueing after this many jobs, default 20
@@ -26,8 +30,14 @@
 #SBATCH --gres=gpu:2
 #SBATCH --output=ds41f-quant-%j.log
 set -u
-here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
+# Slurm runs a spooled copy of the script; the repo (and the requeue) need the submitted file
+SELF=${DS41F_SELF:-}
+if [ -z "$SELF" ] && [ -n "${SLURM_JOB_ID:-}" ]; then
+    SELF=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null | grep -o 'Command=[^ ]*' | head -1 | cut -d= -f2)
+fi
+[ -n "$SELF" ] && [ -f "$SELF" ] || SELF=${BASH_SOURCE[0]}
+here=$(cd "$(dirname "$SELF")/.." && pwd)
 : "${DS41F_CKPT:?set DS41F_CKPT}"; : "${DS41F_CHUNKS:?set DS41F_CHUNKS}"; : "${DS41F_FORMATS:?set DS41F_FORMATS}"
 LAYERS=${DS41F_LAYERS:-0-39}
 THREADS=${DS41F_THREADS:-${SLURM_CPUS_PER_TASK:-36}}
@@ -47,11 +57,11 @@ end_epoch() {
 }
 END=$(end_epoch); DEADLINE=$((END - MARGIN)); NOW=$(date +%s)
 echo "ds41f-quant job=${SLURM_JOB_ID:-none} host=$(hostname) now=$(date -d @$NOW +%FT%T) end=$(date -d @$END +%FT%T) deadline=$(date -d @$DEADLINE +%FT%T) budget_s=$((DEADLINE - NOW)) jobs_done=$JOBS_DONE"
-echo "  ckpt=$DS41F_CKPT chunks=$DS41F_CHUNKS layers=$LAYERS threads=$THREADS formats=$DS41F_FORMATS"
+echo "  ckpt=$DS41F_CKPT chunks=$DS41F_CHUNKS layers=$LAYERS threads=$THREADS formats=$DS41F_FORMATS self=$SELF"
 PACK_CMD=("$PACK" experts "$DS41F_CKPT" "--chunk-dir=$DS41F_CHUNKS" $DS41F_FORMATS "--layers=$LAYERS" "--threads=$THREADS" "--deadline=$DEADLINE")
 echo "  pack: ${PACK_CMD[*]}"
 if [ "$DRY" = 1 ]; then
-    echo "  requeue on exit 3: sbatch $SBATCH_ARGS --export=ALL,DS41F_JOBS_DONE=$((JOBS_DONE + 1)) $0"
+    echo "  requeue on exit 3: sbatch $SBATCH_ARGS --export=ALL,DS41F_JOBS_DONE=$((JOBS_DONE + 1)) $SELF"
     echo "  complete when: $PACK assemble $DS41F_CHUNKS --check --layers=$LAYERS  exits 0"
     exit 0
 fi
@@ -61,14 +71,27 @@ fi
 "${PACK_CMD[@]}"; rc=$?
 echo "pack exit=$rc at $(date +%FT%T)"
 if [ $rc -eq 0 ]; then
-    "$PACK" assemble "$DS41F_CHUNKS" --check --layers="$LAYERS" && echo "DS41F_QUANT_COMPLETE chunks=$DS41F_CHUNKS" && exit 0
-    echo "pack returned 0 but the range is incomplete"; exit 1
+    "$PACK" assemble "$DS41F_CHUNKS" --check --layers="$LAYERS" || { echo "pack returned 0 but the range is incomplete"; exit 1; }
+    echo "DS41F_QUANT_COMPLETE chunks=$DS41F_CHUNKS"
+    if [ -n "${DS41F_TRUNK:-}" ]; then
+        TT=${DS41F_TRUNK%%/*}; TH=${DS41F_TRUNK#*/}
+        TOUT=${DS41F_TRUNK_OUT:-$(dirname "$DS41F_CHUNKS")/trunk-$TT-$TH.gguf}
+        if [ -f "$TOUT" ]; then echo "trunk exists: $TOUT"
+        else
+            t0=$(date +%s)
+            # the tool writes TOUT.partial itself and renames it when complete
+            "$PACK" trunk "$DS41F_CKPT" "$TOUT" --trunk="$TT" --head="$TH" --threads="$THREADS" \
+                || { echo "trunk pack failed"; rm -f "$TOUT.partial"; exit 1; }
+            echo "DS41F_TRUNK_COMPLETE out=$TOUT seconds=$(( $(date +%s) - t0 ))"
+        fi
+    fi
+    exit 0
 fi
 if [ $rc -eq 3 ]; then
     if [ "$JOBS_DONE" -ge "$MAXJ" ]; then echo "max jobs reached; not requeueing"; exit 3; fi
     if [ -n "${SLURM_JOB_ID:-}" ]; then
         echo "requeueing: more layers remain"
-        sbatch $SBATCH_ARGS --dependency=afterany:$SLURM_JOB_ID --export=ALL,DS41F_JOBS_DONE=$((JOBS_DONE + 1)) "$0" || { echo "sbatch failed"; exit 1; }
+        sbatch $SBATCH_ARGS --dependency=afterany:$SLURM_JOB_ID --export=ALL,DS41F_JOBS_DONE=$((JOBS_DONE + 1)),DS41F_SELF=$SELF "$SELF" || { echo "sbatch failed"; exit 1; }
     fi
     exit 3
 fi

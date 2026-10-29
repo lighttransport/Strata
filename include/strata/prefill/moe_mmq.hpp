@@ -65,6 +65,7 @@ struct Product {
     float* dst = nullptr;
     int64_t ld_dst = 0;
     const float* y_scale = nullptr;     ///< NVFP4 w4a4: the per-row activation scales (fp4_activations)
+    int64_t dst_rows = 0;               ///< optional destination row capacity for diagnostics (0: caller does not report it)
 };
 
 /// The launch context (llama.cpp's MMQ keeps a small scratch pool for its stream-k fixup).  One per prompt path.
