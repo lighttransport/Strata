@@ -280,7 +280,7 @@ def cmd_two_node(args):
         print(f"  {label:<76}{o['tok_s']:6.1f} tok/s  round {o['round_ms']:6.1f} ms (experts {o['cpu_ms']:5.1f}, gpu {o['g2r_ms']:4.1f}, draft {o['draft_ms']:4.1f}); "
               f"prefetch {o['prefetch_moved']:.1f}/{o['prefetch_capacity']:.1f} experts per layer")
     print("  residuals against the measured configuration means: exact +2.7 %, grid8 off +6.5 %, trim 0.125 -4.3 %, trim 0.15 +5.3 % "
-          "(individual runs span +/-4.5 %). Hypotheses: widths other than 1 and 5, N, the trim curve outside 0.125-0.15 and canon sizes "
+          "(individual runs span +/-4.5 %). Unmeasured inputs of the [mine] levers: the root lane's busy ms per layer (root_steal), the stagger efficiency 0.6, the draft GPU contention 0.6 / 0.1. Hypotheses: widths other than 1 and 5, N, the trim curve outside 0.125-0.15 and canon sizes "
           "outside 2302-3458 MiB are extrapolations; what-if rows are not measured.")
 
 
@@ -312,6 +312,18 @@ def cmd_sensitivity(args):
         print(f"    {k:<20}{lo:6.1f} .. {hi:6.1f}")
 
 
+def cmd_no_root_gpu(args):
+    chk = ds41f.no_root_gpu_check()
+    print("Without the RX 9070 XT: decoder on the B550's RTX 5060 Ti, expert lanes on the B550 and TR16 CPUs (TR16 over IB). Inputs measured 2026-10-29 "
+          "(tools/sim/data/measured_ds41f_cpu_gpu_bench.json); the same expert-phase formula on today's layout gives "
+          f"{chk:.1f} ms against the measured 88-91 ms. No end-to-end run of this layout exists: the worker needs a CUDA device and the CUDA decoder is untested.")
+    for label, o in ds41f.no_root_gpu_levers(ds41f.NoRootGpuPlan(width=args.width)):
+        print(f"  {label:<80}{o['tok_s']:6.1f} tok/s  round {o['round_ms']:6.1f} ms; expert phase {o['expert_ms']:5.1f} ms "
+              f"(layer {o['layer_ms']:.2f} ms: lanes {o['lane_experts']:.1f} + GPU {o['gpu_experts']:.1f} experts); tier {o['tier_slots']:.0f} slots, hit {o['hit']:.2f}")
+    print("  Hypotheses: the layer overhead (1.0 ms) and merge (0.31 ms) are today's; GPU trunk/attention terms are today's 9070 XT figures (the 5060 Ti may differ); "
+          "TR16/B550 lane ratio 0.65 (measured 0.58-0.71 with a proxy kernel); the faster, tensor-core and streaming kernels and every lever below the first row are what-ifs.")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -334,6 +346,9 @@ def main(argv=None):
     p.add_argument("--prompt", type=int, default=8192)
     p.add_argument("--calibration", choices=("compute", "overlap"), default="compute")
     p.set_defaults(func=cmd_two_node_prefill)
+    p = sub.add_parser("no-root-gpu", help="decode without the 9070 XT: decoder on the B550's 5060 Ti, lanes on both CPUs")
+    p.add_argument("--width", type=int, default=5)
+    p.set_defaults(func=cmd_no_root_gpu)
     p = sub.add_parser("sensitivity", help="robustness of the 2x-decode roadmap: ablations, thresholds, Monte Carlo, constant perturbation")
     p.add_argument("--draws", type=int, default=2000)
     p.add_argument("--perturb", type=float, default=0.15)

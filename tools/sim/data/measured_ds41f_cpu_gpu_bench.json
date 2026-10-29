@@ -1,0 +1,90 @@
+{
+ "date": "2026-10-29",
+ "note": "Measured with the 9070 XT excluded (amdgpu fragility): CPU-only lane bench on both CPUs and the canonical IQ kernel bench on the B550's RTX 5060 Ti. B550 idle (GPU 0 %, load 2). TR16 had a miner on the 9070 XT (CPU ~8 % of a core).",
+ "cpu_lane_bench": {
+  "tool": "build-ds41f/iq1s_w1a8_bench --bench --mb 256 --reps 3 (engine baseline Fmt32<19> kernel, 2304x5120 IQ1_S matrices streamed per thread; a proxy for the production canonical lane)",
+  "tr16_1950x_14t": {
+   "gbps_w1": 16.96,
+   "gbps_w2": 13.9,
+   "gbps_w4": 9.87,
+   "gmacs_w1": 86.8,
+   "gmacs_w4": 202.2,
+   "ms_per_matrix_w1": 0.136,
+   "ms_per_matrix_w4": 0.233
+  },
+  "tr16_1950x_8t": {
+   "gbps_w1": 10.59,
+   "gmacs_w1": 54.2
+  },
+  "b550_3950x_16t": {
+   "gbps_w1": 23.98,
+   "gbps_w2": 21.5,
+   "gbps_w4": 16.93,
+   "gmacs_w1": 122.8,
+   "gmacs_w4": 346.8,
+   "ms_per_matrix_w1": 0.096,
+   "ms_per_matrix_w4": 0.136
+  },
+  "b550_3950x_8t": {
+   "gbps_w1": 12.65,
+   "gmacs_w1": 64.8
+  },
+  "tr16_over_b550": {
+   "w1": 0.707,
+   "w4": 0.583
+  }
+ },
+ "gpu_kernel_bench": {
+  "tool": "experiment/ds41f_tr16_decode/kbench/kbench.cu, nvcc sm_120, RTX 5060 Ti, ref = the decoder's canonical dp4a kernel, cand = cand.cuh (bit-identical, differing=0)",
+  "rows": [
+   {
+    "type": "IQ1_S",
+    "shape": "gate/up 2304x20x2, 6 tokens, 2 entries/group",
+    "ref_gbps": 53,
+    "cand_gbps": 72
+   },
+   {
+    "type": "IQ1_S",
+    "shape": "down 5120x9, 6 tokens, 2 entries/group",
+    "ref_gbps": 42,
+    "cand_gbps": 59
+   },
+   {
+    "type": "IQ1_S",
+    "shape": "gate/up, 1 token",
+    "ref_gbps": 105,
+    "cand_gbps": 94
+   },
+   {
+    "type": "IQ2_XXS",
+    "shape": "gate/up, 6 tokens",
+    "ref_gbps": 58,
+    "cand_gbps": 88
+   },
+   {
+    "type": "IQ2_XXS",
+    "shape": "down, 6 tokens, 3 entries",
+    "ref_gbps": 30,
+    "cand_gbps": 38
+   },
+   {
+    "type": "IQ1_S",
+    "shape": "down, 8 tokens, 5 entries",
+    "ref_gbps": 17,
+    "cand_gbps": 21
+   }
+  ],
+  "verify_like_weighted_ref_gbps": 49.0,
+  "verify_like_weighted_cand_gbps": 67.0
+ },
+ "worker_logs": {
+  "source": "b550:/tmp/ds41w-t40_*.log",
+  "routes_per_request": 14.95,
+  "gpu_share": 0.663,
+  "cpu_lane_ms": 1.02,
+  "total_ms": 1.25,
+  "tier_slots": 2003,
+  "tier_gib": 14.2,
+  "ms_per_lane_route": 0.202
+ }
+}

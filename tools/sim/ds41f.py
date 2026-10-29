@@ -1197,6 +1197,14 @@ TWO_NODE = dict(
     first_step_ms=30.5,           # the plain step that produces the first generated token (profile_prompt_s step, width 1)
     hit_ref=(2302.0, 0.3097, 0.1816),   # canonical-tier hit h = 0.3097 (MiB / 2302) ^ 0.1816, from 2302 MiB (0.3097) and 3033 MiB (0.3253)
     trim_cut_ref=(0.125, 0.232, 2.64),  # CPU expert time removed by STRATA_DS41_CPU_TRIM t: 0.232 (t / 0.125) ^ 2.64, from t = 0.125 and 0.15 (0.375)
+    lane_share=0.63,              # worker CPU lane ms per request (1.435 x 40 = 57 ms per round) / the 91 ms expert phase of the exact runs
+    root_lane_ms_layer=0.45,      # UNMEASURED: the root lane's busy time per layer call (lane_async busy_ms_per_token 9-12 over ~1.1 ms/layer says 0.3-1.1); measure before trusting root_steal
+    root_lane_rate=0.65,          # root lane / worker lane throughput on IQ1_S: 17.5 vs ~27 GB/s (RunnerHw.cpu_lane_gbps, docs 8l)
+    stagger_efficiency=0.6,       # share of the ideal pipelined saving realized (dependency stalls, the root GPU shared with the canonical tier, launch queue; hypothesis)
+    stagger_req_ms=0.08,          # fixed cost of one extra worker request per layer (RTT 16 us + wakeups; hypothesis)
+    draft_gpu_ms=16.0,            # the part of the 25 ms drafting that runs on a GPU (25 minus 9 ms of router waits, dspark steps= lines)
+    draft_contention=(0.6, 0.1),  # verify slowdown per ms of overlapped draft GPU time: sharing the root GPU / using the worker's (hypotheses)
+    draft_feature_ms=0.15,        # moving the 3 target hidden states (5 x 5120 x 4 B x 3) to the worker GPU over IB
     sync_merge_share=0.41,        # of the per-layer root<->worker time: gpu_sync 0.557 + merge 0.312 of 2.14 ms per layer call (remote_own_decode, 10 runs)
     deferral_factor=0.5,          # hypothesis: deferring half of the experts by one layer hides that half behind the next layer's GPU work (KT: up to 1.45x)
     prefetch_expert_mib=7.03,     # one UD-IQ1_S expert
@@ -1221,6 +1229,9 @@ class TwoNodePlan:
     prefetch_share: float = 0.0          # what-if: share of the CPU-evaluated expert work moved to the GPU tiers by lookahead uploads (bounded by the links)
     gpu_wait_scale: float = 1.0          # what-if: multiplier on the GPU-to-router wait (graphs, fused 5-token attention)
     sync_merge_scale: float = 1.0        # what-if: multiplier on the root<->worker sync + merge share of the expert pass
+    stagger_split: int = 0               # what-if (lossless): verify as two sub-windows of this many / the rest tokens, the second one's attention overlapping the first one's experts
+    root_steal: float = 0.0              # what-if (lossless): share of the worker lane's tier-miss work the root lane takes (capped at the balance point)
+    draft_place: str = "root"            # where an overlapped drafter runs: root (shares the verify's GPU) | worker (the worker's GPU)
     deferral: float = 0.0                # what-if (lossy, must pass the gate): KT-style expert deferral, share of min(experts, GPU wait) overlapped
     generated: int = 128
     acceptance: str = ""                 # "" = the fitted profile
@@ -1263,11 +1274,32 @@ def two_node_decode(plan):
     moved = min(plan.prefetch_share * misses_layer, capacity) if w > 1 else 0.0
     cpu *= 1 - (moved / misses_layer if misses_layer else 0.0)
     gpu_extra = moved * 40 * c["prefetch_expert_mib"] * 2 ** 20 / (c["tier_gbps"] * 1e9) * 1e3   # the moved experts run on the GPU tiers, un-overlapped (conservative)
+    if plan.root_steal > 0 and w > 1:
+        lane = c["lane_share"] * cpu / 40.0                           # worker lane ms per layer
+        rho, r0 = c["root_lane_rate"], c["root_lane_ms_layer"]
+        x = min(plan.root_steal, max(0.0, (lane - r0) / (lane * (1 + 1 / rho))))   # balance: lane (1-x) = r0 + x lane / rho
+        cpu -= max(0.0, lane - max(lane * (1 - x), r0 + x * lane / rho)) * 40.0
     g2r, engram, head = lerp(c["g2r_ms"]) + c["g2r_per_cpu_ms"] * cpu * frac, lerp(c["engram_ms"]) * (1 - plan.engram_hidden), lerp(c["head_ms"])
     g2r *= plan.gpu_wait_scale
     saved = plan.deferral * c["deferral_factor"] * min(cpu, g2r) if w > 1 else 0.0
-    verify = g2r + cpu + engram + head + c["other_ms"] - saved + gpu_extra
-    out = dict(width=w, canon_hit=hit, prefetch_moved=moved, prefetch_capacity=capacity, deferral_saved_ms=saved, cpu_ms=cpu, g2r_ms=g2r, engram_ms=engram, head_ms=head, other_ms=c["other_ms"], verify_ms=verify,
+    core = g2r + cpu
+    period = None
+    if 1 <= plan.stagger_split < w:
+        a, b = plan.stagger_split, w - plan.stagger_split
+        u = routing.union_ratio
+        el, gl = cpu / 40.0, g2r / 40.0
+        e_a, e_b = el * u(a, 384, 6) / u(w, 384, 6), el * u(b, 384, 6) / u(w, 384, 6)
+        g_a, g_b = gl * a / w, gl * b / w
+        f = c["stagger_req_ms"]
+        period = max(e_a + e_b + 2 * f, g_a + g_b, g_a + e_a + f, g_b + e_b + f)
+        ideal = 40.0 * period + g_a + f                               # + the first layer's attention before the pipeline fills
+        core = core - c["stagger_efficiency"] * max(0.0, core - ideal)
+    contention = 0.0
+    if w > 1 and plan.draft_overlap > 0:
+        k = c["draft_contention"][0 if plan.draft_place == "root" else 1]
+        contention = k * c["draft_gpu_ms"] * plan.draft_overlap + (c["draft_feature_ms"] if plan.draft_place == "worker" else 0.0)
+    verify = core + engram + head + c["other_ms"] - saved + gpu_extra + contention
+    out = dict(width=w, canon_hit=hit, stagger_period_ms=period, draft_contention_ms=contention, prefetch_moved=moved, prefetch_capacity=capacity, deferral_saved_ms=saved, cpu_ms=cpu, g2r_ms=g2r, engram_ms=engram, head_ms=head, other_ms=c["other_ms"], verify_ms=verify,
                vram_free_gib=two_node_vram_free_gib(mib), vram_ok=two_node_vram_free_gib(mib) * GIB >= c["vram_floor_bytes"])
     if w == 1:
         out.update(step_ms=verify, tok_s=1e3 / verify, tokens_per_round=1.0, draft_ms=0.0, round_ms=verify)
@@ -1283,15 +1315,19 @@ def two_node_decode(plan):
 
 
 def two_node_roadmap(base=None):
-    """The cumulative stacks of the 2x plan (lossless 50 / gated-lossy 60). Hypothetical: every lever except the measured base is a what-if."""
+    """The cumulative stacks of the 2x plan (lossless 50 / gated-lossy 60). Hypothetical: every lever except the measured base is a what-if.
+    "[mine]" marks the levers derived from the decoder source and logs rather than taken from the literature."""
     base = base or TwoNodePlan()
     steps = [("measured exact", {}),
-             ("+ async drafting (90 % hidden)", dict(draft_overlap=0.9)),
+             ("+ async drafting on the root GPU (90 % hidden, contends with the verify)", dict(draft_overlap=0.9)),
+             ("+ drafter moved to the worker GPU [mine]", dict(draft_place="worker")),
              ("+ lookahead expert prefetch (40 % of CPU expert work to the GPU tiers)", dict(prefetch_share=0.4)),
-             ("+ merge/sync halved (GPU merge, batched request)", dict(sync_merge_scale=0.5)),
+             ("+ merge/sync halved (GPU merge, streamed replies)", dict(sync_merge_scale=0.5)),
              ("+ repacked IQ1_S rows (expert kernel 15 % faster)", dict(cpu_speed=1.15)),
              ("+ GPU wait x0.7 (graphs, fused 5-token attention)", dict(gpu_wait_scale=0.7)),
              ("+ Engram hidden", dict(engram_hidden=1.0)),
+             ("+ root lane steals worker tier misses [mine]", dict(root_steal=1.0)),
+             ("+ staggered 3/2 sub-window verify [mine]", dict(stagger_split=3)),
              ("+ expert deferral (lossy tier; must pass the gate)", dict(deferral=1.0))]
     acc, rows = {}, []
     for label, kw in steps:
@@ -1300,10 +1336,159 @@ def two_node_roadmap(base=None):
     return rows
 
 
-ROADMAP_LEVERS = dict(draft_overlap=0.9, prefetch_share=0.4, sync_merge_scale=0.5, cpu_speed=1.15, gpu_wait_scale=0.7, engram_hidden=1.0)
-ROADMAP_NEUTRAL = dict(draft_overlap=0.0, prefetch_share=0.0, sync_merge_scale=1.0, cpu_speed=1.0, gpu_wait_scale=1.0, engram_hidden=0.0)
+# ---------------------------------------------------------------------------------------------------------------
+# Without the RX 9070 XT (amdgpu faults): the decoder runs on the B550 with its RTX 5060 Ti and both CPUs are expert lanes (TR16 over IB).
+# Per layer, at verify width W: U = 6 x union distinct experts; a GPU tier of `slots` experts serves a share h(slots) of them, the rest go to the
+# CPU lanes, split between the B550 (host) and TR16 (worker) lanes at their measured relative speed. The time of a layer's expert phase is
+#   overhead + max(lane time, GPU tier time) + merge,
+# where overhead (1.0 ms) is the part of today's 2.1 ms layer call that is neither lane nor merge, calibrated so the same formula reproduces the
+# measured 88-91 ms expert phase of the current layout (see no_root_gpu_check). Inputs: tools/sim/data/measured_ds41f_cpu_gpu_bench.json.
+NO_ROOT_GPU = dict(
+    lane_ms_per_expert=0.202,     # B550 lane per distinct expert at width 5: worker log cpu_lane 1.02 ms / (14.95 routes x 0.337 not on its GPU tier)
+    tr16_lane_ratio=1 / 0.65,     # TR16 lane time per expert relative to the B550's: measured throughput ratio 0.71 (w1) / 0.58 (w4), iq1s_w1a8_bench
+    link_ms=0.10,                 # extra per layer for the TR16 share's request and reply over IB
+    overhead_ms=1.0,
+    merge_ms=0.31,
+    hit_points=((431.0, 0.326), (2434.0, 0.76)),   # GPU-served share of routes: the 431-slot canonical tier alone / canonical + the worker's 2003-slot tier (0.326 + 0.674 x 0.97 x 0.663)
+    expert_mib=7.03,
+    vram_gib=15.93,               # RTX 5060 Ti 16311 MiB
+    trunk_gib=6.15, trunk_q4_gib=4.6, drafter_gib=1.95, scratch_gib=1.0, reserve_gib=0.5,   # headless node: a small reserve instead of the desktop's 2.5 GiB
+    tier_gbps=(49.0, 67.0),       # canonical kernel on a verify-like shape, ref / bit-identical candidate (kbench, differing=0)
+    union_experts_mb=7.37,
+    pcie_gbps=14.38,              # B550 host to its 5060 Ti, measured 2026-10-29 (sustained, 7.5 MiB blobs)
+)
+
+
+@dataclasses.dataclass
+class NoRootGpuPlan:
+    width: int = 5
+    trunk_q4: bool = False        # dense Q6_K -> Q4_K requant (an allowed lever): more VRAM for the tier
+    cand_kernel: bool = False     # the bit-identical faster canonical kernel
+    gpu_kernel_scale: float = 1.0 # what-if: further canonical-kernel speedup on top (e.g. int8 tensor-core MMA with the same integer sums and float combine order)
+    stream_cold: bool = False     # what-if: experts missing from the tier also stream over PCIe into the GPU's staging slots and run there
+    lane_speed: float = 1.0       # what-if: both CPU lanes (repacked rows)
+    draft_overlap: float = 0.0    # drafting overlapped with the verify on the same (only) GPU
+    engram_hidden: float = 0.0
+    gpu_wait_scale: float = 1.0
+    sync_merge_scale: float = 1.0
+    overhead_scale: float = 1.0   # what-if: the 1.0 ms/layer neither lane nor merge (GPU sync, request prep, wakeups, IB hop): spin-polling, persistent threads
+    stagger_split: int = 0
+    prefetch_hit_gain: float = 0.0   # what-if: lookahead uploads raise the tier's hit rate by this much (absolute)
+    canon_split_balanced: bool = True
+    generated: int = 128
+
+    to_dict = lambda self: dataclasses.asdict(self)
+
+
+def no_root_gpu_hit(slots):
+    (s0, h0), (s1, h1) = NO_ROOT_GPU["hit_points"]
+    b = math.log(h1 / h0) / math.log(s1 / s0)
+    return min(0.97, h0 * (max(slots, 1.0) / s0) ** b)
+
+
+def no_root_gpu_tier_slots(plan):
+    c = NO_ROOT_GPU
+    free = c["vram_gib"] - (c["trunk_q4_gib"] if plan.trunk_q4 else c["trunk_gib"]) - c["drafter_gib"] - c["scratch_gib"] - c["reserve_gib"]
+    return max(0.0, free * 1024.0 / c["expert_mib"])
+
+
+def no_root_gpu_expert_phase_ms(hit, w=5, lane_speed=1.0, tier_gbps=49.0, sync_merge_scale=1.0, stream_gbps=0.0, overhead_scale=1.0):
+    """Expert phase (ms for 40 layers): the smallest layer time t in which the three resources can process the U distinct experts of a verify layer:
+    the two CPU lanes (balanced), the GPU (resident-tier experts, plus experts streamed over PCIe at `stream_gbps` when > 0, all at the canonical
+    kernel's `tier_gbps`). A resident expert may also run on a lane (its rows are in RAM). Returns (phase_ms, t_layer, lanes_share, gpu_share)."""
+    c = NO_ROOT_GPU
+    u = 6 * routing.union_ratio(w, 384, 6)
+    per_lane = c["lane_ms_per_expert"] / lane_speed * c["tr16_lane_ratio"] / (1 + c["tr16_lane_ratio"])   # both lanes together
+    per_gpu = c["union_experts_mb"] * 1e6 / (tier_gbps * 1e9) * 1e3
+    stream_cap = (stream_gbps * 1e9 * 1e-3 / (c["union_experts_mb"] * 1e6)) if stream_gbps > 0 else 0.0     # experts per ms the link can bring
+    resident = u * hit
+
+    def processed(t):
+        lanes = max(0.0, (t - c["link_ms"]) / per_lane)
+        gpu_slots = t / per_gpu
+        gpu = min(gpu_slots, resident + min(stream_cap * t, max(0.0, gpu_slots - resident)))
+        return lanes + gpu, lanes, gpu
+
+    lo, hi = 0.0, 50.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if processed(mid)[0] < u else (lo, mid)
+    t = hi
+    _, lanes, gpu = processed(t)
+    return 40.0 * (c["overhead_ms"] * overhead_scale + t + c["merge_ms"] * sync_merge_scale), t, lanes, gpu
+
+
+def no_root_gpu_check():
+    """The same expert-phase formula on today's layout (decoder + 9070 XT, worker B550 with its tier and lane) - should reproduce 88-91 ms."""
+    c = NO_ROOT_GPU
+    u = 6 * routing.union_ratio(5, 384, 6)
+    canon, worker_gpu = 0.326, 0.663
+    lane_experts = u * (1 - canon) * 0.97 * (1 - worker_gpu)
+    return 40.0 * (c["overhead_ms"] + lane_experts * c["lane_ms_per_expert"] + c["merge_ms"])
+
+
+def no_root_gpu_decode(plan):
+    c, t = NO_ROOT_GPU, TWO_NODE
+    w = plan.width
+    frac = (w - 1) / 4.0
+    lerp = lambda pair: pair[0] + (pair[1] - pair[0]) * frac
+    slots = no_root_gpu_tier_slots(plan)
+    hit = min(0.97, no_root_gpu_hit(slots) + plan.prefetch_hit_gain)
+    gbps = c["tier_gbps"][1 if plan.cand_kernel else 0]
+    gbps *= plan.gpu_kernel_scale
+    cpu, t_layer, t_lane, t_gpu = no_root_gpu_expert_phase_ms(hit, w, plan.lane_speed, gbps, plan.sync_merge_scale, c["pcie_gbps"] if plan.stream_cold else 0.0, plan.overhead_scale)
+    g2r = (lerp(t["g2r_ms"]) + t["g2r_per_cpu_ms"] * cpu * frac) * plan.gpu_wait_scale
+    engram, head = lerp(t["engram_ms"]) * (1 - plan.engram_hidden), lerp(t["head_ms"])
+    core = g2r + cpu
+    if 1 <= plan.stagger_split < w:
+        a, b = plan.stagger_split, w - plan.stagger_split
+        u = routing.union_ratio
+        el, gl = cpu / 40.0, g2r / 40.0
+        e_a, e_b = el * u(a, 384, 6) / u(w, 384, 6), el * u(b, 384, 6) / u(w, 384, 6)
+        g_a, g_b = gl * a / w, gl * b / w
+        f = t["stagger_req_ms"]
+        ideal = 40.0 * max(e_a + e_b + 2 * f, g_a + g_b, g_a + e_a + f, g_b + e_b + f) + g_a + f
+        core -= t["stagger_efficiency"] * max(0.0, core - ideal)
+    contention = t["draft_contention"][0] * t["draft_gpu_ms"] * plan.draft_overlap if w > 1 else 0.0   # the only GPU is shared
+    verify = core + engram + head + t["other_ms"] + contention
+    if w == 1:
+        return dict(width=1, tier_slots=slots, hit=hit, expert_ms=cpu, layer_ms=t_layer, lane_experts=t_lane, gpu_experts=t_gpu, verify_ms=verify, round_ms=verify, tok_s=1e3 / verify, tokens_per_round=1.0)
+    tokens = routing.tokens_per_round(w - 1, t["accept_profile"])
+    draft = t["draft_ms_per_token"] * w * (1 - plan.draft_overlap)
+    round_ms = verify + draft + t["inject_ms"]
+    total = t["first_step_ms"] + (plan.generated - 1) / tokens * round_ms
+    return dict(width=w, tier_slots=slots, hit=hit, expert_ms=cpu, layer_ms=t_layer, lane_experts=t_lane, gpu_experts=t_gpu, g2r_ms=g2r, verify_ms=verify, draft_ms=draft,
+                round_ms=round_ms, tokens_per_round=tokens, tok_s=plan.generated / total * 1e3)
+
+
+def no_root_gpu_levers(base=None):
+    base = base or NoRootGpuPlan()
+    steps = [("no 9070 XT: decoder on the 5060 Ti, lanes on both CPUs", {}),
+             ("+ dense Q4_K requant (more VRAM for the tier)", dict(trunk_q4=True)),
+             ("+ bit-identical faster canonical kernel (kbench cand)", dict(cand_kernel=True)),
+             ("+ cold experts also stream over PCIe (14.4 GB/s) and run on the GPU", dict(stream_cold=True)),
+             ("+ lookahead uploads raise the tier hit by 0.08", dict(prefetch_hit_gain=0.08)),
+             ("+ int8 tensor-core canonical kernel (x2.5; same integer sums and float order)", dict(gpu_kernel_scale=2.5)),
+             ("+ lanes 15 % faster (repacked rows)", dict(lane_speed=1.15)),
+             ("+ merge/sync halved", dict(sync_merge_scale=0.5)),
+             ("+ per-layer overhead halved (spin-polling, persistent threads)", dict(overhead_scale=0.5)),
+             ("+ GPU wait x0.7", dict(gpu_wait_scale=0.7)),
+             ("+ Engram hidden", dict(engram_hidden=1.0)),
+             ("+ async drafting 90 % (same GPU, contended)", dict(draft_overlap=0.9)),
+             ("+ staggered 3/2 verify", dict(stagger_split=3))]
+    acc, rows = {}, []
+    for label, kw in steps:
+        acc.update(kw)
+        rows.append((label, no_root_gpu_decode(dataclasses.replace(base, **acc))))
+    return rows
+
+
+ROADMAP_LEVERS = dict(draft_overlap=0.9, draft_place="worker", prefetch_share=0.4, sync_merge_scale=0.5, cpu_speed=1.15, gpu_wait_scale=0.7,
+                      engram_hidden=1.0, root_steal=1.0, stagger_split=3)
+ROADMAP_NEUTRAL = dict(draft_overlap=0.0, draft_place="root", prefetch_share=0.0, sync_merge_scale=1.0, cpu_speed=1.0, gpu_wait_scale=1.0,
+                       engram_hidden=0.0, root_steal=0.0, stagger_split=0)
 ROADMAP_RANGES = dict(draft_overlap=(0.6, 0.95), prefetch_share=(0.15, 0.5), sync_merge_scale=(0.4, 0.9), cpu_speed=(1.0, 1.3),
-                      gpu_wait_scale=(0.5, 0.9), engram_hidden=(0.3, 1.0))
+                      gpu_wait_scale=(0.5, 0.9), engram_hidden=(0.3, 1.0), root_steal=(0.0, 1.0), stagger_split=[0, 2, 3])
 
 
 def two_node_sensitivity(draws=2000, seed=1, perturb=0.15, target=50.0, lossy_target=60.0):
@@ -1321,7 +1506,8 @@ def two_node_sensitivity(draws=2000, seed=1, perturb=0.15, target=50.0, lossy_ta
     out["min_prefetch_share"] = next((x / 100 for x in range(0, 101) if run(**dict(ROADMAP_LEVERS, prefetch_share=x / 100)) >= target), None)
     out["max_gpu_wait_scale"] = next((x / 100 for x in range(100, 19, -1) if run(**dict(ROADMAP_LEVERS, gpu_wait_scale=x / 100)) >= target), None)
     rnd = random.Random(seed)
-    draw = lambda extra: sorted(run(**dict({k: rnd.uniform(*r) for k, r in ROADMAP_RANGES.items()}, **extra())) for _ in range(draws))
+    pick = lambda r: rnd.choice(r) if isinstance(r, list) else rnd.uniform(*r)
+    draw = lambda extra: sorted(run(**dict(ROADMAP_LEVERS, **{k: pick(r) for k, r in ROADMAP_RANGES.items()}, **extra())) for _ in range(draws))
     lossless, lossy = draw(dict), draw(lambda: dict(deferral=rnd.uniform(0.3, 1.0)))
     q = lambda v, f: v[min(len(v) - 1, int(f * len(v)))]
     out["mc_lossless"] = dict(p10=q(lossless, .1), median=q(lossless, .5), p90=q(lossless, .9), p_target=sum(x >= target for x in lossless) / draws)

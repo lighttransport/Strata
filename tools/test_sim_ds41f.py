@@ -162,6 +162,32 @@ class TwoNodeTest(unittest.TestCase):
         self.assertGreater(lo, hi)                   # a slower expert pass lowers the stack
         self.assertEqual(ds41f.TWO_NODE["cpu_ms_per_union"], 37.3)   # constants restored
 
+    def test_new_levers(self):
+        t = lambda **kw: ds41f.two_node_decode(ds41f.TwoNodePlan(**kw))
+        base = t()["tok_s"]
+        # staggering: faster than serial, and a 1-token tail cannot beat the balanced split
+        self.assertGreater(t(stagger_split=3)["tok_s"], base)
+        self.assertGreater(t(stagger_split=3)["tok_s"], t(stagger_split=4)["tok_s"])
+        # the ideal pipeline is a bound: with efficiency 0 nothing changes
+        saved = ds41f.TWO_NODE["stagger_efficiency"]
+        try:
+            ds41f.TWO_NODE["stagger_efficiency"] = 0.0
+            self.assertAlmostEqual(t(stagger_split=3)["tok_s"], base, places=6)
+        finally:
+            ds41f.TWO_NODE["stagger_efficiency"] = saved
+        # stealing is capped at the balance point and is a no-op when the root lane is as busy as the worker's
+        self.assertGreater(t(root_steal=1.0)["tok_s"], base)
+        self.assertAlmostEqual(t(root_steal=1.0)["tok_s"], t(root_steal=5.0)["tok_s"], places=9)
+        saved = ds41f.TWO_NODE["root_lane_ms_layer"]
+        try:
+            ds41f.TWO_NODE["root_lane_ms_layer"] = 5.0
+            self.assertAlmostEqual(t(root_steal=1.0)["tok_s"], base, places=6)
+        finally:
+            ds41f.TWO_NODE["root_lane_ms_layer"] = saved
+        # overlapped drafting contends on the root GPU more than on the worker's
+        self.assertGreater(t(draft_overlap=0.9, draft_place="worker")["tok_s"], t(draft_overlap=0.9)["tok_s"])
+        self.assertGreater(t(draft_overlap=0.9)["tok_s"], base)
+
     def test_vram_floor(self):
         self.assertTrue(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3033.0))["vram_ok"])
         self.assertFalse(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3600.0))["vram_ok"])
@@ -191,6 +217,30 @@ class TwoNodePrefillTest(unittest.TestCase):
         self.assertGreater(t(root_dma_gbps=9.6), t())
         self.assertGreater(t(worker_dma_gbps=7.2), t())
         self.assertEqual(ds41f.two_node_prefill(base)["route_share"] > 0, True)
+
+
+class NoRootGpuTest(unittest.TestCase):
+    def test_formula_reproduces_today_and_ranks_levers(self):
+        self.assertAlmostEqual(ds41f.no_root_gpu_check(), 90.0, delta=3.0)          # measured 88-91 ms expert phase
+        rows = ds41f.no_root_gpu_levers()
+        speeds = [o["tok_s"] for _, o in rows]
+        self.assertEqual(speeds, sorted(speeds))
+        self.assertLess(speeds[0], ds41f.two_node_decode(ds41f.TwoNodePlan())["tok_s"])   # no 9070 XT is slower than today
+        for _, o in rows:
+            self.assertLessEqual(o["lane_experts"] + o["gpu_experts"], 6 * 3.585 + 1e-6 + 40)   # sanity: finite
+            self.assertGreaterEqual(o["layer_ms"], 0.0)
+
+    def test_capacity_balance(self):
+        f = ds41f.no_root_gpu_expert_phase_ms
+        slow, fast = f(0.5, 5, 1.0, 49.0)[0], f(0.5, 5, 1.0, 67.0)[0]
+        self.assertGreater(slow, fast)                                              # a faster GPU kernel shortens the phase
+        self.assertGreater(f(0.5, 5, 1.0, 49.0)[0], f(0.5, 5, 1.15, 49.0)[0])       # so do faster lanes
+        self.assertGreaterEqual(f(0.5, 5, 1.0, 49.0)[0], f(0.5, 5, 1.0, 49.0, 1.0, 14.38)[0])   # streaming only adds capacity
+
+    def test_vram_budget(self):
+        base = ds41f.no_root_gpu_tier_slots(ds41f.NoRootGpuPlan())
+        self.assertLess(base, 2003)                                                 # below the worker's tier today
+        self.assertGreater(ds41f.no_root_gpu_tier_slots(ds41f.NoRootGpuPlan(trunk_q4=True)), base)
 
 
 class OrderingTest(unittest.TestCase):
