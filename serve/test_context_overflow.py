@@ -82,8 +82,23 @@ class ContextOverflow(unittest.TestCase):
                         if path == "/v1/responses":
                             self.assertEqual(error["code"], "context_length_exceeded")
                             self.assertEqual(error["param"], "input")
-                        else:
+                        elif path == "/v1/messages":
+                            # Anthropic's envelope and wording, which Claude Code reads to shorten max_tokens or
+                            # compact; the explanation follows in parentheses
+                            self.assertEqual(body["type"], "error")
+                            self.assertTrue(body["request_id"].startswith("req_"))
                             self.assertEqual(set(error), {"type", "message"})
+                            if "+ max tokens" in detail and prompt < CTX - CTX_SLACK:
+                                self.assertTrue(message.startswith(
+                                    f"input length and `max_tokens` exceed context limit: {prompt} + {budget} > "
+                                    f"{CTX - CTX_SLACK}, decrease input length or `max_tokens` and try again ("),
+                                    message)
+                            else:
+                                self.assertTrue(message.startswith(
+                                    f"prompt is too long: {prompt} tokens > {CTX - CTX_SLACK - 1} maximum ("), message)
+                        else:
+                            self.assertEqual(error["code"], "context_length_exceeded")
+                            self.assertEqual(error["param"], "messages")
 
     def test_one_token_of_room_still_answers_but_zero_is_rejected(self):
         for path, key in APIS:

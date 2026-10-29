@@ -1552,6 +1552,9 @@ class Tools:
             key_needed = any(s.describe_config(c)["api_key_set"] for c in s.configs())
         key = "<your api_key from strata-<model>.json>" if key_needed else "none"
         base = f"http://127.0.0.1:{port}"
+        agents = agent_configs({"model": model, "context": (target or {}).get("context") or 131072,
+                                "images": bool((target or {}).get("images")), "key_required": bool(key_needed)},
+                               base, key)
         return {
             "summary": (f"Strata {'runs' if target else 'will run'} at {base}: OpenAI base URL {base}/v1, Anthropic "
                         f"base URL {base}" + (" (an API key is required)" if key_needed else " (any API key works)")),
@@ -1560,12 +1563,14 @@ class Tools:
             "api_key": ("required: the \"api_key\" value in the Strata folder's strata-<model>.json"
                         if key_needed else "not required (send any value)"),
             "examples": {
-                "claude_code": {"env": {"ANTHROPIC_BASE_URL": base, "ANTHROPIC_AUTH_TOKEN": key,
-                                        "ANTHROPIC_MODEL": "claude-sonnet-4-5"},
-                                "note": "Claude Code needs a Claude model name it knows; Strata ignores the name"},
-                "codex_cli": {"file": "~/.codex/config.toml",
-                              "toml": f'model = "{model}"\nmodel_provider = "strata"\n\n[model_providers.strata]\n'
-                                      f'name = "Strata"\nbase_url = "{base}/v1"\nwire_api = "chat"'},
+                "claude_code": {"env": agents["claude-code"]["env"],
+                                "note": "every Claude Code role uses Strata's model; the context and output cap are "
+                                        "Strata's (Claude Code assumes 200K for a model it does not know)"},
+                "codex_cli": {"file": agents["codex"]["file"], "toml": agents["codex"]["content"]},
+                "pi": {"file": agents["pi"]["file"], "json": agents["pi"]["content"],
+                       "note": "or: python tools/strata_agent_config.py --client pi --write"},
+                "oh_my_pi": {"file": agents["omp"]["file"], "yaml": agents["omp"]["content"]},
+                "server_config_for_agents": {"file": agents["server"]["file"], "keys": agents["server"]["content"]},
                 "openai_python": (f'from openai import OpenAI\nclient = OpenAI(base_url="{base}/v1", api_key="{key}")\n'
                                   f'r = client.chat.completions.create(model="{model}", messages=[{{"role": "user", '
                                   f'"content": "Hello!"}}])\nprint(r.choices[0].message.content)'),
@@ -1579,6 +1584,14 @@ class Tools:
                                                    f"(--openai-api-base {base}/v1)"}},
             "other_devices": "the server listens on this PC only; to reach it from your network, run setup with "
                              "--host 0.0.0.0 --api-key <secret> (docs/DETAILS.md, 'Using it')"}
+
+
+def agent_configs(facts: dict, base: str, key: str) -> dict:
+    """tools/strata_agent_config.py's settings for pi, oh-my-pi, Claude Code and Codex (loaded from beside this file)."""
+    spec = importlib.util.spec_from_file_location("strata_agent_config", Path(__file__).with_name("strata_agent_config.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.configs(facts, base, key)
 
 
 # ------------------------------------------------------------------------------------------------ MCP over stdio

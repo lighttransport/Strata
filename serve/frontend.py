@@ -580,6 +580,13 @@ def openai_to_messages(req: dict, keep_ids: bool = False) -> tuple[list[dict], l
         out = {"role": role, "content": _parts_of(content) if images else _text_of(content)}
         if m.get("reasoning_content"):
             out["reasoning_content"] = m["reasoning_content"]
+        elif role == "assistant":
+            # the other names clients give it back under (vLLM's "reasoning", OpenRouter's "reasoning_text"): pi and
+            # opencode send the thinking in the field it came in, and it belongs in the prompt either way
+            for name in ("reasoning", "reasoning_text"):
+                if isinstance(m.get(name), str) and m[name]:
+                    out["reasoning_content"] = m[name]
+                    break
         if m.get("tool_calls"):
             calls = []
             for c in _object_list(m["tool_calls"], "tool_calls"):
@@ -602,6 +609,14 @@ def openai_to_messages(req: dict, keep_ids: bool = False) -> tuple[list[dict], l
     given = req.get("reasoning_effort")
     # `false` is a level (thinking off, effort_kwargs): an `or` between the two fields dropped it
     kwargs.update(effort_kwargs(given if given is not None and given != "" else reasoning.get("effort")))
+    # Z.ai's GLM convention, which pi and oh-my-pi send for GLM models: "thinking": {"type": "enabled" | "disabled",
+    # "clear_thinking": bool}; clear_thinking false keeps past turns' thinking in the prompt (the template's default)
+    zai = req.get("thinking")
+    if isinstance(zai, dict):
+        if zai.get("type") == "disabled":
+            kwargs = {"enable_thinking": False}
+        if isinstance(zai.get("clear_thinking"), bool):
+            kwargs["clear_thinking"] = zai["clear_thinking"]
     # the vLLM / llama.cpp convention: {"chat_template_kwargs": {"enable_thinking": false, "reasoning_effort": "low"}}
     for k, v in (req.get("chat_template_kwargs") or {}).items():
         if k == "enable_thinking" and not v:

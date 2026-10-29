@@ -317,6 +317,107 @@ void check_half_attention_reference() {
     auto e=expected.get(),v=actual.get();for(size_t i=0;i<v.size();++i)if(std::abs(ggml_fp16_to_fp32(e[i])-ggml_fp16_to_fp32(v[i]))>1e-3f)throw std::runtime_error("FP16-input softmax error");
     std::cout<<"FP16 gather/softmax references passed\n";
 }
+// STRATA_GLM_KV_FORMAT=f16: rows stored as FP16 gather to the FP32 cache's FP16 gather bits.
+void check_fp16_cache() {
+    constexpr int R=9,B=3,C=11,L=512;
+    std::vector<float> cache(R*L);
+    for(size_t i=0;i<cache.size();++i)cache[i]=std::ldexp(float(int(i*2654435761u%20011)-10005),-int(i%23))/3;
+    std::vector<int> ids(B*C),counts{0,5,11};
+    for(int b=0;b<B;++b)for(int c=0;c<C;++c)ids[b*C+c]=(c*7+b)%R;
+    Buffer<float> dc(cache),rows(cache);Buffer<int> di(ids),dn(counts),position(std::vector<int>{2});
+    Buffer<uint16_t> half(R*L),placed(R*L),expected(B*C*L),actual(B*C*L);Buffer<float> widened(B*C*L);
+    k::glm_f16(dc.p,half.p,R*L,nullptr);
+    k::glm_cache_rows_f16(rows.p,placed.p,L,R-2,position.p,nullptr);
+    auto h=half.get(),q=placed.get();
+    for(size_t i=0;i<size_t(2*L);++i)if(q[i])throw std::runtime_error("FP16 cache rows wrote before the position");
+    for(size_t i=2*L;i<h.size();++i)if(q[i]!=h[i-2*L])throw std::runtime_error("FP16 cache rows changed the rounding");
+    k::glm_mla_gather_f16(dc.p,di.p,dn.p,expected.p,B,C,L,nullptr);
+    k::glm_mla_gather_h2h(half.p,di.p,dn.p,actual.p,B,C,L,nullptr);
+    if(expected.get()!=actual.get())throw std::runtime_error("FP16-cache gather changed the FP16 attention keys");
+    k::glm_mla_gather_h2f(half.p,di.p,dn.p,widened.p,B,C,L,nullptr);
+    auto e=expected.get();auto w=widened.get();
+    for(size_t i=0;i<w.size();++i)if(std::bit_cast<uint32_t>(w[i])!=std::bit_cast<uint32_t>(ggml_fp16_to_fp32(e[i])))
+        throw std::runtime_error("FP16-cache FP32 gather mismatch");
+    // STRATA_GLM_INDEX_KEYS=f16: the FP16 pooled keys are the FP32 ones rounded by glm_f16.
+    constexpr int P=4,D=128,T=11,start=2,pools=(start+T)/P;
+    std::vector<float> keys(T*D),gates(T*D),ape(P*D),pend(P*D);
+    for(size_t i=0;i<keys.size();++i){keys[i]=float(int(i*7%23)-11)/5;gates[i]=float(int(i*5%17)-8)/4;}
+    for(size_t i=0;i<ape.size();++i){ape[i]=float(int(i%9)-4)/8;pend[i]=float(int(i*3%13)-6)/6;}
+    Buffer<float> dk(keys),dg(gates),da(ape),pk1(pend),pg1(pend),pk2(pend),pg2(pend),full(pools*D);Buffer<uint16_t> rounded(pools*D),halfk(pools*D);
+    k::glm_index_prepare(dk.p,dg.p,da.p,pk1.p,pg1.p,full.p,start,T,P,D,nullptr);
+    k::glm_index_prepare_f16(dk.p,dg.p,da.p,pk2.p,pg2.p,halfk.p,start,T,P,D,nullptr);
+    k::glm_f16(full.p,rounded.p,pools*D,nullptr);
+    if(rounded.get()!=halfk.get()||pk1.get()!=pk2.get()||pg1.get()!=pg2.get())throw std::runtime_error("FP16 pooled keys mismatch");
+    std::cout<<"FP16 latent cache write/gather bits passed, FP16 pooled keys passed\n";
+}
+// STRATA_GLM_KV_FORMAT=int8|fp8: rows, scales and both gathers against a host reference of the same arithmetic.
+unsigned char e4m3_reference(float x) {
+    const unsigned char sign = x < 0.f ? 0x80 : 0;
+    const float a = std::fmin(std::fabs(x), 448.f);
+    if (!(a > 0.f)) return sign;
+    int e;
+    std::frexp(a, &e);
+    int exponent = e - 1;
+    if (exponent < -6) { const int q = (int)std::rint(a * 512.f); return sign | (unsigned char)(q >= 8 ? 0x08 : q); }
+    int mantissa = (int)std::rint((a / std::ldexp(1.f, exponent) - 1.f) * 8.f);
+    if (mantissa == 8) { mantissa = 0; ++exponent; }
+    if (exponent > 8 || (exponent == 8 && mantissa > 6)) { exponent = 8; mantissa = 6; }
+    return sign | (unsigned char)((exponent + 7) << 3) | (unsigned char)mantissa;
+}
+float q8_reference(unsigned char c, bool fp8) {
+    if (!fp8) return (float)(signed char)c;
+    const int e = (c >> 3) & 15, m = c & 7;
+    const float v = e ? std::ldexp(1.f + m / 8.f, e - 7) : std::ldexp((float)m, -9);
+    return c & 0x80 ? -v : v;
+}
+void check_q8_cache() {
+    for (int c = 0; c < 256; ++c)
+        if ((c & 0x7f) != 0x7f && c != 0x80 && e4m3_reference(q8_reference(c, true)) != c)
+            throw std::runtime_error("E4M3 code does not round-trip: " + std::to_string(c));
+    constexpr int R = 7, L = 512, B = 3, C = 9;
+    const size_t row = k::glm_q8_row_bytes(L);
+    std::vector<float> rows(R * L);
+    for (size_t i = 0; i < rows.size(); ++i)
+        rows[i] = (i / 64) % 5 == 3 ? 0.f : std::ldexp(float(int(i * 2654435761u % 20011) - 10005), -int(i % 19)) / 7;
+    std::vector<int> ids(B * C), counts{0, 4, 9};
+    for (int b = 0; b < B; ++b) for (int c = 0; c < C; ++c) ids[b * C + c] = (c * 5 + b) % R;
+    Buffer<float> dr(rows);Buffer<int> di(ids), dn(counts), position(std::vector<int>{4});
+    for (const bool fp8 : {false, true}) {
+        std::vector<unsigned char> wanted(R * row, 0);
+        for (int r = 0; r < R; ++r)
+            for (int g = 0; g < L / 64; ++g) {
+                float amax = 0.f;
+                for (int k = 0; k < 64; ++k) amax = std::fmax(amax, std::fabs(rows[r * L + g * 64 + k]));
+                const float scale = amax / (fp8 ? 448.f : 127.f), inverse = scale > 0.f ? 1.f / scale : 0.f;
+                for (int k = 0; k < 64; ++k) {
+                    const float v = rows[r * L + g * 64 + k] * inverse;
+                    wanted[r * row + g * 64 + k] = fp8 ? e4m3_reference(v)
+                        : (unsigned char)(signed char)(int)std::fmin(std::fmax(std::rint(v), -127.f), 127.f);
+                }
+                std::memcpy(&wanted[r * row + L + 4 * g], &scale, 4);
+            }
+        Buffer<unsigned char> cache(R * row);
+        k::glm_cache_rows_q8(dr.p, cache.p, L, 4, 0, nullptr, fp8, nullptr);            // rows 0..3
+        k::glm_cache_rows_q8(dr.p + 4 * L, cache.p, L, 3, 0, position.p, fp8, nullptr); // rows 4..6 at a device position
+        if (cache.get() != wanted) throw std::runtime_error(std::string(fp8 ? "fp8" : "int8") + " cache rows mismatch");
+        Buffer<uint16_t> half(B * C * L);Buffer<float> full(B * C * L);
+        k::glm_mla_gather_q8_f16(cache.p, fp8, di.p, dn.p, half.p, B, C, L, nullptr);
+        k::glm_mla_gather_q8_f32(cache.p, fp8, di.p, dn.p, full.p, B, C, L, nullptr);
+        const auto h = half.get();const auto f = full.get();
+        for (int b = 0; b < B; ++b) for (int c = 0; c < C; ++c) for (int d = 0; d < L; ++d) {
+            const size_t i = ((size_t)b * C + c) * L + d;
+            float v = 0.f;
+            if (c < counts[b]) {
+                const unsigned char *r = &wanted[(size_t)ids[b * C + c] * row];
+                float scale;std::memcpy(&scale, r + L + 4 * (d / 64), 4);
+                v = q8_reference(r[d], fp8) * scale;
+            }
+            if (std::bit_cast<uint32_t>(f[i]) != std::bit_cast<uint32_t>(v)) throw std::runtime_error("8-bit FP32 gather mismatch");
+            if (h[i] != ggml_fp32_to_fp16(v)) throw std::runtime_error("8-bit FP16 gather mismatch");
+        }
+    }
+    std::cout << "8-bit latent cache (int8, fp8 E4M3) rows/scales/gathers passed\n";
+}
 void check_transcode_reference() {
     std::mt19937 rng(7301);
     constexpr int rows=3, cols=512, experts=2;
@@ -388,6 +489,8 @@ int main(int argc, char** argv) {
         check_selected_rows_sum();
         check_mixed_partial_rows();
         check_half_attention_reference();
+        check_fp16_cache();
+        check_q8_cache();
         check_transcode_reference();
         check_device_positions();
         check_softmax_precision();

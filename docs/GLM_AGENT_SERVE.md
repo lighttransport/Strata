@@ -152,6 +152,43 @@ wire_api = "responses"
 env_key = "STRATA_KEY"
 ```
 
+pi, oh-my-pi, and every client above: `python tools/strata_agent_config.py` prints each one's settings from the
+running server (model id, context, output cap; `--client pi --write` adds the provider to `~/.pi/agent/models.json`,
+keeping a backup). For GLM, pi gets Z.ai's thinking format, which the server reads (`thinking: {type,
+clear_thinking}`), so pi's "off" level turns thinking off. The tool also prints the server keys for agent use:
+`"glm_sampling": "ignore"` (agents send a temperature, which GLM otherwise refuses with a 400) and
+`"responses_overflow_event": true` (below).
+
+What the server does for these clients (`serve/test_agent_compat.py` checks each with request bodies shaped as the
+clients send them). pi 0.87.1, Codex 0.163.0 and Claude Code ran a shell-tool turn end to end against a scripted
+engine with the configs from `tools/strata_agent_config.py` (2026-10-23; no model, so speed and answer quality were
+not measured):
+- Context overflow: Chat Completions carries `code: "context_length_exceeded"`; Messages uses Anthropic's wording
+  (`prompt is too long: N tokens > M maximum`, or `input length and max_tokens exceed context limit: N + K > M`),
+  which Claude Code reads to shorten `max_tokens` or compact. With `"responses_overflow_event": true` a streamed
+  Responses request gets `response.failed` with that code, the form Codex compacts on.
+- Messages errors use Anthropic's envelope (`{"type": "error", "error": {...}, "request_id"}`).
+- A client that sends `anthropic-version` (Claude Code, pi's anthropic-messages) gets `ping` events instead of SSE
+  comments while the prompt is read, a `signature_delta` closing each thinking block (a digest, not checked when it
+  comes back; with it, clients send the block back as thinking rather than text), and `cache_creation_input_tokens`.
+  `/v1/models` answers it in Anthropic's list shape.
+- Chat Completions: `stream_options.include_usage` adds a last chunk with no choices; assistant `reasoning` /
+  `reasoning_text` are read as `reasoning_content`; `"reasoning_field": "reasoning"` in the config also sends the
+  thinking under that name.
+- `parallel_tool_calls: false` (Chat, Responses) and `disable_parallel_tool_use` (Messages) end the reply after its
+  first complete call.
+- `/v1/models` gives the context as `context_length` and `max_model_len` besides `meta.n_ctx`.
+- Responses `tool_choice` `"required"` or a named function opens the call, as on the chat route.
+- Session headers (`x-claude-code-session-id`, Codex's `session-id` / `thread-id`, pi's `session_id` /
+  `x-session-affinity`) keep a conversation on its own slot under `"parallel"` when no slot holds the start of its
+  prompt (after a compaction, an edit), instead of taking another conversation's. Side requests marked by
+  `x-claude-code-request-class: auxiliary|compaction` (Claude Code with `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1`) or
+  `x-openai-subagent: compact` save no conversation checkpoint (`"strata_checkpoint": false`), so they do not push
+  the conversation's checkpoints out.
+- `"max_queue": N` in the config (off by default): with the model busy and N requests waiting, a new one gets 429
+  (`rate_limit_exceeded`; Messages: 529 `overloaded_error`) with `Retry-After: 5` and `x-should-retry: true`, which
+  the agents retry on.
+
 ## End-to-end checks (TR16, 2026-10-18)
 
 With the profile above on the RX 9070 XT:

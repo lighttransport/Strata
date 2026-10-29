@@ -58,7 +58,7 @@ The helper records three snapshot-reset decode trials per prompt/mode and sample
 
 ## Terminal demo
 
-Use the [simple ASCII chat + speed counter](../demos/glm53_chat/README.md) for a direct terminal demo with live and final decode tok/s. The [Pi + asciinema setup](../demos/glm53_pi/README.md) records GLM code generation in Pi's TUI. It uses an isolated profile and disables agent tools because GLM tool-call parsing is not implemented.
+Use the [simple ASCII chat + speed counter](../demos/glm53_chat/README.md) for a direct terminal demo with live and final decode tok/s. The [Pi + asciinema setup](../demos/glm53_pi/README.md) records GLM code generation in Pi's TUI. It uses an isolated profile with agent tools disabled, to show code generation alone; the server parses GLM tool calls (see [GLM_AGENT_SERVE.md](GLM_AGENT_SERVE.md) for agent use).
 
 ## Model size and memory
 
