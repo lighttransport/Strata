@@ -1295,7 +1295,7 @@ TWO_NODE_PREFILL = dict(
     breakdown_s=dict(trunk=5.52, ffn=7.05),   # 1.83 + 1.49 + 2.2 other; experts 9.71 - 2.66 waits
     wait_s=2.66, target_s=12.7,
     ib_gbps=2.44,                            # resume-ds41f.md: interconnect around 2.44 GB/s (sim LINKS ib-qdr measured 3.26 on 2026-10-16)
-    worker_dma_gbps=6.84,                    # 5060 Ti on PCIe 3.0 x8: 7.2 GB/s pinned (MiMo study) x 0.95; sim b550() preset says 13.0
+    worker_dma_gbps=14.38,                   # measured 2026-10-29 on the B550: 5060 Ti, PCIe 4.0 x8 link (sysfs 16 GT/s x8), 7.5 MiB blobs, 8 s sustained, 14.38 GB/s flat (the earlier 7.2 GB/s assumption was wrong)
     owned_share=0.445,                       # 6834 of 15360 experts, 48 GiB (UD-IQ1_S, 7.2 MiB each)
     route_curve=(1.16, 0.545),               # share of routes on the hottest fraction p of experts: 1.16 p^0.545 (GLM-fitted tier curve; hypothesis for DS)
     q8_bytes_per_value=144 / 128,            # logical block: 16 metadata + 128 quant bytes
@@ -1380,7 +1380,7 @@ def two_node_prefill_levers(base=None):
     for label, kw in (("IB 3.26 GB/s (the 2026-10-16 measurement)", dict(ib_gbps=3.26)),
                       ("FP16 worker reply (changes the activation precision of the reduction)", dict(return_bytes=2.0)),
                       ("16 row slabs", dict(slabs=16)),
-                      ("worker PCIe 12 GB/s (x16 slot or better staging)", dict(worker_dma_gbps=12.0)),
+                      ("root PCIe at today's 9.6 GB/s sustained (miner running)", dict(root_dma_gbps=9.6)),
                       ("worker GPU 1.5x the root's MMQ speed", dict(worker_speed=1.5)),
                       ("copies fully overlapped (f = 1)", dict(overlap_f=1.0)),
                       ("trunk 1.5x faster (WMMA attention)", dict(trunk_speed=1.5)),

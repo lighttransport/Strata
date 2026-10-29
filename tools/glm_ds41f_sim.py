@@ -289,7 +289,7 @@ def cmd_two_node_prefill(args):
               f"worker share {o['share']:.2f} (routes {o['route_share']:.2f}); DMA root/worker {o['root_dma_s']:.1f}/{o['worker_dma_s']:.1f} s, "
               f"waits {o['root_wait_s']:.1f}/{o['worker_wait_s']:.1f}; chain {o['chain_s']:.1f} s; IB out/back {o['link_out_s']:.1f}/{o['link_back_s']:.1f} s")
     print("  Hypotheses: copy overlap f = 0.527 from the one 15.22 s profiled pass (0.727 under the 'overlap' calibration); worker GPU as fast as the root's; "
-          "route share on the worker = 1.16 p^0.545 of its expert-byte share p (GLM tier curve); worker PCIe 7.2 GB/s x 0.95; IB 2.44 GB/s; only 8192 tokens "
+          "route share on the worker = 1.16 p^0.545 of its expert-byte share p (GLM tier curve); worker PCIe 14.38 GB/s measured (root 12.5 GB/s from the profiled pass; 9.6 sustained when re-measured with a miner running); IB 2.44 GB/s; only 8192 tokens "
           "anchored (other prompts scale linearly, attention growth ignored); decode-cache VRAM borrowing, staging-slot limits and cold setup not modeled.")
 
 

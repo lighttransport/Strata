@@ -158,7 +158,8 @@ class TwoNodePrefillTest(unittest.TestCase):
         self.assertLess(t(ib_gbps=3.26), t())
         self.assertLess(t(return_bytes=2.0), t())
         self.assertLess(t(overlap_f=1.0), t())
-        self.assertLess(t(worker_dma_gbps=12.0), t())
+        self.assertGreater(t(root_dma_gbps=9.6), t())
+        self.assertGreater(t(worker_dma_gbps=7.2), t())
         self.assertEqual(ds41f.two_node_prefill(base)["route_share"] > 0, True)
 
 
