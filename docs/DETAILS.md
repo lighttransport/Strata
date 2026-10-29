@@ -9,6 +9,10 @@ The experimental GLM decoder can also read a routed-only K2/MCG safetensors pack
 The opt-in [native ModelOpt FP4 path for V100](GLM_FP4_V100.md) keeps the mixed
 precision checkpoint compressed in shared host memory and uses one or two CUDA GPUs.
 
+Experimental native IQ1_S CPU rows support `STRATA_IQ1S_GRID8=1` (off by default): prepare the grid with
+each byte multiplied by eight, keeping the original integer sums and float accumulation order. See the
+[DS41 decode measurements](../experiment/ds41f_tr16_decode/CANDIDATES.md) for the tested hardware, speed and bitwise validation limits.
+
 > **On this page:** [Speed](#speed-measured) · [Other GPUs](#other-gpus-estimated) · [Which model?](#which-model) ·
 > [Requirements](#before-you-start) · [Windows](#windows) · [Linux](#linux) · [API](#using-it) ·
 > [MCP tools](#tools-from-mcp-servers) · [MCP server](#manage-strata-from-your-ai-assistant-mcp-server) ·

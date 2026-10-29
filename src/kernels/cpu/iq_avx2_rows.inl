@@ -193,6 +193,39 @@ inline void row_dot_any(const uint8_t* row, int nblocks, const block_q8_K* const
     else                    row_dot<TY, NT>(row, nblocks, y, res);
 }
 
+// IQ1_S gate/up share activations; each accumulator keeps the original
+// block and lane order so the resulting dot products can remain bit-identical.
+template <int NT> STRATA_ROWS_FN
+inline void row_dot_iq1s_pair(const uint8_t* gate, const uint8_t* up, int nblocks,
+                              const block_q8_K* const* y, float* rg, float* ru) {
+    const int pf = prefetch_distance();
+    __m256 ag[NT], au[NT];
+    for (int t = 0; t < NT; ++t) ag[t] = au[t] = _mm256_setzero_ps();
+    for (int i = 0; i < nblocks; ++i) {
+        const uint8_t* bg = gate + size_t(i) * 50;
+        const uint8_t* bu = up + size_t(i) * 50;
+        rows_ahead(bg, pf); rows_ahead(bu, pf);
+        __m256i ig[NT], iu[NT];
+        for (int t = 0; t < NT; ++t) ig[t] = iu[t] = _mm256_setzero_si256();
+        for (int j = 0; j < 4; ++j) for (int half = 0; half < 2; ++half) {
+            __m256i gg, gs, gc, ug, us, uc;
+            Fmt32<19>::decode(bg, j, half, gg, gs, gc);
+            Fmt32<19>::decode(bu, j, half, ug, us, uc);
+            for (int t = 0; t < NT; ++t) {
+                const __m256i v = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + 64*j + 32*half));
+                ig[t] = madd_add(ig[t], _mm256_maddubs_epi16(gg, _mm256_sign_epi8(v, gs)), gc);
+                iu[t] = madd_add(iu[t], _mm256_maddubs_epi16(ug, _mm256_sign_epi8(v, us)), uc);
+            }
+        }
+        const float dg = h2f(u16(bg)) * 0.125f, du = h2f(u16(bu)) * 0.125f;
+        for (int t = 0; t < NT; ++t) {
+            ag[t] = _mm256_fmadd_ps(_mm256_set1_ps(dg * y[t][i].d), _mm256_cvtepi32_ps(ig[t]), ag[t]);
+            au[t] = _mm256_fmadd_ps(_mm256_set1_ps(du * y[t][i].d), _mm256_cvtepi32_ps(iu[t]), au[t]);
+        }
+    }
+    for (int t = 0; t < NT; ++t) { rg[t] = hsum8(ag[t]); ru[t] = hsum8(au[t]); }
+}
+
 template <int TY, int NT> STRATA_ROWS_FN
 void gu_rows(const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act, float* const* ff,
              int r0, int r1, float limit, const uint8_t* separate_up) {
@@ -203,9 +236,17 @@ void gu_rows(const uint8_t* blob, size_t gu_row, size_t up_off, int n, const voi
     const int nb = n / QK_K;
     const uint8_t* up = separate_up ? separate_up : blob + up_off;
     float g[NT], u[NT];
+    // The paired loop wins for one token on the measured Zen 1 core, but
+    // slows wider groups. Keep their original dispatch.
+    const bool pair_iq1s = TY == 19 && NT == 1 && iq1s_pair() && !iq1s_fast();
     for (int r = r0; r < r1; ++r) {
-        row_dot_any<TY, NT>(blob + (size_t) r * gu_row, nb, y, g);
-        row_dot_any<TY, NT>(up + (size_t) r * gu_row, nb, y, u);
+        if constexpr (TY == 19) {
+            if (pair_iq1s) row_dot_iq1s_pair<NT>(blob + size_t(r) * gu_row, up + size_t(r) * gu_row, nb, y, g, u);
+            else { row_dot_any<TY, NT>(blob + size_t(r) * gu_row, nb, y, g); row_dot_any<TY, NT>(up + size_t(r) * gu_row, nb, y, u); }
+        } else {
+            row_dot_any<TY, NT>(blob + size_t(r) * gu_row, nb, y, g);
+            row_dot_any<TY, NT>(up + size_t(r) * gu_row, nb, y, u);
+        }
         for (int t = 0; t < NT; ++t) {
             if (limit > 0) { g[t] = std::fmin(g[t], limit); u[t] = std::fmax(-limit, std::fmin(u[t], limit)); }
             ff[t][r] = (g[t] / (1.f + std::exp(-g[t]))) * u[t];
@@ -260,7 +301,10 @@ void gu_type(int type, int nt, const uint8_t* blob, size_t gu_row, size_t up_off
              float* const* ff, int r0, int r1, float limit, const uint8_t* separate_up) {
     switch (type) {
         case 16: gu_rows_nt<16>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 19: gu_rows_nt<19>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
+        case 19:
+            if (iq1s_grid8_on()) { prepare_iq1s_grid8(); gu_rows_nt<119>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); }
+            else gu_rows_nt<19>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up);
+            break;
         case 17: gu_rows_nt<17>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 18: gu_rows_nt<G ? 118 : 18>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 21: gu_rows_nt<G ? 121 : 21>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
@@ -275,7 +319,10 @@ void dot_type(int type, int nt, const uint8_t* w, size_t row_bytes, int n, const
               int r0, int r1) {
     switch (type) {
         case 16: dot_rows_nt<16>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 19: dot_rows_nt<19>(nt, w, row_bytes, n, act, out, r0, r1); break;
+        case 19:
+            if (iq1s_grid8_on()) { prepare_iq1s_grid8(); dot_rows_nt<119>(nt, w, row_bytes, n, act, out, r0, r1); }
+            else dot_rows_nt<19>(nt, w, row_bytes, n, act, out, r0, r1);
+            break;
         case 17: dot_rows_nt<17>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 18: dot_rows_nt<G ? 118 : 18>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 21: dot_rows_nt<G ? 121 : 21>(nt, w, row_bytes, n, act, out, r0, r1); break;

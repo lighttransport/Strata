@@ -1,0 +1,267 @@
+{
+  "date": "2026-10-29",
+  "model": "DeepSeek V4.1 Flash Unsloth UD-IQ1_S",
+  "baseline_git_head": "df2048a7c5fc1420c2da8334edfa5a54da76f986",
+  "dirty_worktree": true,
+  "hardware": "TR1950X / RX9070XT plus B550 / RTX5060Ti over IB; unchanged baseline RAM configuration",
+  "workload": {
+    "prompt": "c_osd",
+    "prompt_tokens": 1000,
+    "generated_tokens": 128,
+    "single_sequence": true
+  },
+  "exact": {
+    "workload": {
+      "prompt": "c_osd",
+      "prompt_tokens": 1000,
+      "generated_tokens": 128,
+      "single_sequence": true
+    },
+    "hardware": "TR1950X / RX9070XT plus B550 / RTX5060Ti over IB; unchanged baseline RAM configuration",
+    "host_threads": 14,
+    "worker_threads": 16,
+    "requested_canon_mib": 3328,
+    "grid8": 1,
+    "direct_merge": 1,
+    "vector_merge": 1,
+    "draft_q8": 0,
+    "profiling_present": false,
+    "runs": [
+      {
+        "name": "t38_grid8_1_r1",
+        "tok_s": 23.8575,
+        "worker_cpu_ms": 1.435,
+        "minimum_vram_free_bytes": 3130449920,
+        "log_sha256": "edecfbab271f96c51a1f78b70bd955d9489aa91d4862761911c89757306553a3",
+        "exact_ids": true,
+        "guard": "none"
+      },
+      {
+        "name": "t38_grid8_1_r2",
+        "tok_s": 25.1231,
+        "worker_cpu_ms": 1.434,
+        "minimum_vram_free_bytes": 3088551936,
+        "log_sha256": "22e30271be4282c783eb6ed5a028ad7009fe857395a73bec9506312ff3282752",
+        "exact_ids": true,
+        "guard": "none"
+      },
+      {
+        "name": "t39_validate_r1",
+        "tok_s": 24.9935,
+        "worker_cpu_ms": 1.435,
+        "minimum_vram_free_bytes": 3134554112,
+        "log_sha256": "3b77aa342940b1861d53eb9ae8c401c9db5cfaa5848506c02daeb7b3e55fc8a8",
+        "exact_ids": true,
+        "guard": "none"
+      },
+      {
+        "name": "t39_validate_r2",
+        "tok_s": 26.1361,
+        "worker_cpu_ms": 1.437,
+        "minimum_vram_free_bytes": 3134554112,
+        "log_sha256": "3346b588598261dd82208eb09e933decc7e4f11cafc8b10fbeeb45ee09493b8f",
+        "exact_ids": true,
+        "guard": "none"
+      }
+    ],
+    "all_four_mean_tok_s": 25.02755,
+    "independent_pair_mean_tok_s": 25.564799999999998,
+    "limits": "shared desktop variation; RAM speed not re-read; separate CUDA decoder execution and SYCL not tested"
+  },
+  "lossy": {
+    "cpu_trim": 0.125,
+    "requested_canon_mib": 2304,
+    "dspark_n": 5,
+    "dspark_q8": 0,
+    "runs": [
+      {
+        "name": "t40_n5_0125_r1",
+        "tok_s": 30.4605,
+        "generated_ids_equal_exact": true,
+        "minimum_vram_free_bytes": 3901399040,
+        "log_sha256": "2b95cc6459c17680bd9df46e329b17413f6ad177cdf17912576cc5e7cbd7fa77",
+        "guard": "none"
+      },
+      {
+        "name": "t40_n5_0125_r2",
+        "tok_s": 30.5729,
+        "generated_ids_equal_exact": true,
+        "minimum_vram_free_bytes": 3900002304,
+        "log_sha256": "a6774364c6b32990926fa681c525579cdcd8908a6c82401ea7f758a3742d1029",
+        "guard": "none"
+      }
+    ],
+    "mean_tok_s": 30.5167,
+    "quality": [
+      {
+        "prompt": "c_osd",
+        "positions": 1000,
+        "mean_kl": 0.0995,
+        "p99_kl": 0.992,
+        "top1_agreement_percent": 90.5,
+        "next_token_accuracy_reference_percent": 68.9,
+        "next_token_accuracy_candidate_percent": 67.0,
+        "next_token_accuracy_delta_pp": -1.9,
+        "ppl_reference": 4.809,
+        "ppl_candidate": 4.952,
+        "ppl_delta_percent": 2.98
+      },
+      {
+        "prompt": "c_imgui",
+        "positions": 1000,
+        "mean_kl": 0.0387,
+        "p99_kl": 1.024,
+        "top1_agreement_percent": 98.3,
+        "next_token_accuracy_reference_percent": 96.8,
+        "next_token_accuracy_candidate_percent": 96.7,
+        "next_token_accuracy_delta_pp": -0.1,
+        "ppl_reference": 1.139,
+        "ppl_candidate": 1.157,
+        "ppl_delta_percent": 1.55
+      },
+      {
+        "prompt": "c_llama",
+        "positions": 1000,
+        "mean_kl": 0.0513,
+        "p99_kl": 0.688,
+        "top1_agreement_percent": 96.9,
+        "next_token_accuracy_reference_percent": 90.5,
+        "next_token_accuracy_candidate_percent": 90.0,
+        "next_token_accuracy_delta_pp": -0.5,
+        "ppl_reference": 1.57,
+        "ppl_candidate": 1.598,
+        "ppl_delta_percent": 1.79
+      },
+      {
+        "prompt": "c_ff",
+        "positions": 1000,
+        "mean_kl": 0.0553,
+        "p99_kl": 1.002,
+        "top1_agreement_percent": 95.9,
+        "next_token_accuracy_reference_percent": 91.6,
+        "next_token_accuracy_candidate_percent": 91.6,
+        "next_token_accuracy_delta_pp": 0.0,
+        "ppl_reference": 1.435,
+        "ppl_candidate": 1.456,
+        "ppl_delta_percent": 1.46
+      },
+      {
+        "prompt": "t_mujoco",
+        "positions": 1000,
+        "mean_kl": 0.187,
+        "p99_kl": 1.67,
+        "top1_agreement_percent": 84.1,
+        "next_token_accuracy_reference_percent": 64.7,
+        "next_token_accuracy_candidate_percent": 63.7,
+        "next_token_accuracy_delta_pp": -1.0,
+        "ppl_reference": 4.667,
+        "ppl_candidate": 4.622,
+        "ppl_delta_percent": -0.97
+      },
+      {
+        "prompt": "t_doc2",
+        "positions": 1000,
+        "mean_kl": 0.0808,
+        "p99_kl": 0.769,
+        "top1_agreement_percent": 87.4,
+        "next_token_accuracy_reference_percent": 45.5,
+        "next_token_accuracy_candidate_percent": 44.9,
+        "next_token_accuracy_delta_pp": -0.6,
+        "ppl_reference": 13.67,
+        "ppl_candidate": 13.966,
+        "ppl_delta_percent": 2.16
+      }
+    ],
+    "prior_numerical_gate_passed": false,
+    "qualification": "passes requested one-task C++ gate; broader coding quality is not established"
+  },
+  "cpp_gates": {
+    "exact": {
+      "name": "t38_cpp_grid8_v2",
+      "passed": true,
+      "oracle_cases": 400532,
+      "fatal_ubsan": true,
+      "prompt_tokens": 183,
+      "generated_tokens": 512,
+      "requested_canon_mib": 2304,
+      "single_timing_tok_s": 15.7042,
+      "generated_ids_equal_exact": true,
+      "grade_sha256": "66240fa509bc2260ec0930389fa486919abddf1a330bfe67a8adb61f990376cc"
+    },
+    "lossy": {
+      "name": "t40_cpp_n5_0125",
+      "passed": true,
+      "oracle_cases": 400532,
+      "fatal_ubsan": true,
+      "prompt_tokens": 183,
+      "generated_tokens": 512,
+      "requested_canon_mib": 2304,
+      "single_timing_tok_s": 21.2254,
+      "generated_ids_equal_exact": false,
+      "grade_sha256": "2166a54a2c8d093b72ed79935a7baebe7cc92c280eacace7298b81fa336455c1"
+    }
+  },
+  "build": {
+    "sources": {
+      "src/kernels/cpu/iq_avx2.cpp": "5c3faf9255741987a7080e6b829208325edcc04a84db41316fe264280e6cb06d",
+      "src/kernels/cpu/iq_avx2_rows.inl": "6bbb0cf30b80aeebb3c787cb26c41f60c2597b6f6ae574d8599f4131c56e28fa",
+      "include/strata/kernels/cpu/iq_avx2.hpp": "2f6d32c807d9431ea28f467361bf04557ac4fdcfe980bb9926806ece8a5ebc92",
+      "tools/ds41f_decode_guard.sh": "7540f397275362b3f531f71b4e3b85ddf16304545abc109f5ba6cd2e278d6fc2",
+      "src/kernels/cpu/iq_avx2_parity.cpp": "3ea42ffc9f218466707e49bc55d226f7657d78c634eedf0d1b49c42db4a0e003"
+    },
+    "executables": {
+      "strata-glm-decode-grid8-hip": "8633525476117a8190a075119b4d6a480d6784e8eebc99b002606ebfd742fbfd",
+      "strata-glm-decode-grid8-cuda": "4c03ed9b2b64d5d815d85c6f5c8edc4e4fa5fe75869f85549293e890e6fb52ea",
+      "strata-ds41-worker-grid8": "da0710c8f8c6ef414e84feb7bbc807b3a2ed7e4c4ced29f16b90bd912d3104b6"
+    },
+    "config_sha256": {
+      "best2n_no_timing.env": "3791ee53cc81e88a10ad59b0f2a599fa19a0dfbc3e411f23077cb9c9919d513b"
+    },
+    "validation": {
+      "cpu_synthetic": "bitwise pass; direct dots, gate/up widths1..8, clamp/separate up, row guards",
+      "hip_decoder": "GPU captures: off/on byte-identical to frozen c_osd and c_llama logits, 1000 positions each",
+      "cuda_decoder": "linked, GPU execution not tested",
+      "cuda_worker": "GPU worker used for all four captures; byte-identical model logits",
+      "sycl": "compiler unavailable",
+      "runtime_grid8_environment": "verified value1 in active decoder and worker"
+    }
+  },
+  "presets": {
+    "candidate_exact.env": "f46ac6c7d8c4d625ce2b8c7eef255b290246373b36e27a6fd477e8d17725cc7f",
+    "candidate30_low_loss.env": "6f002bd8e4eeb6c3972a057e6b1c8db268038802caf0c5276b0a2b625c9bc735"
+  },
+  "protocol": "single sequence; two-node guarded scopes; quiet-node start; local physical VRAM floor2.5GiB; GPU timing variable omitted, not set to0",
+  "limits": [
+    "shared desktop variability",
+    "RAM speed not re-read; baseline RAM configuration unchanged",
+    "CUDA decoder linked but not GPU-executed; CUDA worker executed",
+    "SYCL, Windows and Intel AVX-VNNI execution not tested",
+    "alternate binaries link new lane/CPU objects with existing backend objects; not clean rebuilds",
+    "one earlier exact C++ attempt stopped by physical-VRAM floor; excluded; smaller-cache retry passed",
+    "N4/N6 and higher-trim follow-up arms not launched after requested speed/task targets were met"
+  ],
+  "cleanup": {
+    "owned_worker_weight_cache_removed": true,
+    "worker_available_ram_gib_after": 57.75,
+    "worker_gpu_memory_used_mib_after": 2,
+    "worker_gpu_utilization_percent_after": 0,
+    "no_inference_running": true
+  },
+  "commit_preparation_validation": {
+    "change": "Read the paired IQ1_S strict-one switch through the equivalent C11 helper; historical measurement hashes are preserved. Runner private paths moved to ignored local configuration.",
+    "source_sha256": {
+      "src/kernels/cpu/iq_avx2.cpp": "5d7b6024243bb26bec6a9ae990283655551f4c0868015fb612282deb19cde5bb"
+    },
+    "alternate_executable_sha256": {
+      "decode-hip": "3a2333a42b468f4684da1817cfd900dcfa3d76e818ba1f3ce2fbd8811b61aafa",
+      "decode-cuda": "dea5b6e20e981850e86d229b4f956e0c3246621c31efcde1bef2f2a3864ba311"
+    },
+    "hip_and_cuda_links": "pass",
+    "cpu_parity_pair_1": "0 failures",
+    "cpu_parity_pair_2": "0 failures",
+    "merge_parity": "96 geometries bitwise pass",
+    "c11_env_test": "env OK 6 knobs",
+    "speed_measurements": "not repeated after equivalent helper migration",
+    "sycl": "compiler unavailable; not built"
+  }
+}

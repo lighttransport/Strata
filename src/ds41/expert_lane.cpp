@@ -29,6 +29,35 @@ namespace strata::ds41 {
 namespace cpu = strata::kernels::cpu;
 
 namespace {
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+// Keep four vectors live across routes. No FMA: match collect()'s multiply then add.
+__attribute__((target("sse2,no-avx,no-fma")))
+void collect_vectors(float* y, const float* const* src, const float* weights, int n, int hidden) {
+    if (!n) { std::fill(y, y + hidden, 0.f); return; }
+    int j = 0;
+    for (; j + 16 <= hidden; j += 16) {
+        const __m128 w0 = _mm_set1_ps(weights[0]);
+        __m128 a = _mm_mul_ps(_mm_loadu_ps(src[0] + j), w0);
+        __m128 b = _mm_mul_ps(_mm_loadu_ps(src[0] + j + 4), w0);
+        __m128 c = _mm_mul_ps(_mm_loadu_ps(src[0] + j + 8), w0);
+        __m128 d = _mm_mul_ps(_mm_loadu_ps(src[0] + j + 12), w0);
+        for (int k = 1; k < n; ++k) {
+            const __m128 w = _mm_set1_ps(weights[k]);
+            a = _mm_add_ps(a, _mm_mul_ps(_mm_loadu_ps(src[k] + j), w));
+            b = _mm_add_ps(b, _mm_mul_ps(_mm_loadu_ps(src[k] + j + 4), w));
+            c = _mm_add_ps(c, _mm_mul_ps(_mm_loadu_ps(src[k] + j + 8), w));
+            d = _mm_add_ps(d, _mm_mul_ps(_mm_loadu_ps(src[k] + j + 12), w));
+        }
+        _mm_storeu_ps(y + j, a); _mm_storeu_ps(y + j + 4, b);
+        _mm_storeu_ps(y + j + 8, c); _mm_storeu_ps(y + j + 12, d);
+    }
+    for (; j < hidden; ++j) {
+        float v = src[0][j] * weights[0];
+        for (int k = 1; k < n; ++k) v += src[k][j] * weights[k];
+        y[j] = v;
+    }
+}
+#endif
 inline void pause() {
 #if defined(__x86_64__)
     _mm_pause();
@@ -647,6 +676,53 @@ void ExpertLane::finish_with_external2(const int32_t* original_ids, const int32_
     for (int i = 0; i < total; ++i)
         if ((external[size_t(i)] ? original_ids[i] < 0 : original_ids[i] != ids_[i]))
             throw std::invalid_argument("ds41 expert lane: inconsistent external routes");
+    // Opt-in: consume each source in place, preserving collect()'s route and float order.
+    if (strata_env_is_one("STRATA_DS41_MERGE_DIRECT")) {
+        if (!idle_ && async_) {
+            while (done_.load(std::memory_order_acquire) < threads_ - 1) pause();
+            async_ = false;
+            const int64_t e = end_ns_.load(std::memory_order_relaxed);
+            const int64_t b = std::chrono::duration_cast<std::chrono::nanoseconds>(begin_t_.time_since_epoch()).count();
+            if (e > b) async_busy_s_ += double(e - b) * 1e-9;
+            ++async_jobs_;
+        }
+        if (!idle_ && (top_k_ != top_k || out_.size() < size_t(total) * size_t(hidden_)))
+            throw std::logic_error("ds41 expert lane: external output capacity mismatch");
+        std::vector<const float*> sources(size_t(total), nullptr);
+        for (int i = 0; i < count; ++i) sources[size_t(entries[i])] = values + size_t(i) * hidden_;
+        for (int i = 0; i < count2; ++i) sources[size_t(entries2[i])] = values2 + size_t(i) * hidden_;
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+        if (strata_env_is_one("STRATA_DS41_MERGE_VECTOR")) {
+            for (int t = 0; t < nt_; ++t) {
+                const float* p[16]; float weights[16]; int n = 0;
+                for (int k = 0; k < top_k; ++k) {
+                    const int route = t * top_k + k;
+                    if (original_ids[route] < 0) continue;
+                    p[n] = sources[size_t(route)] ? sources[size_t(route)] : out_.data() + size_t(route) * hidden_;
+                    weights[n++] = w_[route];
+                }
+                collect_vectors(y_ + size_t(t) * hidden_, p, weights, n, hidden_);
+            }
+            return;
+        }
+#endif
+        for (int t = 0; t < nt_; ++t) {
+            float* yt = y_ + size_t(t) * hidden_;
+            bool first = true;
+            for (int k = 0; k < top_k; ++k) {
+                const int route = t * top_k + k;
+                if (original_ids[route] < 0) continue;
+                const float* o = sources[size_t(route)];
+                if (!o) o = out_.data() + size_t(route) * hidden_;
+                const float wk = w_[route];
+                if (first) for (int j = 0; j < hidden_; ++j) yt[j] = o[j] * wk;
+                else for (int j = 0; j < hidden_; ++j) yt[j] += o[j] * wk;
+                first = false;
+            }
+            if (first) std::fill(yt, yt + hidden_, 0.0f);
+        }
+        return;
+    }
     const bool was_idle = idle_;
     finish();
     if (was_idle) {

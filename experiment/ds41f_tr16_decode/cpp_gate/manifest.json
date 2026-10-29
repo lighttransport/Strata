@@ -1,0 +1,11 @@
+{
+  "task": "parse_u64",
+  "language": "C++17",
+  "prompt_sha256": "94239809aed938a3cd524dda67bd1f36a788314ac6e35ea55d5427b3f98cb739",
+  "oracle": "docs/fixtures/glm53_cpp_quality/test_generated.cpp",
+  "oracle_sha256": "63eb791af526aee24807f8a702fe231656aa822d06964e74198840901a5b97de",
+  "qualification": "Per-run results in grade records; one C++ task only",
+  "compare": "same prompt and output cap on exact baseline and each candidate",
+  "input_tokens": 183,
+  "chat_sha256": "2a81e8280b60898775b70bba47a14b57deade03b9e18674b156e088cddfdc70f"
+}

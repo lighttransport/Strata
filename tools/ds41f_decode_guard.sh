@@ -76,6 +76,7 @@ fuse=${STRATA_DS41_FUSE:-0}
 share_q8=${STRATA_DS41_SHARE_Q8:-0}
 iq1s_pair=${STRATA_IQ1S_PAIR:-0}
 iq1s_fast=${STRATA_IQ1S_FAST:-0}
+iq1s_grid8=${STRATA_IQ1S_GRID8:-0}
 q6_v2=${STRATA_Q6_V2:-0}
 numa_interleave=${DS41_DECODE_NUMA_INTERLEAVE:-0}
 lane_skip_unused=${STRATA_DS41_LANE_SKIP_UNUSED:-0}
@@ -113,7 +114,7 @@ if (( canon_mib > 0 )); then
 fi
 [[ "$dsp_batch_stage" =~ ^[01]$ && "$dsp_cache_experts" =~ ^[01]$ && "$dsp_cache_sim" =~ ^[01]$ &&
    "$gpu_route" =~ ^[01]$ && "$decode_grouped" =~ ^[01]$ && "$defer_all" =~ ^[01]$ &&
-   "$fuse" =~ ^[01]$ && "$share_q8" =~ ^[01]$ && "$iq1s_fast" =~ ^[01]$ && "$iq1s_pair" =~ ^[01]$ && "$q6_v2" =~ ^[01]$ &&
+   "$fuse" =~ ^[01]$ && "$share_q8" =~ ^[01]$ && "$iq1s_fast" =~ ^[01]$ && "$iq1s_pair" =~ ^[01]$ && "$iq1s_grid8" =~ ^[01]$ && "$q6_v2" =~ ^[01]$ &&
    "$numa_interleave" =~ ^[01]$ && "$lane_skip_unused" =~ ^[01]$ && "$lane_group_exact" =~ ^[01]$ && "$lane_async" =~ ^[01]$ && "$stage_cpu_expert" =~ ^[01]$ && "$stage_cpu_order" =~ ^[01]$ && "$stage_cpu_collect" =~ ^[01]$ && "$stage_cpu_host_act" =~ ^[01]$ && "$stage_cpu_timing" =~ ^[01]$ && "$stage_cpu_order_check" =~ ^[01]$ && "$topk_check" =~ ^[01]$ && "$topk_original_weight" =~ ^[01]$ && "$stage_cache_throttle" =~ ^[01]$ && "$stage_cache_frequency" =~ ^[01]$ && "$stage_cache_lfu" =~ ^[01]$ && "$stage_pair_dot" =~ ^[01]$ && "$stage_batch_act" =~ ^[01]$ && "$stage_extra_cached" =~ ^[01]$ ]] || {
   echo "cache, routing, fusion, kernel and NUMA switches must be 0 or 1" >&2; exit 2;
 }
@@ -330,7 +331,7 @@ run_env=(
   "STRATA_DS41_GPU_EXPERT_MIB=$gpu_expert_mib"
   "STRATA_DS41_CANON_MIB=$canon_mib" "STRATA_DS41_CANON_CHECK=$canon_check"
   "STRATA_DS41_FUSE=$fuse" "STRATA_DS41_SHARE_Q8=$share_q8"
-  "STRATA_IQ1S_PAIR=$iq1s_pair" "STRATA_IQ1S_FAST=$iq1s_fast" "STRATA_Q6_V2=$q6_v2"
+  "STRATA_IQ1S_GRID8=$iq1s_grid8" "STRATA_IQ1S_PAIR=$iq1s_pair" "STRATA_IQ1S_FAST=$iq1s_fast" "STRATA_Q6_V2=$q6_v2"
   "STRATA_DS41_LANE_SKIP_UNUSED=$lane_skip_unused"
   "STRATA_DS41_LANE_GROUP_EXACT=$lane_group_exact"
   "STRATA_DS41_LANE_ASYNC=$lane_async"
@@ -375,7 +376,7 @@ for name in STRATA_DS41_CPU_TRIM STRATA_DS41_CPU_TOPK STRATA_DS41_VERIFY_EXACT \
             STRATA_DS41_LOOKUP_ADAPT STRATA_DS41_LOOKUP_BONUS STRATA_DS41_LOOKUP_GATE \
             STRATA_DS41_GPU_EXPERT_MIB STRATA_DS41_TIER_PROMOTE STRATA_DS41_TIER_DECAY \
             STRATA_DS41_EXPERT_PROFILE STRATA_DS41_ROUTES STRATA_DS41_DECODE_TIMING STRATA_DS41_ENGRAM_ASYNC \
-            STRATA_DS41_CANON_PROFILE STRATA_DS41_CANON_STREAM STRATA_DS41_CANON_STREAM_THREADS STRATA_DS41_VERIFY_FAST_TRUNK STRATA_DS41_VERIFY_FAST_BF16 STRATA_DS41_ATTN_MULTI STRATA_DS41_ROUTE_AFFINITY STRATA_DS41_WINDOW_AFFINITY STRATA_DS41_DENSE_Q4K STRATA_DS41_CANON_COPY_STREAMS STRATA_DS41_MULTI_ROWS STRATA_DS41_CANON_MULTI STRATA_DS41_REMOTE_TP STRATA_DS41_REMOTE_SHARE STRATA_DS41_REMOTE_OWN STRATA_DS41_REMOTE_OWN_MIB STRATA_DS41_REMOTE_OWN_PROFILE STRATA_DS41_REMOTE_OWN_LOAD STRATA_DS41_REMOTE_OWN_SKIP_MIB UCOMM_BACKEND UCOMM_TIMEOUT_MS UCOMM_IB_DEV STRATA_DS41_LANE_SLEEP STRATA_DS41_LANE_SPIN; do
+            STRATA_DS41_CANON_PROFILE STRATA_DS41_CANON_STREAM STRATA_DS41_CANON_STREAM_THREADS STRATA_DS41_VERIFY_FAST_TRUNK STRATA_DS41_VERIFY_FAST_BF16 STRATA_DS41_ATTN_MULTI STRATA_DS41_ROUTE_AFFINITY STRATA_DS41_WINDOW_AFFINITY STRATA_DS41_DENSE_Q4K STRATA_DS41_CANON_COPY_STREAMS STRATA_DS41_MULTI_ROWS STRATA_DS41_CANON_MULTI STRATA_NO_MMVQ_ROWS2 STRATA_DS41_MERGE_DIRECT STRATA_DS41_MERGE_VECTOR STRATA_DS41_REMOTE_TP STRATA_DS41_REMOTE_SHARE STRATA_DS41_REMOTE_OWN STRATA_DS41_REMOTE_OWN_MIB STRATA_DS41_REMOTE_OWN_PROFILE STRATA_DS41_REMOTE_OWN_LOAD STRATA_DS41_REMOTE_OWN_SKIP_MIB UCOMM_BACKEND UCOMM_TIMEOUT_MS UCOMM_IB_DEV STRATA_DS41_LANE_SLEEP STRATA_DS41_LANE_SPIN; do
   [[ -v $name ]] && run_env+=("$name=${!name}")
 done
 

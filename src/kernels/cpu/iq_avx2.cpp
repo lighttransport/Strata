@@ -22,9 +22,11 @@
 // This file is compiled for AVX2 and must not run anything before the engine's cpu_avx2_ok() check: no runtime
 // initializer at namespace scope (#391, 016ea2e), the switches are read on first use.
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <stdexcept>
 #include "strata/kernels/cpu/iq_avx2.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/expert_layout.hpp"
 
 #define GGML_COMMON_DECL_CPP
@@ -151,6 +153,39 @@ inline bool iq1s_fast() {
     }
     return v == 1;
 }
+// Test/benchmark override; -1 returns to the opt-in environment setting.
+std::atomic<int> g_iq1s_pair{-1};
+inline bool iq1s_pair() {
+    int v = g_iq1s_pair.load(std::memory_order_relaxed);
+    if (v < 0) {
+        v = strata_env_is_one("STRATA_IQ1S_PAIR");
+        g_iq1s_pair.store(v, std::memory_order_relaxed);
+    }
+    return v == 1;
+}
+// Prepared on first opt-in dispatch, never during AVX2 translation-unit startup.
+// It has the same 16 KiB footprint as the original grid, with each byte times eight.
+alignas(64) uint64_t iq1s_grid8[2048];
+std::once_flag iq1s_grid8_once;
+std::atomic<int> g_iq1s_grid8{-1};
+inline bool iq1s_grid8_on() {
+    int v = g_iq1s_grid8.load(std::memory_order_relaxed);
+    if (v < 0) {
+        v = strata_env_is_one("STRATA_IQ1S_GRID8");
+        g_iq1s_grid8.store(v, std::memory_order_relaxed);
+    }
+    return v == 1 && !iq1s_fast();
+}
+void prepare_iq1s_grid8() {
+    std::call_once(iq1s_grid8_once, [] {
+        for (int i = 0; i < 2048; ++i) {
+            uint64_t v = 0;
+            for (int j = 0; j < 8; ++j)
+                v |= uint64_t(uint8_t(uint8_t(iq1s_grid[i] >> (8*j)) * 8)) << (8*j);
+            iq1s_grid8[i] = v;
+        }
+    });
+}
 static_assert(hi_spread.iq3s[0x81] == 0x0100000000000001ull && hi_spread.iq2s[0xE4] == 0x0000000003020100ull,
               "hi_spread: one high-bit group per index byte");
 
@@ -246,6 +281,24 @@ template <> struct Fmt32<19> {
                                             (long long) iq1s_grid[q[0] | ((h << 8) & 0x700)]);
         const __m256i v2 = _mm256_add_epi8(v, v), v4 = _mm256_add_epi8(v2, v2);   // bytewise: no carry between lanes
         const __m256i w = _mm256_add_epi8(_mm256_add_epi8(v4, v4), _mm256_set1_epi8((h & 0x8000) ? -1 : 1));
+        g = _mm256_abs_epi8(w);
+        sgn = w;
+        sc = sc32(2 * (int) ((h >> 12) & 7) + 1);
+    }
+};
+
+template <> struct Fmt32<119> {
+    static constexpr int bytes = 50;
+    static constexpr float K = 0.125f;
+    static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
+        const int ib = 2 * j + half;
+        const uint8_t* q = b + 2 + 4 * ib;
+        const uint32_t h = u16(b + 34 + 2 * ib);
+        const __m256i v = _mm256_set_epi64x((long long) iq1s_grid8[q[3] | ((h >> 1) & 0x700)],
+                                            (long long) iq1s_grid8[q[2] | ((h << 2) & 0x700)],
+                                            (long long) iq1s_grid8[q[1] | ((h << 5) & 0x700)],
+                                            (long long) iq1s_grid8[q[0] | ((h << 8) & 0x700)]);
+        const __m256i w = _mm256_add_epi8(v, _mm256_set1_epi8((h & 0x8000) ? -1 : 1));
         g = _mm256_abs_epi8(w);
         sgn = w;
         sc = sc32(2 * (int) ((h >> 12) & 7) + 1);
@@ -502,6 +555,8 @@ int iq256_variant() noexcept {
 }
 
 void iq1s_fast_set(int on) noexcept { g_iq1s_fast.store(on ? 1 : 0, std::memory_order_relaxed); }
+void iq1s_grid8_set(int on) noexcept { g_iq1s_grid8.store(on < 0 ? -1 : (on ? 1 : 0), std::memory_order_relaxed); }
+void iq1s_pair_set(int on) noexcept { g_iq1s_pair.store(on < 0 ? -1 : (on ? 1 : 0), std::memory_order_relaxed); }
 
 int iq256_variants() noexcept { return kIq256Gather | (vnni_on() ? kIq256Vnni : 0); }
 

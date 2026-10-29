@@ -267,6 +267,94 @@ int check_gate_up(int type) {
     return failures;
 }
 
+// Compare paired and original IQ1_S gate/up directly, including interior row
+// ranges, separate up tensors and clamp; sentinel rows detect stray writes.
+int check_iq1s_pair() {
+    cpu::NativeFmt f;
+    std::string err;
+    if (!cpu::native_fmt(19, 20, kH, kFF, f, err)) return 1;
+    int failures = 0;
+    cpu::iq1s_fast_set(0);
+    for (unsigned seed = 0; seed < 4; ++seed) {
+        std::vector<uint8_t> blob(f.bytes);
+        uint64_t state = 0x839a0000ull + seed;
+        fill_blob(blob.data(), f, state);
+        const Acts a(f, 920u + seed);
+        for (int nt = 1; nt <= kMaxT; ++nt) for (int separate = 0; separate < 2; ++separate)
+        for (float limit : {0.f, 7.f}) {
+            std::vector<float> ref(size_t(nt) * size_t(kFF), -9876.f), got = ref;
+            float* rp[kMaxT]; float* gp[kMaxT];
+            for (int t = 0; t < nt; ++t) { rp[t] = ref.data() + size_t(t) * kFF; gp[t] = got.data() + size_t(t) * kFF; }
+            const uint8_t* up = separate ? blob.data() + f.up_off : nullptr;
+            const int r0 = 3, r1 = int(kFF) - 5;
+            cpu::iq1s_pair_set(0);
+            cpu::iq256_gu_rows_clamped(19, blob.data(), f.gu_row, f.up_off, int(kH), a.gup, nt, rp, r0, r1, limit, up);
+            cpu::iq1s_pair_set(1);
+            cpu::iq256_gu_rows_clamped(19, blob.data(), f.gu_row, f.up_off, int(kH), a.gup, nt, gp, r0, r1, limit, up);
+            if (std::memcmp(ref.data(), got.data(), ref.size() * sizeof(float)) != 0) ++failures;
+            for (int t = 0; t < nt; ++t) {
+                for (int r = 0; r < r0; ++r) if (gp[t][r] != -9876.f || rp[t][r] != -9876.f) ++failures;
+                for (int r = r1; r < int(kFF); ++r) if (gp[t][r] != -9876.f || rp[t][r] != -9876.f) ++failures;
+            }
+        }
+    }
+    cpu::iq1s_pair_set(-1);
+    std::printf("  iq1_s paired vs original: %d failures (4 seeds, widths 1..8, clamp/separate up, row guards)\n", failures);
+    return failures;
+}
+
+int check_iq1s_grid8() {
+    cpu::NativeFmt f;
+    std::string err;
+    if (!cpu::native_fmt(19, 20, kH, kFF, f, err)) return 1;
+    int failures = 0;
+    cpu::iq1s_fast_set(0);
+    for (unsigned seed = 0; seed < 4; ++seed) {
+        std::vector<uint8_t> blob(f.bytes);
+        uint64_t state = 0x839a0000ull + seed;
+        fill_blob(blob.data(), f, state);
+        const Acts a(f, 920u + seed);
+        for (int nt = 1; nt <= kMaxT; ++nt) for (int separate = 0; separate < 2; ++separate)
+        for (float limit : {0.f, 7.f}) {
+            std::vector<float> ref(size_t(nt) * size_t(kFF), -9876.f), got = ref;
+            float* rp[kMaxT]; float* gp[kMaxT];
+            for (int t = 0; t < nt; ++t) { rp[t] = ref.data() + size_t(t) * kFF; gp[t] = got.data() + size_t(t) * kFF; }
+            const uint8_t* up = separate ? blob.data() + f.up_off : nullptr;
+            const int r0 = 3, r1 = int(kFF) - 5;
+            cpu::iq1s_grid8_set(0);
+            cpu::iq256_gu_rows_clamped(19, blob.data(), f.gu_row, f.up_off, int(kH), a.gup, nt, rp, r0, r1, limit, up);
+            cpu::iq1s_grid8_set(1);
+            cpu::iq256_gu_rows_clamped(19, blob.data(), f.gu_row, f.up_off, int(kH), a.gup, nt, gp, r0, r1, limit, up);
+            if (std::memcmp(ref.data(), got.data(), ref.size() * sizeof(float)) != 0) ++failures;
+            for (int t = 0; t < nt; ++t) {
+                for (int r = 0; r < r0; ++r) if (gp[t][r] != -9876.f || rp[t][r] != -9876.f) ++failures;
+                for (int r = r1; r < int(kFF); ++r) if (gp[t][r] != -9876.f || rp[t][r] != -9876.f) ++failures;
+            }
+        }
+    }
+    // The same row-dot dispatch is used by IQ1_S down matrices. Exercise it
+    // directly too, including its widths above four and untouched row sentinels.
+    {
+        std::vector<uint8_t> blob(f.bytes);
+        uint64_t state = 0x123ab679ull;
+        fill_blob(blob.data(), f, state);
+        const Acts a(f, 811);
+        for (int nt = 1; nt <= kMaxT; ++nt) {
+            std::vector<float> ref(size_t(nt) * size_t(kFF), -9876.f), got = ref;
+            float* rp[kMaxT]; float* gp[kMaxT];
+            for (int t = 0; t < nt; ++t) { rp[t] = ref.data() + size_t(t) * kFF; gp[t] = got.data() + size_t(t) * kFF; }
+            cpu::iq1s_grid8_set(0);
+            cpu::iq256_rows_v(0, 19, blob.data(), f.gu_row, int(kH), a.gup, nt, rp, 3, int(kFF)-5);
+            cpu::iq1s_grid8_set(1);
+            cpu::iq256_rows_v(0, 19, blob.data(), f.gu_row, int(kH), a.gup, nt, gp, 3, int(kFF)-5);
+            if (std::memcmp(ref.data(), got.data(), ref.size() * sizeof(float)) != 0) ++failures;
+        }
+    }
+    cpu::iq1s_grid8_set(-1);
+    std::printf("  iq1_s grid8 vs original: %d failures (4 seeds, widths 1..8, clamp/separate up, direct dots, row guards)\n", failures);
+    return failures;
+}
+
 int check_down(int d_type) {
     cpu::NativeFmt f;
     std::string err;
@@ -395,7 +483,7 @@ int bench(const std::vector<std::string>& pairs, const std::vector<int>& nts, in
         const int dt = slash == std::string::npos ? -1 : type_of(pair.substr(slash + 1));
         cpu::NativeFmt f;
         std::string err;
-        if (gt < 0 || dt < 0 || !cpu::native_fmt(gt, dt, kH, kFF, f, err) || !cpu::iq256_supported(gt) ||
+        if (gt < 0 || dt < 0 || !cpu::native_fmt(gt, dt, kH, kFF, f, err) || (!cpu::iq256_supported(gt) && gt != 19) ||
             (dt != 20 && dt != 42)) {
             std::printf("%s: not a gate/up i-quant with an IQ4_NL or Q2_0 down %s\n", pair.c_str(), err.c_str());
             return 2;
@@ -544,6 +632,8 @@ int main(int argc, char** argv) {
     int failures = 0;
     for (int type : {16, 17, 22, 18, 21, 23, 19}) failures += check_gate_up(type);
     for (int type : {20, 42}) failures += check_down(type);
+    failures += check_iq1s_pair();
+    failures += check_iq1s_grid8();
 #if !defined(STRATA_IQ_PARITY_DISPATCH_ONLY)
     for (int type : {16, 17, 22, 18, 21, 23}) failures += check_engine_width(type);
 #endif

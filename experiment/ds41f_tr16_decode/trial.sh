@@ -11,9 +11,13 @@ export DS41_DECODE_THREADS=${DS41_DECODE_THREADS:-14}
 quiet() { local h=$1; local cmd="awk '{print \$1}' /proc/loadavg; pgrep -c -x 'cc1plus|clang++|cc1|nvcc|ptxas|ld' || true"
   if [ "$h" = local ]; then out=$(bash -c "$cmd"); else out=$(ssh -o BatchMode=yes $h "$cmd"); fi
   set -- $out; awk -v l="$1" -v c="${2:-0}" 'BEGIN { exit !(l < 3 && c == 0) }'; }
-for i in $(seq 1 180); do quiet local && quiet b550 && break; [ $i = 1 ] && echo "waiting for quiet nodes..." >&2; sleep 10; done
+for i in $(seq 1 180); do
+  if [[ -n ${DS41_EXPERIMENT_DEADLINE:-} ]] && (( $(date +%s) + 180 >= DS41_EXPERIMENT_DEADLINE )); then
+    echo 'experiment deadline reached before trial' >&2; exit 2
+  fi
+  quiet local && quiet b550 && break; [ $i = 1 ] && echo "waiting for quiet nodes..." >&2; sleep 10; done
 t0=$(date +%s)
-MODE=own W_BIN='~/work/strata-own-build/strata-ds41-worker' W_MAX=56G ./two_node.sh $name eval/$p.txt 128 "$W" -- $(tr '\n' ' ' < best2n.env) "$@" > logs/$name.run 2>&1
+MODE=own W_BIN="${DS41_WORKER_BIN:-$(cat logs/worker-bin.local)}" W_MAX=56G ./two_node.sh $name eval/$p.txt 128 "$W" -- $(tr '\n' ' ' < best2n.env) "$@" > logs/$name.run 2>&1
 ref=$( [ $p = c_osd ] && echo base_greedy_osd || echo base_greedy_llama )
 same=$( [ "$(grep '^tokens:' logs/$name.log | head -1)" = "$(grep '^tokens:' logs/$ref.log | head -1)" ] && echo same || echo DIFF )
 pass=$(grep -E 'decode_gpu_ms' logs/$name.log | grep -oE 'experts=[0-9.]+|lane_wait=[0-9.]+|layers=[0-9.]+|enqueue [0-9.]+|lane [0-9.]+' | tr '\n' ' ')
