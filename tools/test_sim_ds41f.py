@@ -147,6 +147,21 @@ class TwoNodeTest(unittest.TestCase):
         self.assertLess(o["prefetch_moved"], 6 * 3.585)
         self.assertEqual(o["prefetch_moved"], o["prefetch_capacity"])
 
+    def test_sensitivity(self):
+        r = ds41f.two_node_sensitivity(draws=300)
+        self.assertAlmostEqual(r["full"], ds41f.two_node_roadmap()[-2][1]["tok_s"], places=6)
+        for k in r["alone"]:
+            self.assertLess(r["without"][k], r["full"], k)
+            self.assertLess(r["alone"][k], r["full"], k)
+        self.assertLessEqual(r["min_prefetch_share"], ds41f.ROADMAP_LEVERS["prefetch_share"])
+        self.assertGreaterEqual(r["max_gpu_wait_scale"], ds41f.ROADMAP_LEVERS["gpu_wait_scale"])
+        self.assertLess(r["mc_lossless"]["p10"], r["mc_lossless"]["median"])
+        self.assertLess(r["mc_lossless"]["median"], r["mc_lossless"]["p90"])
+        self.assertGreater(r["mc_lossy"]["median"], r["mc_lossless"]["median"])
+        lo, hi = r["constants"]["cpu_ms_per_union"]
+        self.assertGreater(lo, hi)                   # a slower expert pass lowers the stack
+        self.assertEqual(ds41f.TWO_NODE["cpu_ms_per_union"], 37.3)   # constants restored
+
     def test_vram_floor(self):
         self.assertTrue(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3033.0))["vram_ok"])
         self.assertFalse(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3600.0))["vram_ok"])

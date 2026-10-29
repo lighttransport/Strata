@@ -297,6 +297,21 @@ def cmd_two_node_prefill(args):
           "anchored (other prompts scale linearly, attention growth ignored); decode-cache VRAM borrowing, staging-slot limits and cold setup not modeled.")
 
 
+def cmd_sensitivity(args):
+    r = ds41f.two_node_sensitivity(draws=args.draws, perturb=args.perturb)
+    print(f"Robustness of the lossless 2x stack (full stack {r['full']:.1f} tok/s; every lever is a what-if on the calibrated TR16+B550 model)")
+    print("  lever                alone   stack without it")
+    for k in r["alone"]:
+        print(f"  {k:<20}{r['alone'][k]:6.1f}   {r['without'][k]:6.1f}  (worth {r['full'] - r['without'][k]:+.1f})")
+    print(f"  to still reach 50: prefetch_share >= {r['min_prefetch_share']}, gpu_wait_scale <= {r['max_gpu_wait_scale']} (others at plan values)")
+    a, b = r["mc_lossless"], r["mc_lossy"]
+    print(f"  Monte Carlo over the lever ranges ({args.draws} draws): lossless p10 {a['p10']:.1f} / median {a['median']:.1f} / p90 {a['p90']:.1f}, "
+          f"P(>=50) = {a['p_target']:.0%}; with deferral p10 {b['p10']:.1f} / median {b['median']:.1f} / p90 {b['p90']:.1f}, P(>=60) = {b['p_target']:.0%}")
+    print(f"  fitted constants -/+ {args.perturb:.0%} (full stack tok/s):")
+    for k, (lo, hi) in r["constants"].items():
+        print(f"    {k:<20}{lo:6.1f} .. {hi:6.1f}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -319,6 +334,10 @@ def main(argv=None):
     p.add_argument("--prompt", type=int, default=8192)
     p.add_argument("--calibration", choices=("compute", "overlap"), default="compute")
     p.set_defaults(func=cmd_two_node_prefill)
+    p = sub.add_parser("sensitivity", help="robustness of the 2x-decode roadmap: ablations, thresholds, Monte Carlo, constant perturbation")
+    p.add_argument("--draws", type=int, default=2000)
+    p.add_argument("--perturb", type=float, default=0.15)
+    p.set_defaults(func=cmd_sensitivity)
     p = sub.add_parser("levers", help="research levers: V100 decode / prefill and TR16 estimates")
     p.set_defaults(func=cmd_levers)
     p = sub.add_parser("a64fx", help="A64FX node counts, both profiles")

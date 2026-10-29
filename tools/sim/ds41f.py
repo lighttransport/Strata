@@ -1300,6 +1300,49 @@ def two_node_roadmap(base=None):
     return rows
 
 
+ROADMAP_LEVERS = dict(draft_overlap=0.9, prefetch_share=0.4, sync_merge_scale=0.5, cpu_speed=1.15, gpu_wait_scale=0.7, engram_hidden=1.0)
+ROADMAP_NEUTRAL = dict(draft_overlap=0.0, prefetch_share=0.0, sync_merge_scale=1.0, cpu_speed=1.0, gpu_wait_scale=1.0, engram_hidden=0.0)
+ROADMAP_RANGES = dict(draft_overlap=(0.6, 0.95), prefetch_share=(0.15, 0.5), sync_merge_scale=(0.4, 0.9), cpu_speed=(1.0, 1.3),
+                      gpu_wait_scale=(0.5, 0.9), engram_hidden=(0.3, 1.0))
+
+
+def two_node_sensitivity(draws=2000, seed=1, perturb=0.15, target=50.0, lossy_target=60.0):
+    """How robust the lossless stack of two_node_roadmap is: lever ablations, the thresholds that still reach `target`, a Monte Carlo over the
+    lever ranges, and the effect of +-`perturb` on each fitted constant. Everything is a what-if on the calibrated model."""
+    import copy
+    import random
+    plan = TwoNodePlan()
+    run = lambda **k: two_node_decode(dataclasses.replace(plan, **k))["tok_s"]
+    full = run(**ROADMAP_LEVERS)
+    out = dict(full=full, alone={}, without={})
+    for k in ROADMAP_LEVERS:
+        out["alone"][k] = run(**{k: ROADMAP_LEVERS[k]})
+        out["without"][k] = run(**dict(ROADMAP_LEVERS, **{k: ROADMAP_NEUTRAL[k]}))
+    out["min_prefetch_share"] = next((x / 100 for x in range(0, 101) if run(**dict(ROADMAP_LEVERS, prefetch_share=x / 100)) >= target), None)
+    out["max_gpu_wait_scale"] = next((x / 100 for x in range(100, 19, -1) if run(**dict(ROADMAP_LEVERS, gpu_wait_scale=x / 100)) >= target), None)
+    rnd = random.Random(seed)
+    draw = lambda extra: sorted(run(**dict({k: rnd.uniform(*r) for k, r in ROADMAP_RANGES.items()}, **extra())) for _ in range(draws))
+    lossless, lossy = draw(dict), draw(lambda: dict(deferral=rnd.uniform(0.3, 1.0)))
+    q = lambda v, f: v[min(len(v) - 1, int(f * len(v)))]
+    out["mc_lossless"] = dict(p10=q(lossless, .1), median=q(lossless, .5), p90=q(lossless, .9), p_target=sum(x >= target for x in lossless) / draws)
+    out["mc_lossy"] = dict(p10=q(lossy, .1), median=q(lossy, .5), p90=q(lossy, .9), p_target=sum(x >= lossy_target for x in lossy) / draws)
+    saved = copy.deepcopy(TWO_NODE)
+    out["constants"] = {}
+    try:
+        for key in ("cpu_ms_per_union", "g2r_per_cpu_ms", "draft_ms_per_token", "other_ms", "g2r_ms"):
+            vals = []
+            for f in (1 - perturb, 1 + perturb):
+                TWO_NODE.clear()
+                TWO_NODE.update(copy.deepcopy(saved))
+                TWO_NODE[key] = (saved[key][0], saved[key][1] * f) if key == "g2r_ms" else saved[key] * f
+                vals.append(run(**ROADMAP_LEVERS))
+            out["constants"][key] = tuple(vals)
+    finally:
+        TWO_NODE.clear()
+        TWO_NODE.update(saved)
+    return out
+
+
 def two_node_levers(base=None):
     """What-ifs on the calibrated runner. Each row changes one thing and says what it would take; none is measured."""
     base = base or TwoNodePlan()
