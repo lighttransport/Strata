@@ -1,0 +1,165 @@
+{
+ "date": "2026-10-29",
+ "note": "First end-to-end runs of the layout without the 9070 XT: decoder (CUDA, strata-glm-decode) on the B550 with its RTX 5060 Ti, weights sharded into the B550's /dev/shm over ucomm (strata-ds41-feed, 25.4 GiB hottest experts + dense + drafter), strata-ds41-cpu-worker on TR16 owning the other 81.9 GiB read from its local model, Engram rows read from TR16 over a second ucomm context. c_osd 1000-token prompt, 128 generated, DSpark N=5, profile routes_code4k, canon tier 5600 MiB, DESKTOP_MIB=512.",
+ "runs": [
+  {
+   "name": "t5",
+   "worker": "14 threads, rows on one NUMA node",
+   "decode_tok_s": 9.713,
+   "prompt_tok_s": 32.1,
+   "tokens_per_step": 3.122,
+   "verify_ms_w5": 303.1,
+   "cpu_experts_ms_per_step": 208.0,
+   "g2r_ms_per_step": 57.4,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.903,
+    "worker_wait": 3.959,
+    "merge": 0.256
+   },
+   "canon_hit": 0.309
+  },
+  {
+   "name": "t6",
+   "worker": "14 threads, rows interleaved over both NUMA nodes",
+   "decode_tok_s": 10.296,
+   "prompt_tok_s": 39.72,
+   "tokens_per_step": 3.122,
+   "verify_ms_w5": 262.8,
+   "cpu_experts_ms_per_step": 189.5,
+   "g2r_ms_per_step": 57.6,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.905,
+    "worker_wait": 3.465,
+    "merge": 0.283
+   },
+   "canon_hit": 0.309
+  },
+  {
+   "name": "t7",
+   "worker": "28 threads, interleaved",
+   "decode_tok_s": 10.466,
+   "prompt_tok_s": 39.7,
+   "tokens_per_step": 3.122,
+   "verify_ms_w5": 258.9,
+   "cpu_experts_ms_per_step": 184.6,
+   "g2r_ms_per_step": 57.4,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.903,
+    "worker_wait": 3.324,
+    "merge": 0.303
+   },
+   "canon_hit": 0.309
+  },
+  {
+   "name": "t8",
+   "worker": "14 threads, interleaved, STRATA_IQ1S_GRID8=1 STRATA_IQ1S_PAIR=1 STRATA_DS41_LANE_GROUP_EXACT=1 STRATA_DS41_LANE_SKIP_UNUSED=1",
+   "decode_tok_s": 10.963,
+   "prompt_tok_s": 32.32,
+   "tokens_per_step": 3.122,
+   "verify_ms_w5": 224.4,
+   "cpu_experts_ms_per_step": 170.9,
+   "g2r_ms_per_step": 57.4,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.902,
+    "worker_wait": 2.885,
+    "merge": 0.399
+   },
+   "canon_hit": 0.309
+  },
+  {
+   "name": "t9",
+   "worker": "as t8, STRATA_DS41_OWN_PROMOTE=800 (scores from prompt + decode routes)",
+   "decode_tok_s": 10.738,
+   "prompt_tok_s": 33.4,
+   "tokens_per_step": 3.122,
+   "verify_ms_w5": 251.9,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.894,
+    "worker_wait": 2.845,
+    "merge": 0.604
+   },
+   "promoted": 800,
+   "ids_equal_to_t8": true
+  },
+  {
+   "name": "t10",
+   "worker": "as t8, OWN_PROMOTE=1000, OWN_PROMOTE_DECODE_ONLY=1",
+   "decode_tok_s": 8.626,
+   "prompt_tok_s": 26.45,
+   "tokens_per_step": 3.122,
+   "verify_ms_w5": 302.4,
+   "per_layer_call_ms": {
+    "gpu_sync": 1.588,
+    "worker_wait": 2.809,
+    "merge": 0.917
+   },
+   "promoted": 1000,
+   "decode_routes_of_setup_owned_experts": {
+    "local": 11454,
+    "remote": 8197
+   },
+   "ids_equal_to_t8": true
+  },
+  {
+   "name": "t11",
+   "worker": "same configuration as t8 (repeat, with request timing bins)",
+   "decode_tok_s": 10.052,
+   "prompt_tok_s": 34.22,
+   "verify_ms_w5": 255.7,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.902,
+    "worker_wait": 3.619,
+    "merge": 0.3
+   },
+   "worker_request_ms_by_owned_routes": {
+    "0-3": 1.354,
+    "4-7": 2.221,
+    "8-11": 3.444,
+    "12-15": 4.961,
+    "16-19": 6.421,
+    "20+": 9.495
+   },
+   "worker_between_requests_ms": 13082
+  },
+  {
+   "name": "t12",
+   "worker": "16 threads, expert rows placed whole per NUMA node (--numa-place), STRATA_DS41_LANE_NUMA=1, grid8/pair flags",
+   "decode_tok_s": 10.235,
+   "prompt_tok_s": 32.83,
+   "verify_ms_w5": 267.7,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.904,
+    "worker_wait": 3.493,
+    "merge": 0.294
+   },
+   "worker_request_ms_by_owned_routes": {
+    "0-3": 1.417,
+    "4-7": 2.267,
+    "8-11": 3.379,
+    "12-15": 4.813,
+    "16-19": 6.118,
+    "20+": 9.064
+   },
+   "worker_rows_load_s": 105.8,
+   "ids_equal_to_t8": true
+  }
+ ],
+ "checks": {
+  "ids_t5_t6_t7_identical": true,
+  "ids_equal_to_hip_exact_reference_first_16": true,
+  "first_difference_from_hip_reference_at_generated_index": 16,
+  "reading": "placement and NUMA/thread changes do not change a value; the CUDA trunk differs from the HIP reference at the 17th token (not a placement effect), so the CUDA run is its own reference",
+  "ids_t5_to_t8_identical": true
+ },
+ "load": {
+  "feed_gib": 39.48,
+  "feed_s": 41.0,
+  "worker_rows_gib": 81.95,
+  "worker_rows_s": 145,
+  "decoder_load_s": 146
+ },
+ "profile_coverage_c_osd": "routes_code4k says the hottest 5.6 GiB serve 55 % of routes and 26 GiB 89 %, but this prompt's canon hit is 0.309 at 789 experts: the profile is flatter for this prompt than for the 4K code prompt it was taken from",
+ "reading_t8": "the kernel flags the single-node runs used (grid8, pair, exact grouping) were missing from the TR16 worker; with them the verify pass at width 5 falls 262.8 -> 224.4 ms and decode 10.30 -> 10.96 tok/s, tokens unchanged; the prompt pass was slower (32.3 vs 39.7 tok/s), so the flags are worth setting for decode only",
+ "reading_promotion": "adaptive local band (experts fetched from the TR16 worker over ucomm into the B550's mapped model files, then run on the B550 lane) is exact (tokens equal t8) and moves 58 % of the decode routes of the setup-owned experts to the B550, but decode got slower (10.96 -> 10.74 -> 8.63 tok/s): the TR16 worker's per-request time did not fall (2.8 ms) and the B550 side grew (gpu_sync 0.90 -> 1.59 ms, merge 0.40 -> 0.92 ms). The B550 CPU also runs the decoder's host work, so its lane is not an independent extra resource; the worker's per-request time looks dominated by fixed costs (barriers, wake-ups, IB) rather than by expert bytes",
+ "reading_noise_and_lane": "t8 and t11 are the same configuration: 10.96 and 10.05 tok/s (verify 224 vs 256 ms), so run-to-run spread is about +-0.5 tok/s and the t6 -> t8 steps (10.30, 10.47, 10.96, 10.05, 10.23) are not separable from noise; only the t5 -> t6 step (9.7 -> 10.3, rows on one node vs interleaved) is plausibly real. The worker's request time equals its lane time (request-to-reply = lane ms) and grows linearly with the owned routes of the request, about 0.36 ms per route plus 0.6 ms (1.35 ms at 0-3 routes, 4.96 at 12-15, 9.5 at 20+), independent of NUMA placement (t12): the TR16 lane is compute-bound (IQ1_S decode), not memory- or latency-bound"
+}

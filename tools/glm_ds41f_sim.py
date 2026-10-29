@@ -320,6 +320,9 @@ def cmd_no_root_gpu(args):
     for label, o in ds41f.no_root_gpu_levers(ds41f.NoRootGpuPlan(width=args.width)):
         print(f"  {label:<80}{o['tok_s']:6.1f} tok/s  round {o['round_ms']:6.1f} ms; expert phase {o['expert_ms']:5.1f} ms "
               f"(layer {o['layer_ms']:.2f} ms: lanes {o['lane_experts']:.1f} + GPU {o['gpu_experts']:.1f} experts); tier {o['tier_slots']:.0f} slots, hit {o['hit']:.2f}")
+    print("\n  Measured first layout and its next levers (tools/sim/data/measured_ds41f_rev_layout.json; hit 0.309 and B550 share 0.33 fitted to t6/t7, acceptance 3.12 tokens/round of that run):")
+    for label, o in ds41f.no_root_gpu_measured_levers():
+        print(f"  {label:<80}{o['tok_s']:6.1f} tok/s  verify {o['verify_ms']:6.1f} ms (experts {o['expert_ms']:5.1f}: B550 {o['lane_experts']:.1f} + TR16 {o['gpu_experts']:.1f} experts per layer)")
     print("  Hypotheses: the layer overhead (1.0 ms) and merge (0.31 ms) are today's; GPU trunk/attention terms are today's 9070 XT figures (the 5060 Ti may differ); "
           "TR16/B550 lane ratio 0.65 (measured 0.58-0.71 with a proxy kernel); the faster, tensor-core and streaming kernels and every lever below the first row are what-ifs.")
 

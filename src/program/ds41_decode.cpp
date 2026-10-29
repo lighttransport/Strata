@@ -15,6 +15,7 @@
 #include "strata/core/model.hpp"
 #include "strata/ds41/config.hpp"
 #include "strata/ds41/decode.hpp"
+#include "strata/ds41/engram_wire.hpp"
 #include "strata/ds41/expert_lane.hpp"
 #include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/iq_avx2.hpp"
@@ -391,6 +392,63 @@ __attribute__((target("avx2"))) inline void copy_nt_avx2(uint8_t* dst, const uin
 // strata-glm-tp-worker in DS4.1 mode holds FFN rows [fl, ff) of each expert (and the matching down columns) in its RAM.
 // A decode pass sends each layer's routes and z there before its own work and adds the reply after it; a streamed
 // prompt fetches the rows back into the VRAM slots beside the local ones.
+// STRATA_DS41_ENGRAM_REMOTE=HOST:PORT: the Engram table pages are read on the node that holds the model (strata-ds41-cpu-worker
+// --engram-port) instead of from local files; rank 0 of its own ucomm context, one batched request per call
+class EngramRemote {
+  public:
+    explicit EngramRemote(const std::string& addr) {
+        ucomm_config cfg;
+        ucomm_config_default(&cfg);
+        cfg.rank = 0;
+        cfg.world = 2;
+        cfg.root_addr = addr.c_str();
+        if (!std::getenv("UCOMM_TIMEOUT_MS")) cfg.timeout_ms = 0;
+        ok(ucomm_init(&cfg, &c_), "engram connect");
+        request_.resize(strata::ds41::engram_wire::kMaxRequestBytes);
+        std::cerr << "DS41 engram remote backend=" << ucomm_backend_name(c_) << "\n";
+    }
+    ~EngramRemote() {
+        if (!c_) return;
+        const strata::ds41::engram_wire::Header end{0xFFFFFFFFu, 0};
+        (void)ucomm_send(c_, 1, strata::ds41::engram_wire::kTagRequest, &end, sizeof end);
+        ucomm_finalize(c_);
+    }
+    EngramRemote(const EngramRemote&) = delete;
+    EngramRemote& operator=(const EngramRemote&) = delete;
+    // reads every entry (shard, offset, len) in order into `out`; callers serialize on the lock
+    void read(const std::vector<strata::ds41::engram_wire::Entry>& entries, std::vector<uint8_t>& out) {
+        namespace ew = strata::ds41::engram_wire;
+        std::lock_guard<std::mutex> lock(m_);
+        size_t total = 0;
+        for (const auto& e : entries) total += e.len;
+        out.resize(total);
+        for (size_t first = 0, bytes_at = 0; first < entries.size();) {
+            const size_t n = std::min<size_t>(ew::kMaxEntries, entries.size() - first);
+            size_t chunk = 0;
+            for (size_t i = 0; i < n; ++i) chunk += entries[first + i].len;
+            const ew::Header h{uint32_t(n), 0};
+            std::memcpy(request_.data(), &h, sizeof h);
+            std::memcpy(request_.data() + sizeof h, entries.data() + first, n * sizeof(ew::Entry));
+            ucomm_req_t* rx = nullptr;
+            ok(ucomm_irecv(c_, 1, ew::kTagReply, out.data() + bytes_at, chunk, &rx), "engram receive");
+            ok(ucomm_send(c_, 1, ew::kTagRequest, request_.data(), sizeof h + n * sizeof(ew::Entry)), "engram send");
+            size_t got = 0;
+            ok(ucomm_wait(rx, &got), "engram wait");
+            if (got != chunk) throw std::runtime_error("ds41 engram remote: short reply");
+            first += n;
+            bytes_at += chunk;
+        }
+    }
+
+  private:
+    static void ok(ucomm_status s, const char* what) {
+        if (s != UCOMM_OK) throw std::runtime_error(std::string("ds41 ") + what + ": " + ucomm_strerror(s));
+    }
+    ucomm_t* c_ = nullptr;
+    std::mutex m_;
+    std::vector<uint8_t> request_;
+};
+
 struct Remote {
     ucomm_t* comm = nullptr;
     int hidden = 0;
@@ -1401,6 +1459,7 @@ public:
             if (direct) posix_fadvise(fd, off_t(t.file->data_start() + t.tensor->offset), off_t(t.bytes), POSIX_FADV_DONTNEED);
             else posix_fadvise(fd, off_t(t.file->data_start() + t.tensor->offset), off_t(t.bytes), POSIX_FADV_RANDOM);
         }
+        if (const char* v = std::getenv("STRATA_DS41_ENGRAM_REMOTE"); v && *v) engram_remote_ = std::make_unique<EngramRemote>(v);
         if (const char* v = std::getenv("STRATA_DS41_ENGRAM_THREADS")) engram_threads_ = std::max(1, std::atoi(v));
         if (const char* v = std::getenv("STRATA_DS41_ENGRAM_RAM_GIB")) load_engram_ram(std::atof(v));
         (void)process_cpus();   // before the lane pins this thread
@@ -2470,6 +2529,7 @@ public:
         return static_cast<float*>(h);
     }
     ~Decoder() {
+        promote_stop();
         // the promotions' uploader first: its queued copies read the mapped experts unmapped below
         if (uploader_.joinable()) {
             { std::lock_guard<std::mutex> lock(jobs_mutex_); stop_uploads_ = true; }
@@ -3682,7 +3742,7 @@ private:
     void engram_prefetch(int pos, const std::vector<int>& toks_from_pos, int from, int upto) {   // toks: positions pos.., history before
         static const bool on = std::getenv("STRATA_DS41_ENGRAM_PREFETCH") && std::string(std::getenv("STRATA_DS41_ENGRAM_PREFETCH")) == "1";
         const auto& c = cfg_;
-        if (!on || c.engram_layers.size() < 2) return;
+        if (!on || c.engram_layers.size() < 2 || engram_remote_) return;
         if (pf_threads_.empty())
             for (int t = 0, n = std::getenv("STRATA_DS41_ENGRAM_PREFETCH_THREADS") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_ENGRAM_PREFETCH_THREADS"))) : 64; t < n; ++t)
                 pf_threads_.emplace_back([this] {
@@ -3944,6 +4004,32 @@ private:
             if (misses.empty()) return;
         }
         auto& engram_reqs_ = engram_ram_.empty() ? reqs : misses;
+        if (engram_remote_) {   // one batched request for all the pages
+            std::vector<strata::ds41::engram_wire::Entry> entries;
+            std::vector<uint64_t> in_page;
+            for (const auto& r : engram_reqs_) {
+                const auto& t = *engram_tables_[size_t(r.table)];
+                const size_t row_bytes = ggml_row_size(ggml_type(int(t.tensor->type)), dim);
+                const uint64_t off = t.file->data_start() + t.tensor->offset + uint64_t(r.row) * row_bytes;
+                const uint64_t page = off & ~uint64_t(4095);
+                const std::string name = t.file->path();
+                const size_t at = name.rfind("-of-");
+                const uint32_t shard = at == std::string::npos || at < 5 ? 1u : uint32_t(std::atoi(name.c_str() + at - 5));
+                entries.push_back({shard, uint32_t((off + row_bytes - page + 4095) & ~size_t(4095)), page});
+                in_page.push_back(off - page);
+            }
+            std::vector<uint8_t> bytes;
+            try { engram_remote_->read(entries, bytes); } catch (const std::exception& e) { std::cerr << e.what() << "\n"; engram_failed_ = true; engram_reqs_.clear(); reqs.clear(); return; }
+            size_t at = 0;
+            for (size_t q = 0; q < engram_reqs_.size(); ++q) {
+                const auto& t = *engram_tables_[size_t(engram_reqs_[q].table)];
+                ggml_get_type_traits(ggml_type(int(t.tensor->type)))->to_float(bytes.data() + at + in_page[q], engram_reqs_[q].dst, dim);
+                at += entries[q].len;
+            }
+            engram_reqs_.clear();
+            reqs.clear();
+            return;
+        }
         const int nt = std::min<int>(engram_threads_, int(engram_reqs_.size()));
         std::vector<std::thread> workers;
         std::atomic<bool> failed{false};
@@ -4864,7 +4950,7 @@ private:
         if (!profile || !*profile) profile = std::getenv("STRATA_DS41_CANON_PROFILE");
         if (!profile || !*profile) throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN needs a route profile (STRATA_DS41_REMOTE_OWN_PROFILE)");
         const double mib = strata_env_value_double("STRATA_DS41_REMOTE_OWN_MIB", 8192.0);
-        if (!(mib >= 1 && mib <= 65536)) throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN_MIB must be 1 through 65536");
+        if (!(mib >= 1 && mib <= 262144)) throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN_MIB must be 1 through 262144");
         // the owned set: hits per byte, after the canonical tier's experts
         std::vector<double> count(size_t(c.layers) * c.experts, 0);
         {
@@ -5040,6 +5126,11 @@ private:
                   << sent / double(1ull << 30) << " s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()
                   << " worker_gpu_slots=" << ready.slots << "\n";
         own_remote_ = std::move(r);
+        if (const char* v = std::getenv("STRATA_DS41_OWN_PROMOTE"); v && std::atoi(v) > 0) {
+            const char* addr = std::getenv("STRATA_DS41_OWN_FETCH");
+            if (!addr || !*addr) throw std::invalid_argument("ds41: STRATA_DS41_OWN_PROMOTE needs STRATA_DS41_OWN_FETCH=HOST:PORT");
+            promote_start(std::atoi(v), addr);
+        }
     }
     void canon_enqueue(int l, int T, int K, const std::vector<int32_t>& entries, const std::vector<int>& gstart,
                        const std::vector<std::pair<int, int>>& groups) {
@@ -5192,6 +5283,121 @@ private:
     // STRATA_DS41_REMOTE_OWN: whole experts owned by a remote worker (STD2), per layer x expert
     std::unique_ptr<Remote> own_remote_;
     std::vector<uint8_t> own_;
+    // STRATA_DS41_OWN_PROMOTE=N (with STRATA_DS41_OWN_FETCH=HOST:PORT, a strata-ds41-cpu-worker --fetch-port): up to N experts the worker owns
+    // that the routes keep asking for are fetched over ucomm into this node's mapped model files (the hole of an expert the model
+    // file holds no data for) and then run on this node's lane; the values are the same, only the node changes
+    struct PromoGeo { int fd[3]; uint64_t base[3]; size_t gstride, dstride, bytes; };
+    std::vector<PromoGeo> prom_geo_;
+    std::unique_ptr<std::atomic<uint32_t>[]> own_score_;
+    std::unique_ptr<std::atomic<uint8_t>[]> prom_state_;   // 0 on the worker, 1 fetched or fetching
+    std::vector<uint8_t> prom_candidates_;                 // owned at setup
+    std::mutex prom_m_;
+    std::vector<int> prom_ready_;
+    std::atomic<bool> prom_has_ready_{false}, prom_stop_{false};
+    std::thread prom_thread_;
+    ucomm_t* prom_comm_ = nullptr;
+    int prom_budget_ = 0;
+    std::atomic<int> prom_done_{0};
+    double prom_bytes_ = 0;
+    void promote_start(int budget, const std::string& addr) {
+        const auto& c = cfg_;
+        ucomm_config cfg;
+        ucomm_config_default(&cfg);
+        cfg.rank = 0;
+        cfg.world = 2;
+        cfg.root_addr = addr.c_str();
+        if (!std::getenv("UCOMM_TIMEOUT_MS")) cfg.timeout_ms = 0;
+        Remote::ok(ucomm_init(&cfg, &prom_comm_), "promote connect");
+        const size_t n = size_t(c.layers) * size_t(c.experts);
+        own_score_ = std::make_unique<std::atomic<uint32_t>[]>(n);
+        prom_state_ = std::make_unique<std::atomic<uint8_t>[]>(n);
+        for (size_t i = 0; i < n; ++i) { own_score_[i] = 0; prom_state_[i] = 0; }
+        prom_candidates_ = own_;
+        prom_budget_ = budget;
+        prom_geo_.resize(size_t(c.layers));
+        for (int l = 0; l < c.layers; ++l) {
+            const std::string p = "blk." + std::to_string(l) + ".";
+            const core::ArtifactTensor* T[3] = {&art_.at(p + "ffn_gate_exps.weight"), &art_.at(p + "ffn_up_exps.weight"), &art_.at(p + "ffn_down_exps.weight")};
+            const auto& F = experts_[size_t(l)].f;
+            PromoGeo& g = prom_geo_[size_t(l)];
+            g.gstride = F.gu_row * size_t(c.ff);
+            g.dstride = F.d_row * size_t(c.hidden);
+            g.bytes = 2 * g.gstride + g.dstride;
+            for (int k = 0; k < 3; ++k) {
+                g.fd[k] = ::open(T[k]->file->path().c_str(), O_WRONLY);
+                if (g.fd[k] < 0) throw std::runtime_error("ds41 promote: cannot open " + T[k]->file->path() + " for writing");
+                g.base[k] = T[k]->file->data_start() + T[k]->tensor->offset;
+            }
+        }
+        prom_thread_ = std::thread([this] { promote_loop(); });
+    }
+    void promote_loop() {
+        const auto& c = cfg_;
+        size_t largest = 0;
+        for (const auto& g : prom_geo_) largest = std::max(largest, g.bytes);
+        std::vector<uint8_t> blob(largest);
+        ucomm_mr_t* region = nullptr;
+        if (ucomm_mr_reg(prom_comm_, blob.data(), blob.size(), &region) != UCOMM_OK) region = nullptr;
+        const size_t n = size_t(c.layers) * size_t(c.experts);
+        constexpr uint32_t kMinScore = 3;
+        while (!prom_stop_ && prom_done_ < prom_budget_) {
+            uint32_t best = kMinScore - 1;
+            size_t pick = n;
+            for (size_t i = 0; i < n; ++i) {
+                if (!prom_candidates_[i] || prom_state_[i].load(std::memory_order_relaxed)) continue;
+                const uint32_t v = own_score_[i].load(std::memory_order_relaxed);
+                if (v > best) { best = v; pick = i; }
+            }
+            if (pick == n) { std::this_thread::sleep_for(std::chrono::milliseconds(5)); continue; }
+            prom_state_[pick] = 1;
+            const int32_t req[2] = {int32_t(pick / size_t(c.experts)), int32_t(pick % size_t(c.experts))};
+            const auto& g = prom_geo_[size_t(req[0])];
+            ucomm_req_t* rx = nullptr;
+            Remote::ok(ucomm_irecv(prom_comm_, 1, 51, blob.data(), g.bytes, &rx), "promote receive");
+            Remote::ok(ucomm_send(prom_comm_, 1, 50, req, sizeof req), "promote request");
+            size_t got = 0;
+            Remote::ok(ucomm_wait(rx, &got), "promote wait");
+            if (got != g.bytes) throw std::runtime_error("ds41 promote: short blob");
+            const size_t e = size_t(req[1]);
+            const struct { const uint8_t* src; size_t len; uint64_t at; int fd; } parts[3] = {
+                {blob.data(), g.gstride, g.base[0] + e * g.gstride, g.fd[0]},
+                {blob.data() + g.gstride, g.gstride, g.base[1] + e * g.gstride, g.fd[1]},
+                {blob.data() + 2 * g.gstride, g.dstride, g.base[2] + e * g.dstride, g.fd[2]}};
+            for (const auto& part : parts)
+                for (size_t done = 0; done < part.len;) {
+                    const ssize_t k = pwrite(part.fd, part.src + done, part.len - done, off_t(part.at + done));
+                    if (k <= 0) throw std::runtime_error("ds41 promote: write failed");
+                    done += size_t(k);
+                }
+            prom_bytes_ += double(g.bytes);
+            { std::lock_guard<std::mutex> lock(prom_m_); prom_ready_.push_back(int(pick)); }
+            prom_has_ready_.store(true, std::memory_order_release);
+            ++prom_done_;
+        }
+        if (region) ucomm_mr_dereg(region);
+    }
+    void promote_apply() {   // on the decode thread: experts whose rows are in place now run on this node
+        if (!prom_has_ready_.load(std::memory_order_acquire)) return;
+        std::lock_guard<std::mutex> lock(prom_m_);
+        for (int i : prom_ready_) own_[size_t(i)] = 0;
+        prom_applied_ += prom_ready_.size();
+        prom_ready_.clear();
+        prom_has_ready_.store(false, std::memory_order_relaxed);
+    }
+    size_t prom_applied_ = 0;
+    uint64_t prom_local_routes_ = 0, prom_remote_routes_ = 0;   // decode-pass routes of the setup-owned experts: run here after promotion / still sent
+    void promote_stop() {
+        prom_stop_ = true;
+        if (prom_thread_.joinable()) prom_thread_.join();
+        if (prom_comm_) {
+            const int32_t end[2] = {-1, -1};
+            (void)ucomm_send(prom_comm_, 1, 50, end, sizeof end);
+            ucomm_finalize(prom_comm_);
+            prom_comm_ = nullptr;
+        }
+        for (auto& g : prom_geo_) for (int k = 0; k < 3; ++k) if (g.fd[k] >= 0) { ::close(g.fd[k]); g.fd[k] = -1; }
+        prom_geo_.clear();
+    }
     std::vector<float> ext_vals_;     // canonical + remote raw route outputs, merged by finish_with_external
     std::vector<int32_t> ext_entries_;
     uint64_t own_routes_ = 0;
@@ -5201,6 +5407,12 @@ public:
     // STRATA_DS41_REMOTE_OWN, decode / verify passes: ms of canonical GPU sync, worker reply wait, lane finish + merge;
     // [3] the layer calls counted
     double own_ms_[4] = {0, 0, 0, 0};
+    std::string promote_summary() const {
+        if (prom_budget_ <= 0) return {};
+        return "DS41 own_promote applied=" + std::to_string(prom_applied_) + " fetched=" + std::to_string(prom_done_.load()) + " GiB=" +
+               std::to_string(prom_bytes_ / double(1ull << 30)) + " decode routes of setup-owned experts: local " + std::to_string(prom_local_routes_) +
+               " remote " + std::to_string(prom_remote_routes_) + "\n";
+    }
 private:
     int canon_stream_ = 0;          // STRATA_DS41_CANON_STREAM: experts streamed per layer pass
     cudaStream_t canon_copy_s_ = nullptr;
@@ -6935,6 +7147,7 @@ private:
         std::vector<int32_t> canon_original, canon_entries;
         std::vector<int> canon_gstart;
         std::vector<std::pair<int, int>> canon_groups;   // (expert, ring slot or -1 for the static arena)
+        if (prom_thread_.joinable()) promote_apply();
         if (!canon_off_.empty() && T <= 8 && size_t(T) * size_t(K) == cpu_ids.size()) {
             std::map<int, std::vector<int>> held, rest;
             for (int i = 0; i < T * K; ++i) {
@@ -6972,10 +7185,18 @@ private:
         std::vector<int32_t> own_ids;
         int own_n = 0;
         if (own_remote_ && size_t(T) * size_t(K) == cpu_ids.size()) {
+            if (prom_thread_.joinable()) promote_apply();
             own_ids.assign(cpu_ids.size(), -1);
             for (size_t i = 0; i < cpu_ids.size(); ++i) {
                 const int e = cpu_ids[i];
-                if (e >= 0 && e < c.experts && own_[size_t(l) * c.experts + e]) { own_ids[i] = e; ++own_n; }
+                if (prom_state_ && T <= 8 && e >= 0 && e < c.experts && prom_candidates_[size_t(l) * c.experts + e])
+                    ++(own_[size_t(l) * c.experts + e] ? prom_remote_routes_ : prom_local_routes_);
+                if (e >= 0 && e < c.experts && own_[size_t(l) * c.experts + e]) {
+                    own_ids[i] = e;
+                    ++own_n;
+                    static const bool decode_only = std::getenv("STRATA_DS41_OWN_PROMOTE_DECODE_ONLY") && std::string(std::getenv("STRATA_DS41_OWN_PROMOTE_DECODE_ONLY")) == "1";
+                    if (own_score_ && (T <= 8 || !decode_only)) own_score_[size_t(l) * c.experts + e].fetch_add(1, std::memory_order_relaxed);
+                }
             }
             if (own_n) {
                 if (canon_original.empty()) canon_original = cpu_ids;
@@ -7387,6 +7608,7 @@ private:
     std::vector<std::vector<int>> sel_count_, candidates_;
     std::vector<const core::ArtifactTensor*> engram_tables_;   // per Engram layer (the same table when shared)
     std::vector<int> engram_fds_, owned_fds_;
+    std::unique_ptr<EngramRemote> engram_remote_;
     struct EngramReq { int64_t row; float* dst; int table; };
     std::vector<EngramReq> engram_reqs_, engram_reqs_bg_;
     std::thread engram_later_;
@@ -9493,6 +9715,7 @@ int run(int argc, char** argv) {
               << " canon_streamed=" << (d.canon_cpu_routes_ ? double(d.canon_streamed_) / double(d.canon_cpu_routes_) : 0.0) << " promotions=" << d.promotions_ << " adapt=" << d.prof_[3] << " engram=" << d.prof_[4]
               << " index_host=" << d.prof_[5] << " head=" << d.prof_[6] << " stage_copy=" << d.prof_[7] << " stream_wait=" << d.stream_wait_s_ << "\n";
     d.miss_line(double(out.size()));
+    std::cerr << d.promote_summary();
     if (d.own_ms_[3] > 0)
         std::cerr << "DS41 remote_own_decode layer_calls=" << d.own_ms_[3] << " total_s gpu_sync=" << d.own_ms_[0] / 1e3
                   << " worker_wait=" << d.own_ms_[1] / 1e3 << " merge=" << d.own_ms_[2] / 1e3 << " (per layer call ms "

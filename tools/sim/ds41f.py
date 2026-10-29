@@ -1374,7 +1374,9 @@ class NoRootGpuPlan:
     overhead_scale: float = 1.0   # what-if: the 1.0 ms/layer neither lane nor merge (GPU sync, request prep, wakeups, IB hop): spin-polling, persistent threads
     stagger_split: int = 0
     prefetch_hit_gain: float = 0.0   # what-if: lookahead uploads raise the tier's hit rate by this much (absolute)
-    canon_split_balanced: bool = True
+    local_share: float = -1.0     # share of the non-tier experts the B550 lane serves (the rest go to TR16); -1 = balanced by lane speed (needs the right experts on each node)
+    hit_measured: float = -1.0    # use a measured tier hit instead of the VRAM-derived curve
+    tokens_per_round: float = -1.0   # measured tokens per round of this run (acceptance depends on the text the backend produces)
     generated: int = 128
 
     to_dict = lambda self: dataclasses.asdict(self)
@@ -1418,6 +1420,17 @@ def no_root_gpu_expert_phase_ms(hit, w=5, lane_speed=1.0, tier_gbps=49.0, sync_m
     return 40.0 * (c["overhead_ms"] * overhead_scale + t + c["merge_ms"] * sync_merge_scale), t, lanes, gpu
 
 
+def no_root_gpu_fixed_split_ms(hit, w, local_share, lane_speed=1.0, sync_merge_scale=1.0, overhead_scale=1.0):
+    """The measured first layout: the B550 lane serves `local_share` of the experts the GPU tier does not, TR16's lane the rest; the layer waits for
+    the slower of the two (TR16's, over IB). Returns (phase_ms, layer_ms, b550_experts, tr16_experts)."""
+    c = NO_ROOT_GPU
+    n = 6 * routing.union_ratio(w, 384, 6) * (1 - hit)
+    t_b = n * local_share * c["lane_ms_per_expert"] / lane_speed
+    t_t = n * (1 - local_share) * c["lane_ms_per_expert"] * c["tr16_lane_ratio"] / lane_speed + c["link_ms"]
+    layer = max(t_b, t_t)
+    return 40.0 * (c["overhead_ms"] * overhead_scale + layer + c["merge_ms"] * sync_merge_scale), layer, n * local_share, n * (1 - local_share)
+
+
 def no_root_gpu_check():
     """The same expert-phase formula on today's layout (decoder + 9070 XT, worker B550 with its tier and lane) - should reproduce 88-91 ms."""
     c = NO_ROOT_GPU
@@ -1433,10 +1446,13 @@ def no_root_gpu_decode(plan):
     frac = (w - 1) / 4.0
     lerp = lambda pair: pair[0] + (pair[1] - pair[0]) * frac
     slots = no_root_gpu_tier_slots(plan)
-    hit = min(0.97, no_root_gpu_hit(slots) + plan.prefetch_hit_gain)
+    hit = min(0.97, (plan.hit_measured if plan.hit_measured >= 0 else no_root_gpu_hit(slots)) + plan.prefetch_hit_gain)
     gbps = c["tier_gbps"][1 if plan.cand_kernel else 0]
     gbps *= plan.gpu_kernel_scale
-    cpu, t_layer, t_lane, t_gpu = no_root_gpu_expert_phase_ms(hit, w, plan.lane_speed, gbps, plan.sync_merge_scale, c["pcie_gbps"] if plan.stream_cold else 0.0, plan.overhead_scale)
+    if plan.local_share >= 0:
+        cpu, t_layer, t_lane, t_gpu = no_root_gpu_fixed_split_ms(hit, w, plan.local_share, plan.lane_speed, plan.sync_merge_scale, plan.overhead_scale)
+    else:
+        cpu, t_layer, t_lane, t_gpu = no_root_gpu_expert_phase_ms(hit, w, plan.lane_speed, gbps, plan.sync_merge_scale, c["pcie_gbps"] if plan.stream_cold else 0.0, plan.overhead_scale)
     g2r = (lerp(t["g2r_ms"]) + t["g2r_per_cpu_ms"] * cpu * frac) * plan.gpu_wait_scale
     engram, head = lerp(t["engram_ms"]) * (1 - plan.engram_hidden), lerp(t["head_ms"])
     core = g2r + cpu
@@ -1453,12 +1469,30 @@ def no_root_gpu_decode(plan):
     verify = core + engram + head + t["other_ms"] + contention
     if w == 1:
         return dict(width=1, tier_slots=slots, hit=hit, expert_ms=cpu, layer_ms=t_layer, lane_experts=t_lane, gpu_experts=t_gpu, verify_ms=verify, round_ms=verify, tok_s=1e3 / verify, tokens_per_round=1.0)
-    tokens = routing.tokens_per_round(w - 1, t["accept_profile"])
+    tokens = plan.tokens_per_round if plan.tokens_per_round > 0 else routing.tokens_per_round(w - 1, t["accept_profile"])
     draft = t["draft_ms_per_token"] * w * (1 - plan.draft_overlap)
     round_ms = verify + draft + t["inject_ms"]
     total = t["first_step_ms"] + (plan.generated - 1) / tokens * round_ms
     return dict(width=w, tier_slots=slots, hit=hit, expert_ms=cpu, layer_ms=t_layer, lane_experts=t_lane, gpu_experts=t_gpu, g2r_ms=g2r, verify_ms=verify, draft_ms=draft,
                 round_ms=round_ms, tokens_per_round=tokens, tok_s=plan.generated / total * 1e3)
+
+
+def no_root_gpu_measured_levers():
+    """The measured first layout (t6/t7: 10.3-10.5 tok/s) and what each next lever would do to it; what-ifs, not measurements."""
+    base = NoRootGpuPlan(hit_measured=0.309, local_share=0.33, tokens_per_round=3.12)
+    steps = [("measured layout (t6/t7: 10.3 / 10.5 tok/s)", {}),
+             ("+ the B550 lane serves 60 % of the non-tier experts (adaptive local band)", dict(local_share=0.60)),
+             ("+ balanced split 0.61 (lane speeds)", dict(local_share=0.606)),
+             ("+ tier hit 0.45 (promotions fed from TR16 over IB)", dict(hit_measured=0.45)),
+             ("+ per-layer overhead halved", dict(overhead_scale=0.5)),
+             ("+ GPU wait x0.7", dict(gpu_wait_scale=0.7)),
+             ("+ async drafting 90 %", dict(draft_overlap=0.9)),
+             ("+ staggered 3/2 verify", dict(stagger_split=3))]
+    acc, rows = {}, []
+    for label, kw in steps:
+        acc.update(kw)
+        rows.append((label, no_root_gpu_decode(dataclasses.replace(base, **acc))))
+    return rows
 
 
 def no_root_gpu_levers(base=None):

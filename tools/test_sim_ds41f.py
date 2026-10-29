@@ -237,6 +237,14 @@ class NoRootGpuTest(unittest.TestCase):
         self.assertGreater(f(0.5, 5, 1.0, 49.0)[0], f(0.5, 5, 1.15, 49.0)[0])       # so do faster lanes
         self.assertGreaterEqual(f(0.5, 5, 1.0, 49.0)[0], f(0.5, 5, 1.0, 49.0, 1.0, 14.38)[0])   # streaming only adds capacity
 
+    def test_measured_layout(self):
+        rows = ds41f.no_root_gpu_measured_levers()
+        first = rows[0][1]
+        self.assertAlmostEqual(first["verify_ms"], 260.0, delta=15.0)      # t6 262.8 / t7 258.9 ms
+        self.assertAlmostEqual(first["tok_s"], 10.4, delta=1.0)             # t6 10.30 / t7 10.47 tok/s
+        speeds = [o["tok_s"] for _, o in rows]
+        self.assertEqual(speeds, sorted(speeds))
+
     def test_vram_budget(self):
         base = ds41f.no_root_gpu_tier_slots(ds41f.NoRootGpuPlan())
         self.assertLess(base, 2003)                                                 # below the worker's tier today
