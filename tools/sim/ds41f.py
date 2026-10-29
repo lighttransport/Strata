@@ -1203,6 +1203,8 @@ TWO_NODE = dict(
     stagger_efficiency=0.6,       # share of the ideal pipelined saving realized (dependency stalls, the root GPU shared with the canonical tier, launch queue; hypothesis)
     stagger_req_ms=0.08,          # fixed cost of one extra worker request per layer (RTT 16 us + wakeups; hypothesis)
     draft_gpu_ms=16.0,            # the part of the 25 ms drafting that runs on a GPU (25 minus 9 ms of router waits, dspark steps= lines)
+    draft_overlap_max=0.27,       # DSpark conditions on the verify's hidden states (dspark_inject) and starts from its bonus token, so a draft cannot start before the verify
+                                  # ends; only the drafter's router/expert waits (9 of ~33 ms) are independent of them. Larger values need drafts from stale features (not built)
     draft_contention=(0.6, 0.1),  # verify slowdown per ms of overlapped draft GPU time: sharing the root GPU / using the worker's (hypotheses)
     draft_feature_ms=0.15,        # moving the 3 target hidden states (5 x 5120 x 4 B x 3) to the worker GPU over IB
     sync_merge_share=0.41,        # of the per-layer root<->worker time: gpu_sync 0.557 + merge 0.312 of 2.14 ms per layer call (remote_own_decode, 10 runs)
@@ -1295,9 +1297,10 @@ def two_node_decode(plan):
         ideal = 40.0 * period + g_a + f                               # + the first layer's attention before the pipeline fills
         core = core - c["stagger_efficiency"] * max(0.0, core - ideal)
     contention = 0.0
-    if w > 1 and plan.draft_overlap > 0:
+    ov = min(plan.draft_overlap, c["draft_overlap_max"])
+    if w > 1 and ov > 0:
         k = c["draft_contention"][0 if plan.draft_place == "root" else 1]
-        contention = k * c["draft_gpu_ms"] * plan.draft_overlap + (c["draft_feature_ms"] if plan.draft_place == "worker" else 0.0)
+        contention = k * c["draft_gpu_ms"] * ov + (c["draft_feature_ms"] if plan.draft_place == "worker" else 0.0)
     verify = core + engram + head + c["other_ms"] - saved + gpu_extra + contention
     out = dict(width=w, canon_hit=hit, stagger_period_ms=period, draft_contention_ms=contention, prefetch_moved=moved, prefetch_capacity=capacity, deferral_saved_ms=saved, cpu_ms=cpu, g2r_ms=g2r, engram_ms=engram, head_ms=head, other_ms=c["other_ms"], verify_ms=verify,
                vram_free_gib=two_node_vram_free_gib(mib), vram_ok=two_node_vram_free_gib(mib) * GIB >= c["vram_floor_bytes"])
@@ -1306,7 +1309,7 @@ def two_node_decode(plan):
         return out
     profile = plan.acceptance or c["accept_profile"]
     tokens = routing.tokens_per_round(w - 1, profile)
-    draft = c["draft_ms_per_token"] * w * (1 - plan.draft_overlap)
+    draft = c["draft_ms_per_token"] * w * (1 - min(plan.draft_overlap, c["draft_overlap_max"]))
     round_ms = verify + draft + c["inject_ms"]
     rounds = (plan.generated - 1) / tokens                  # expected rounds; measured runs are 27 or 28
     total = c["first_step_ms"] + rounds * round_ms
@@ -1319,7 +1322,7 @@ def two_node_roadmap(base=None):
     "[mine]" marks the levers derived from the decoder source and logs rather than taken from the literature."""
     base = base or TwoNodePlan()
     steps = [("measured exact", {}),
-             ("+ async drafting on the root GPU (90 % hidden, contends with the verify)", dict(draft_overlap=0.9)),
+             ("+ the drafter's feature-independent waits overlapped (capped at 0.27: DSpark needs the verify's hidden states)", dict(draft_overlap=0.9)),
              ("+ drafter moved to the worker GPU [mine]", dict(draft_place="worker")),
              ("+ lookahead expert prefetch (40 % of CPU expert work to the GPU tiers)", dict(prefetch_share=0.4)),
              ("+ merge/sync halved (GPU merge, streamed replies)", dict(sync_merge_scale=0.5)),
@@ -1465,12 +1468,13 @@ def no_root_gpu_decode(plan):
         f = t["stagger_req_ms"]
         ideal = 40.0 * max(e_a + e_b + 2 * f, g_a + g_b, g_a + e_a + f, g_b + e_b + f) + g_a + f
         core -= t["stagger_efficiency"] * max(0.0, core - ideal)
-    contention = t["draft_contention"][0] * t["draft_gpu_ms"] * plan.draft_overlap if w > 1 else 0.0   # the only GPU is shared
+    ov = min(plan.draft_overlap, t["draft_overlap_max"])
+    contention = t["draft_contention"][0] * t["draft_gpu_ms"] * ov if w > 1 else 0.0   # the only GPU is shared
     verify = core + engram + head + t["other_ms"] + contention
     if w == 1:
         return dict(width=1, tier_slots=slots, hit=hit, expert_ms=cpu, layer_ms=t_layer, lane_experts=t_lane, gpu_experts=t_gpu, verify_ms=verify, round_ms=verify, tok_s=1e3 / verify, tokens_per_round=1.0)
     tokens = plan.tokens_per_round if plan.tokens_per_round > 0 else routing.tokens_per_round(w - 1, t["accept_profile"])
-    draft = t["draft_ms_per_token"] * w * (1 - plan.draft_overlap)
+    draft = t["draft_ms_per_token"] * w * (1 - ov)
     round_ms = verify + draft + t["inject_ms"]
     total = t["first_step_ms"] + (plan.generated - 1) / tokens * round_ms
     return dict(width=w, tier_slots=slots, hit=hit, expert_ms=cpu, layer_ms=t_layer, lane_experts=t_lane, gpu_experts=t_gpu, g2r_ms=g2r, verify_ms=verify, draft_ms=draft,
@@ -1486,13 +1490,39 @@ def no_root_gpu_measured_levers():
              ("+ tier hit 0.45 (promotions fed from TR16 over IB)", dict(hit_measured=0.45)),
              ("+ per-layer overhead halved", dict(overhead_scale=0.5)),
              ("+ GPU wait x0.7", dict(gpu_wait_scale=0.7)),
-             ("+ async drafting 90 %", dict(draft_overlap=0.9)),
+             ("+ drafter waits overlapped (capped at 0.27)", dict(draft_overlap=0.9)),
              ("+ staggered 3/2 verify", dict(stagger_split=3))]
     acc, rows = {}, []
     for label, kw in steps:
         acc.update(kw)
         rows.append((label, no_root_gpu_decode(dataclasses.replace(base, **acc))))
     return rows
+
+
+# The best exact (token-identical) settings measured in the reversed layout, 2026-10-30 (experiment/ds41f_tr16_decode/rev_best.env): adaptive GPU tier
+# (hit 0.61), helper threads off the lane cores, DSpark N=3 with a confidence cutoff. A pass of W tokens costs about 75 ms + 24.6 ms per extra token
+# (v2/w3/x3/m3/o2: 75.5, 98.6, 117.6, 152.6 ms for W = 1..4); a round also pays the drafter (26 ms, 11.6 of them router waits) and the injection.
+REV_BEST = dict(verify_ms=(75.5, 98.6, 117.6, 152.6), draft_ms=26.0, inject_ms=0.6, tokens_per_round=2.44, measured_tok_s=(16.05, 16.23, 16.24, 16.32, 15.81),
+                plain_tok_s_c_llama=11.74, best_tok_s_c_llama=15.87)
+
+
+def rev_best_decode(width_mix=None, draft_ms=None, verify_scale=1.0, tokens_per_round=None):
+    """tok/s of the measured best exact layout for a mix of pass widths (default: a mix that gives the measured mean pass of 123 ms), with what-if
+    scales on the pass cost and the drafter."""
+    c = REV_BEST
+    mix = width_mix or {1: 0.07, 2: 0.23, 3: 0.33, 4: 0.37}
+    verify = sum(share * c["verify_ms"][w - 1] for w, share in mix.items()) * verify_scale
+    draft = c["draft_ms"] if draft_ms is None else draft_ms
+    round_ms = verify + draft + c["inject_ms"]
+    tokens = tokens_per_round or c["tokens_per_round"]
+    return dict(tok_s=tokens / round_ms * 1e3, round_ms=round_ms, verify_ms=verify, draft_ms=draft, tokens_per_round=tokens)
+
+
+def rev_best_targets():
+    """What the measured best layout would need for 25 tok/s: the round has to shrink to tokens_per_round / 25."""
+    base = rev_best_decode()
+    need = REV_BEST["tokens_per_round"] / 25.0 * 1e3
+    return dict(base_tok_s=base["tok_s"], round_ms=base["round_ms"], round_ms_for_25=need, cut_ms=base["round_ms"] - need, cut_share=1 - need / base["round_ms"])
 
 
 def no_root_gpu_levers(base=None):
@@ -1508,7 +1538,7 @@ def no_root_gpu_levers(base=None):
              ("+ per-layer overhead halved (spin-polling, persistent threads)", dict(overhead_scale=0.5)),
              ("+ GPU wait x0.7", dict(gpu_wait_scale=0.7)),
              ("+ Engram hidden", dict(engram_hidden=1.0)),
-             ("+ async drafting 90 % (same GPU, contended)", dict(draft_overlap=0.9)),
+             ("+ drafter waits overlapped (capped at 0.27, same GPU)", dict(draft_overlap=0.9)),
              ("+ staggered 3/2 verify", dict(stagger_split=3))]
     acc, rows = {}, []
     for label, kw in steps:

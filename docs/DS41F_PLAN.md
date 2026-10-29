@@ -1576,3 +1576,65 @@ No end-to-end run: the worker needs a CUDA device and the B550 has neither the m
 simulator had assumed 235). `glm_ds41f_sim.py no-root-gpu` (decoder on the 5060 Ti, lanes on both CPUs) reproduces today's expert phase (90.7 vs 88-91 ms) and
 predicts 22.6 tok/s for the layout (25.7 today), capacity-bound by the two lanes and a ~49 GB/s GPU tier; the faster/tensor-core canonical kernel and the 1.0 ms
 per-layer overhead are the levers (what-ifs up to ~45 tok/s with every lever).
+
+## Reversed layout: the decoder on the B550's GPU, a CPU-only worker on TR16 (2026-10-29/30)
+
+Why: the RX 9070 XT is out of use (amdgpu faults), so the trunk, the drafter and the GPU expert tier run on the B550's RTX 5060 Ti (CUDA `strata-glm-decode`)
+and both CPUs are expert lanes. Run with `experiment/ds41f_tr16_decode/rev_node.sh` (`feed`, then `run`; `exp.sh`, `batch.sh`, `qual.sh` for series).
+- `strata-ds41-feed` shards the model into the B550's `/dev/shm` over ucomm (dense tensors, the drafter, the hottest `KEEP_MIB` of experts by the route
+  profile; sparse files of the original sizes; 39.5 GiB in 41 s). The decoder maps them as its model (`STRATA_DS41_POPULATE=0`: populating the holes of the
+  sparse shards fills the tmpfs).
+- `strata-ds41-cpu-worker` (no GPU, STD2 wire protocol): owns every other expert (81.9 GiB), reads its rows from its own copy of the model, serves Engram page
+  reads (`--engram-port`, decoder `STRATA_DS41_ENGRAM_REMOTE`) and expert blobs (`--fetch-port`) on their own ucomm contexts.
+- `STRATA_DS41_CANON_ADAPT=N` (decoder, opt-in): the canonical GPU tier follows the routes. A thread fetches the most-used experts that are not resident (from
+  the worker in 512 KiB pieces, `STRATA_DS41_ADAPT_GAP_MS` apart, or from the mapped model), the decode thread swaps one over the least-used resident of the same
+  size on a copy stream. Tier hit 0.31 -> 0.62; tokens identical (the canonical kernels' values do not depend on where an expert runs).
+- `STRATA_DS41_HELPER_CPUS` (decoder) and `--helper-cpus` (worker): helper threads off the lane's spin-barrier cores.
+
+Measured (c_osd, 1,000-token prompt, 128 generated; CUDA run is its own exact reference, it differs from the HIP reference at the 17th token):
+
+| Configuration | tok/s | Tokens equal to the exact run |
+|---|---:|---|
+| first working layout (t5) | 9.7 | yes |
+| + worker rows NUMA-interleaved, grid8/pair flags (t6-t8, t11) | 10.0-11.0 | yes |
+| + worker helpers pinned off the lane, 14 lane threads (r1) | 11.7 | yes |
+| + adaptive GPU tier, chunked rate-limited fetch (s2/t1) | 12.4-12.7 | yes |
+| + DSpark N=3, decoder lane 14 threads, decoder helpers pinned (u1/u2) | 14.9-15.1 | yes |
+| + N=3 with confidence cutoff PMIN 0.35-0.5, owned weight 2 (v2, w3, x3, o2, k2) | **15.8-16.3** | yes |
+
+Not worth it: window size alone (flat), CANON_CAP (a few groups on the lane instead of the GPU), a bigger tier (CANON 6100), 12 worker threads, history drafts,
+SCHED, persistent worker (second session 20-35 % slower), promotion into the B550 lane (OWN_PROMOTE, slower), gather decode (no gain on Zen 1), async drafting
+(not possible: DSpark conditions on the verify's hidden states). Lossy knobs on the same layout, KL against the exact run (c_osd): CPU_TRIM 0.125 20.9 tok/s KL 0.106
+top-1 90 %; CPU_TRIM 0.25 25.5 tok/s KL 0.34 top-1 80 % PPL +20 %; CPU_TOPK 4 20.7 tok/s KL 0.164 PPL +12 %. None meets KL <= 0.08 / top-1 >= 97 %.
+
+Second prompt (c_llama, 128 tokens): plain exact decoding 11.74 tok/s, the best settings 15.87 tok/s, the 128 generated tokens identical. Run-to-run spread of one
+configuration is about +-0.4 tok/s. The simulator (`glm_ds41f_sim.py no-root-gpu`) reproduces the best layout from its pass costs (75 ms + 24.6 ms per extra token, a
+26 ms drafter round) and says 25 tok/s needs the round 35 % (52 ms) shorter. What bounds it: the TR16 lane at about 0.36 ms per route and 0.6 ms per request, the
+GPU at about 85 of every 116 ms pass (experts 41, trunk 44), and the drafter's router waits (11.6 ms per round). Lossy 40+ is not reachable with the knobs that exist.
+
+nsys of the best exact layout on the 5060 Ti (2026-10-30, whole run including prefill): the canonical expert dot (`ds41_canon_dot_multi`, 366 us per call) is 15 % of GPU
+kernel time, the Q6_K dense matvecs (`native_mmvq_multi`, three batch widths) about 16 %, the drafter MXFP4 matvec 6 %, verify attention out/scores about 6 %. The Q6_K
+kernel is already the llama.cpp-style dp4a mmvq, so a gain there needs fewer bytes (a Q4 requant of the dense weights, lossy, needs the gate), not a faster kernel. Neither
+a CUDA graph of the trunk (712 us direct vs 708 us graph per layer) nor pinned copies of the drafter's cache misses (`cudaHostRegister` is unsupported on the tmpfs-mapped
+shards) changed anything.
+
+Canonical expert kernel experiments (2026-10-30, exact, c_osd, 2 runs each): 4 entries per staging 15.9 tok/s; the row-independent `dp4a(1111, x)` hoisted to a shared table 16.1-16.2 (best config 16.0-16.4). Neither moves the result, so the kernel is not dp4a-bound; the expert time sits in weight decode (grid lookups) and the memory system, and a tensor-core int8 kernel would only replace the dp4a part.
+
+Q4 requant of the dense weights, measured kernel side (2026-10-30, 5060 Ti, `experiment/ds41f_tr16_decode/qbench/q46_bench.cpp`, native_mmvq, random weights): at 4 columns Q6_K -> Q4_K takes 5120x8192 from 136 to 92 us, 4096x5120 from 64 to 49 us, 5120x2304 from 36 to 28 us (about -30 %); Q5_K lands within 5 % of Q4_K (97 / 51 / 29 us). The model holds 4.93 GB of Q6_K dense weights and 1.13 GB of Q5_K, so Q6_K -> Q5_K alone is worth about 10 ms of a 123 ms verify pass, i.e. about 17.4 tok/s (the simulator), for a quality cost that has to pass the gate. There is no local checkpoint (510 GB) to requantize from, only the Q6_K tensors themselves.
+
+Dense Q6_K/Q5_K -> Q4_K at load (`STRATA_DS41_DENSE_Q4K=1`, already in the decoder), measured end to end in the reversed layout (c_osd, 2026-10-30): 17.7-17.8 tok/s (2 runs; the bigger tier, CANON_MIB 6900, added nothing), against 16.0-16.4 exact. Quality against the exact run (1,000 positions): mean KL 0.085, top-1 agreement 91.4 %, next-token accuracy -0.3 pp, PPL +2.8 %. That misses the strict gate (KL <= 0.08, top-1 >= 97 %), so it is a lossy data point only. As the kernel bench said (+1.2 tok/s from Q5_K), the requant is worth about +1.5 tok/s and is the best lossy lever that costs little quality; the trim/top-k knobs buy more speed for much more KL.
+
+Dense requant, gated separately (2026-10-30, c_osd, reversed layout, 1,000 positions vs the exact run): `STRATA_DS41_DENSE_Q5K=1` (only the Q6_K matrices to Q5_K) 17.4 tok/s, KL 0.050, top-1 94.7 %, next-token -0.5 pp, PPL +0.7 % (KL passes, top-1 misses the 97 % gate). `DENSE_Q4K=1` 17.7-17.8 tok/s, KL 0.085, top-1 91.4 %. `DENSE_Q4K=1` + `CPU_TRIM=0.25`: 26.8 tok/s, KL 0.39, top-1 77 %, PPL +24.6 % (fails). Lossy frontier: nothing reaches 40; the only point near the gate is Q5_K at 17.4.
+
+Expert deferral (KTransformers) in the reversed layout: `STRATA_DS41_DEFER_RANK/ALL` exist but are excluded for the remote worker (`!remote`), because the worker's reply is merged with the canonical tier's and the lane's results in one host-order pass (`finish_with_external2`). Enabling it means splitting that merge into an immediate part (GPU-held routes) and a part added after the next layer's attention (the worker's rank >= R routes). It is the one remaining lossy lever with a plausible 10-20 ms per pass, but on this IQ1_S model trim 0.125 (a smaller perturbation than delaying half the CPU-lane routes by a layer) already costs KL 0.106, so it is expected to miss the KL <= 0.08 gate; not built.
+
+Bound for expert deferral (2026-10-30, from the measured per-layer call: GPU sync 0.9 ms, worker wait 0.75 ms, merge 0.26 ms, 40 layers): hiding half of the worker wait behind the next layer's attention saves 15 ms of a 123 ms verify pass (18.1 tok/s exact-layout equivalent), hiding all of it 30 ms (20.4 tok/s), and the next layer's attention is shorter than the wait, so the full amount is not available. Even stacked on the measured lossy points (trim 0.25 verify pass 79 ms) an extra 25 % cut gives 28 tok/s. Deferral therefore cannot reach 25 lossless (it is lossy anyway) or 40 lossy, and was not built.
+
+Expert deferral built for the remote-worker layout (`STRATA_DS41_DEFER_REMOTE=1`, lossy, opt-in; 2026-10-30): the worker/canonical-tier/lane merge of a layer runs after the next layer's attention (`defer_job_`, run by `defer_apply`), the layer's moe is zero until then. Measured c_osd: 19.9 tok/s (bound from the per-layer costs was 20.4), mean KL 0.249, top-1 82.6 %, next-token -1.3 pp, PPL +7.6 % against the exact run, so it fails the gate. Stacked with CPU_TRIM=0.25 and DENSE_Q4K=1: 29.4 tok/s, KL 0.622, top-1 72.6 %, next-token -5.9 pp, PPL +52 %. Still nothing near 40.
+
+Canonical expert kernel, standalone bench (experiment/ds41f_tr16_decode/kbench, 5060 Ti, bitwise identical): the production multi-entry kernel reaches only 53-83 GB/s of ~450, so it is not bandwidth-bound. A shared-memory copy of the IQ1_S grid made it no faster (80 vs 83 GB/s); staging each row through shared memory was slower (60 GB/s); but 16-bit instead of byte loads of the scale/sign words took IQ1_S from 557 to 512 us (-8 %) and IQ2_XXS from 644 to 554 us (-14 %, one case -20 %). That change is in `ds41_canon_dot_kernel` and the multi-entry kernel. End to end it is worth about +0.1-0.2 tok/s (16.4 on two runs, ids identical), because the canonical dot is about 15 % of the GPU kernel time: a kernel 10-20 % faster cannot move the round by more than 2-3 %.
+
+Exact flag screen on top of the best settings (2026-10-30, c_osd, one run each, spread +-0.4): `STRATA_DS41_FUSE=1` alone is exact and consistently about +2 % (16.57, 16.79 against 16.4-16.5; it also puts the shared expert under the host's routing wait), added to `rev_best.env`. Its earlier loss came from `SHARE_Q8=1`, which changes tokens (16.16, ids differ). Neutral and exact: `ATTN_MULTI` 16.55, `DSPARK_DEVICE_HEAD` 16.45, `OUT_REGROUP` 16.51. `FUSE_MIXES` changes tokens and is slower (15.6).
+Second flag screen on top of FUSE=1 (c_osd, 1 run each): `MULTI_ROWS=2` 16.54 (ids same, neutral), `MULTI_ROWS=4` 15.70 (ids same, slower), `ATTN_WMMA=1` (gfx12 WMMA, needs the FP16 KV cache; AMD path) and `DSPARK_GPU_ROUTE=1` ("streamed DSpark experts require host routing") are refused at startup on this layout, so they gave no result. No further exact gain.
+
+Worker-side ceiling (2026-10-30): the TR16 reads 71-92 GB/s (tools/membw) while the worker's IQ1_S kernel moves 18 GB/s (92.7 GMAC/s at width 1, iq1s_w1a8_bench), so the lane is compute-bound and a hand-tuned AVX2 rewrite has headroom. It cannot reach the target alone: per layer call the GPU chain costs 0.9 ms (sync) + 0.26 ms (merge) and the worker wait 0.75 ms, so an infinitely fast worker saves at most 40 x 0.75 = 30 ms of the 123 ms verify pass, i.e. about 20.4 tok/s lossless. 25 lossless additionally needs the GPU chain (about 37 small dependent kernels per layer, 0.71 ms) roughly 25 % shorter; CUDA graphs, the dp4a hoist, entry staging and the exact flag screens moved it by 0-3 %.

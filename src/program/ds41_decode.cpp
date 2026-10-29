@@ -363,6 +363,20 @@ const cpu_set_t& process_cpus() {
         cpu_set_t s;
         CPU_ZERO(&s);
         if (sched_getaffinity(0, sizeof s, &s) != 0) for (int i = 0; i < CPU_SETSIZE; ++i) CPU_SET(i, &s);
+        // STRATA_DS41_HELPER_CPUS=a,b,...: the helper threads run on these CPUs only, away from the lane's pinned cores (the lane's
+        // threads spin at barriers, so one helper sharing a core delays a whole pass)
+        if (const char* v = std::getenv("STRATA_DS41_HELPER_CPUS"); v && *v) {
+            cpu_set_t h;
+            CPU_ZERO(&h);
+            for (const char* q = v; *q;) {
+                char* end = nullptr;
+                const long c = std::strtol(q, &end, 10);
+                if (end == q) break;
+                if (c >= 0 && c < CPU_SETSIZE && CPU_ISSET(int(c), &s)) CPU_SET(int(c), &h);
+                q = *end == ',' ? end + 1 : end;
+            }
+            if (CPU_COUNT(&h) > 0) s = h;
+        }
         return s;
     }();
     return set;
@@ -2529,6 +2543,7 @@ public:
         return static_cast<float*>(h);
     }
     ~Decoder() {
+        adapt_stop();
         promote_stop();
         // the promotions' uploader first: its queued copies read the mapped experts unmapped below
         if (uploader_.joinable()) {
@@ -3493,6 +3508,29 @@ private:
         // STRATA_DS41_DENSE_Q4K=1 (lossy, opt-in): Q6_K and Q5_K trunk matrices requantized to Q4_K at load (about
         // -30 % of their VRAM, for the expert tiers)
         static const bool dense_q4k = strata_env_is_one("STRATA_DS41_DENSE_Q4K");
+        // STRATA_DS41_DENSE_Q5K=1: only the Q6_K matrices, to Q5_K
+        static const bool dense_q5k = strata_env_is_one("STRATA_DS41_DENSE_Q5K");
+        if (dense_q5k && !dense_q4k && W.type == GGML_TYPE_Q6_K && W.in % 256 == 0 && W.out > 0) {
+            const int64_t n = int64_t(W.in) * W.out;
+            const auto f = to_float(W.type, t.data(), n);
+            const size_t rb = ggml_row_size(GGML_TYPE_Q5_K, W.in), qb = rb * size_t(W.out);
+            std::vector<uint8_t> q(qb);
+            const int nt = 8;
+            std::vector<std::thread> th;
+            for (int k = 0; k < nt; ++k)
+                th.emplace_back([&, k] {
+                    const int64_t r0 = int64_t(W.out) * k / nt, r1 = int64_t(W.out) * (k + 1) / nt;
+                    if (r1 > r0) ggml_quantize_chunk(GGML_TYPE_Q5_K, f.data() + r0 * W.in, q.data() + size_t(r0) * rb, 0, r1 - r0, W.in, nullptr);
+                });
+            for (auto& x : th) x.join();
+            W.type = GGML_TYPE_Q5_K;
+            W.row_bytes = rb;
+            W.data = Dev(qb);
+            ck(cudaMemcpy(W.data.p, q.data(), qb, cudaMemcpyHostToDevice), "upload Q5_K");
+            t.file->discard_tensor_pages(*t.tensor, t.bytes);
+            weights_.emplace(as.empty() ? name : as, std::move(W));
+            return qb;
+        }
         if (dense_q4k && (W.type == GGML_TYPE_Q6_K || W.type == GGML_TYPE_Q5_K) && W.in % 256 == 0 && W.out > 0) {
             const int64_t n = int64_t(W.in) * W.out;
             const auto f = to_float(W.type, t.data(), n);
@@ -5131,6 +5169,7 @@ private:
             if (!addr || !*addr) throw std::invalid_argument("ds41: STRATA_DS41_OWN_PROMOTE needs STRATA_DS41_OWN_FETCH=HOST:PORT");
             promote_start(std::atoi(v), addr);
         }
+        if (const char* v = std::getenv("STRATA_DS41_CANON_ADAPT"); v && std::atoi(v) > 0) adapt_start(std::atoi(v), std::getenv("STRATA_DS41_OWN_FETCH"));
     }
     void canon_enqueue(int l, int T, int K, const std::vector<int32_t>& entries, const std::vector<int>& gstart,
                        const std::vector<std::pair<int, int>>& groups) {
@@ -5332,6 +5371,7 @@ private:
         prom_thread_ = std::thread([this] { promote_loop(); });
     }
     void promote_loop() {
+        unpin_helper();
         const auto& c = cfg_;
         size_t largest = 0;
         for (const auto& g : prom_geo_) largest = std::max(largest, g.bytes);
@@ -5350,7 +5390,7 @@ private:
             }
             if (pick == n) { std::this_thread::sleep_for(std::chrono::milliseconds(5)); continue; }
             prom_state_[pick] = 1;
-            const int32_t req[2] = {int32_t(pick / size_t(c.experts)), int32_t(pick % size_t(c.experts))};
+            const int32_t req[3] = {int32_t(pick / size_t(c.experts)), int32_t(pick % size_t(c.experts)), 0};
             const auto& g = prom_geo_[size_t(req[0])];
             ucomm_req_t* rx = nullptr;
             Remote::ok(ucomm_irecv(prom_comm_, 1, 51, blob.data(), g.bytes, &rx), "promote receive");
@@ -5390,13 +5430,199 @@ private:
         prom_stop_ = true;
         if (prom_thread_.joinable()) prom_thread_.join();
         if (prom_comm_) {
-            const int32_t end[2] = {-1, -1};
+            const int32_t end[3] = {-1, -1, 0};
             (void)ucomm_send(prom_comm_, 1, 50, end, sizeof end);
             ucomm_finalize(prom_comm_);
             prom_comm_ = nullptr;
         }
         for (auto& g : prom_geo_) for (int k = 0; k < 3; ++k) if (g.fd[k] >= 0) { ::close(g.fd[k]); g.fd[k] = -1; }
         prom_geo_.clear();
+    }
+    // STRATA_DS41_CANON_ADAPT=N (opt-in, with the canonical tier; STRATA_DS41_OWN_FETCH=HOST:PORT for the worker's experts): the tier follows
+    // the routes. A thread brings the most-used experts that are not resident (rows from the worker over ucomm, or from the mapped model) into
+    // pinned buffers; the decode thread copies one over the least-used same-size resident when it has been used 2+ times more, between
+    // passes on the compute stream. The canonical kernels' values do not depend on which expert sits in the tier, so tokens do not change.
+    struct AdaptRes { int l, e; int64_t off; size_t bytes; };
+    struct AdaptBuf { uint8_t* host = nullptr; cudaEvent_t ev = nullptr; std::atomic<int> state{0}; int l = -1, e = -1; int64_t off = -1; };   // 0 free, 1 filling, 2 ready, 3 copying
+    std::vector<AdaptRes> ad_res_;
+    std::unique_ptr<std::atomic<uint32_t>[]> ad_score_, ad_rejected_;
+    std::unique_ptr<std::atomic<uint8_t>[]> ad_state_;   // 1: resident or being brought
+    std::vector<uint8_t> ad_owned_;
+    std::vector<std::unique_ptr<AdaptBuf>> ad_bufs_;
+    std::thread ad_thread_;
+    std::atomic<bool> ad_stop_{false};
+    ucomm_t* ad_comm_ = nullptr;
+    int ad_budget_ = 0, ad_swaps_ = 0;
+    size_t adapt_max_bytes_ = 0, ad_chunk_ = 512 << 10;
+    uint32_t ad_owned_weight_ = 1;   // STRATA_DS41_ADAPT_OWNED_WEIGHT
+    int ad_gap_ms_ = 5;
+    cudaStream_t ad_copy_ = nullptr;   // the swaps' uploads run here, after the compute stream's earlier work, beside it
+    cudaEvent_t ad_sync_ = nullptr;
+    std::atomic<int> ad_fetched_{0};
+    void adapt_start(int budget, const char* fetch_addr) {
+        const auto& c = cfg_;
+        if (canon_off_.empty()) throw std::invalid_argument("ds41: STRATA_DS41_CANON_ADAPT needs the canonical tier (STRATA_DS41_CANON_MIB)");
+        if (prom_thread_.joinable()) throw std::invalid_argument("ds41: STRATA_DS41_CANON_ADAPT and STRATA_DS41_OWN_PROMOTE are alternatives");
+        const size_t n = size_t(c.layers) * size_t(c.experts);
+        ad_score_ = std::make_unique<std::atomic<uint32_t>[]>(n);
+        ad_rejected_ = std::make_unique<std::atomic<uint32_t>[]>(n);
+        ad_state_ = std::make_unique<std::atomic<uint8_t>[]>(n);
+        for (size_t i = 0; i < n; ++i) { ad_score_[i] = 0; ad_rejected_[i] = 0; ad_state_[i] = 0; }
+        ad_owned_ = own_.empty() ? std::vector<uint8_t>(n, 0) : own_;
+        for (int l = 0; l < c.layers; ++l)
+            for (int e = 0; e < c.experts; ++e)
+                if (canon_off_[size_t(l) * c.experts + e] >= 0) {
+                    ad_res_.push_back({l, e, canon_off_[size_t(l) * c.experts + e], (expert_bytes(l) + 255) / 256 * 256});
+                    ad_state_[size_t(l) * c.experts + e] = 1;
+                }
+        size_t max_b = 0;
+        for (int l = 0; l < c.layers; ++l) max_b = std::max(max_b, expert_bytes(l));
+        adapt_max_bytes_ = max_b;
+        ck(cudaStreamCreateWithFlags(&ad_copy_, cudaStreamNonBlocking), "adapt stream");
+        ck(cudaEventCreateWithFlags(&ad_sync_, cudaEventDisableTiming), "adapt sync event");
+        for (int i = 0; i < 6; ++i) {
+            auto b = std::make_unique<AdaptBuf>();
+            b->host = reinterpret_cast<uint8_t*>(pinned_keep(max_b));
+            ck(cudaEventCreateWithFlags(&b->ev, cudaEventDisableTiming), "adapt event");
+            ad_bufs_.push_back(std::move(b));
+        }
+        if (fetch_addr && *fetch_addr) {
+            ucomm_config cfg;
+            ucomm_config_default(&cfg);
+            cfg.rank = 0;
+            cfg.world = 2;
+            cfg.root_addr = fetch_addr;
+            if (!std::getenv("UCOMM_TIMEOUT_MS")) cfg.timeout_ms = 0;
+            Remote::ok(ucomm_init(&cfg, &ad_comm_), "adapt connect");
+        }
+        if (const char* v = std::getenv("STRATA_DS41_ADAPT_CHUNK_KIB")) ad_chunk_ = size_t(std::max(0, std::atoi(v))) << 10;
+        if (const char* v = std::getenv("STRATA_DS41_ADAPT_GAP_MS")) ad_gap_ms_ = std::max(0, std::atoi(v));
+        if (const char* v = std::getenv("STRATA_DS41_ADAPT_OWNED_WEIGHT")) ad_owned_weight_ = uint32_t(std::max(1, std::atoi(v)));
+        ad_budget_ = budget;
+        ad_thread_ = std::thread([this] { adapt_loop(); });
+    }
+    void adapt_loop() {
+        unpin_helper();
+        const auto& c = cfg_;
+        const size_t n = size_t(c.layers) * size_t(c.experts);
+        constexpr uint32_t kMin = 3;
+        std::vector<ucomm_mr_t*> regions;
+        if (ad_comm_)
+            for (auto& b : ad_bufs_) {
+                ucomm_mr_t* r = nullptr;
+                if (ucomm_mr_reg(ad_comm_, b->host, adapt_max_bytes_, &r) == UCOMM_OK) regions.push_back(r);
+            }
+        while (!ad_stop_) {
+            AdaptBuf* buf = nullptr;
+            for (auto& b : ad_bufs_) if (b->state.load(std::memory_order_acquire) == 0) { buf = b.get(); break; }
+            uint32_t best = kMin - 1;
+            size_t pick = n;
+            if (buf)
+                for (size_t i = 0; i < n; ++i) {
+                    if (ad_state_[i].load(std::memory_order_relaxed)) continue;
+                    const uint32_t raw = ad_score_[i].load(std::memory_order_relaxed);
+                    const uint32_t v = raw * (ad_owned_[i] ? ad_owned_weight_ : 1u);   // a worker-owned expert on the GPU saves the slower lane
+                    if (v > best && raw >= ad_rejected_[i].load(std::memory_order_relaxed) + 4) { best = v; pick = i; }
+                }
+            if (!buf || pick == n) { std::this_thread::sleep_for(std::chrono::milliseconds(2)); continue; }
+            ad_state_[pick] = 1;
+            buf->state.store(1, std::memory_order_relaxed);
+            const int l = int(pick / size_t(c.experts)), e = int(pick % size_t(c.experts));
+            if (ad_owned_[pick]) {
+                if (!ad_comm_) { ad_state_[pick] = 0; ad_rejected_[pick] = ~0u / 2; buf->state.store(0); continue; }
+                // the blob arrives in pieces of ad_chunk_ bytes so a reply of the worker's lane never waits behind a whole 7 MB transfer
+                const int32_t req[3] = {l, e, int32_t(ad_chunk_)};
+                const size_t total = expert_bytes(l), piece = ad_chunk_ ? ad_chunk_ : total;
+                std::vector<ucomm_req_t*> rx;
+                for (size_t off = 0; off < total; off += piece) {
+                    ucomm_req_t* r = nullptr;
+                    Remote::ok(ucomm_irecv(ad_comm_, 1, 51, buf->host + off, std::min(piece, total - off), &r), "adapt receive");
+                    rx.push_back(r);
+                }
+                Remote::ok(ucomm_send(ad_comm_, 1, 50, req, sizeof req), "adapt request");
+                size_t got_total = 0;
+                for (auto* r : rx) {
+                    size_t got = 0;
+                    Remote::ok(ucomm_wait(r, &got), "adapt wait");
+                    got_total += got;
+                }
+                if (got_total != total) throw std::runtime_error("ds41 adapt: short blob");
+                if (ad_gap_ms_ > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ad_gap_ms_));
+            } else {
+                slice_to_host(l, e, buf->host);
+            }
+            buf->l = l;
+            buf->e = e;
+            ++ad_fetched_;
+            buf->state.store(2, std::memory_order_release);
+        }
+        for (auto* r : regions) ucomm_mr_dereg(r);
+    }
+    // on the decode thread: finished uploads become usable at the start of a pass (poll), new swaps are issued after the pass's own GPU work is
+    // queued, so their DMA overlaps the lane/worker wait instead of delaying the pass's activations
+    void adapt_apply(bool issue) {
+        if (!ad_thread_.joinable()) return;
+        const auto& c = cfg_;
+        for (auto& b : ad_bufs_) {
+            const int st = b->state.load(std::memory_order_acquire);
+            if (st == 3) {   // the upload is done: the expert is usable from this pass on
+                if (cudaEventQuery(b->ev) == cudaSuccess) {
+                    canon_off_[size_t(b->l) * c.experts + b->e] = b->off;
+                    b->state.store(0, std::memory_order_release);
+                } else {
+                    (void)cudaGetLastError();
+                }
+                continue;
+            }
+            if (st != 2 || !issue) continue;
+            const size_t cand = size_t(b->l) * c.experts + b->e, need = (expert_bytes(b->l) + 255) / 256 * 256;
+            if (ad_swaps_ >= ad_budget_) { ad_state_[cand] = 0; ad_rejected_[cand] = ~0u / 2; b->state.store(0, std::memory_order_release); continue; }
+            int victim = -1;
+            uint32_t low = ~0u;
+            for (size_t i = 0; i < ad_res_.size(); ++i) {
+                if (ad_res_[i].bytes != need) continue;
+                const size_t ri = size_t(ad_res_[i].l) * c.experts + ad_res_[i].e;
+                const uint32_t v = ad_score_[ri].load(std::memory_order_relaxed) * (ad_owned_[ri] ? ad_owned_weight_ : 1u);
+                if (v < low) { low = v; victim = int(i); }
+            }
+            const uint32_t cs = ad_score_[cand].load(std::memory_order_relaxed) * (ad_owned_[cand] ? ad_owned_weight_ : 1u);
+            if (victim < 0 || cs < low + 2) {   // not worth a slot yet
+                ad_state_[cand] = 0;
+                ad_rejected_[cand] = ad_score_[cand].load(std::memory_order_relaxed);
+                b->state.store(0, std::memory_order_release);
+                continue;
+            }
+            AdaptRes& v = ad_res_[size_t(victim)];
+            const size_t old = size_t(v.l) * c.experts + v.e;
+            canon_off_[old] = -1;   // no pass from here on reads the slot; the ones already queued finish before the copy starts
+            ad_state_[old] = 0;
+            ad_rejected_[old] = ad_score_[old].load(std::memory_order_relaxed);
+            ck(cudaEventRecord(ad_sync_, stream_), "adapt sync record");
+            ck(cudaStreamWaitEvent(ad_copy_, ad_sync_, 0), "adapt sync wait");
+            ck(cudaMemcpyAsync(canon_arena_.b(size_t(v.off)), b->host, expert_bytes(b->l), cudaMemcpyHostToDevice, ad_copy_), "adapt upload");
+            ck(cudaEventRecord(b->ev, ad_copy_), "adapt event record");
+            b->off = v.off;
+            v.l = b->l;
+            v.e = b->e;
+            b->state.store(3, std::memory_order_release);
+            ++ad_swaps_;
+        }
+    }
+    void adapt_count(int l, const int32_t* ids, size_t n) {
+        if (!ad_score_) return;
+        for (size_t i = 0; i < n; ++i)
+            if (ids[i] >= 0 && ids[i] < cfg_.experts) ad_score_[size_t(l) * cfg_.experts + size_t(ids[i])].fetch_add(1, std::memory_order_relaxed);
+    }
+    void adapt_stop() {
+        ad_stop_ = true;
+        if (ad_thread_.joinable()) ad_thread_.join();
+        if (ad_copy_) { (void)cudaStreamSynchronize(ad_copy_); (void)cudaStreamDestroy(ad_copy_); ad_copy_ = nullptr; }
+        if (ad_comm_) {
+            const int32_t end[3] = {-1, -1, 0};
+            (void)ucomm_send(ad_comm_, 1, 50, end, sizeof end);
+            ucomm_finalize(ad_comm_);
+            ad_comm_ = nullptr;
+        }
     }
     std::vector<float> ext_vals_;     // canonical + remote raw route outputs, merged by finish_with_external
     std::vector<int32_t> ext_entries_;
@@ -5406,8 +5632,10 @@ private:
 public:
     // STRATA_DS41_REMOTE_OWN, decode / verify passes: ms of canonical GPU sync, worker reply wait, lane finish + merge;
     // [3] the layer calls counted
-    double own_ms_[4] = {0, 0, 0, 0};
+    double own_ms_[4] = {0, 0, 0, 0}, own_latency_ms_ = 0;   // own_latency_: from sending a layer's request to its reply in hand
+    std::chrono::steady_clock::time_point own_start_t_;
     std::string promote_summary() const {
+        if (ad_budget_ > 0) return "DS41 canon_adapt swaps=" + std::to_string(ad_swaps_) + " fetched=" + std::to_string(ad_fetched_.load()) + "\n";
         if (prom_budget_ <= 0) return {};
         return "DS41 own_promote applied=" + std::to_string(prom_applied_) + " fetched=" + std::to_string(prom_done_.load()) + " GiB=" +
                std::to_string(prom_bytes_ / double(1ull << 30)) + " decode routes of setup-owned experts: local " + std::to_string(prom_local_routes_) +
@@ -5604,8 +5832,14 @@ private:
     int defer_tokens_ = 0;
     // the pending deferred sum into the streams: after the next layer's attention post-mix (its comb), or after the
     // last layer (last: no further mix)
+    // STRATA_DS41_DEFER_REMOTE=1 (lossy, opt-in): the worker / canonical-tier / lane merge of a layer runs as this job after the next
+    // layer's attention instead of before it
+    std::function<void()> defer_job_;
+    std::vector<int32_t> dr_ids_;
+    std::vector<float> dr_wts_;
     void defer_apply(bool last) {
-        lane_->finish();
+        if (defer_job_) { auto job = std::move(defer_job_); defer_job_ = nullptr; job(); }
+        else lane_->finish();
         defer_pending_ = false;
         ck(cudaMemcpyAsync(def_dev_.p, def_out_, size_t(defer_tokens_) * cfg_.hidden * 4, cudaMemcpyHostToDevice, stream_), "deferred experts");
         k::ds41_defer_add(def_dev_.f(), h_.f(), def_coeff_.f(4), last ? nullptr : coeff_attn_.f(8), cfg_.hidden, stream_, defer_tokens_);
@@ -7148,6 +7382,7 @@ private:
         std::vector<int> canon_gstart;
         std::vector<std::pair<int, int>> canon_groups;   // (expert, ring slot or -1 for the static arena)
         if (prom_thread_.joinable()) promote_apply();
+        if (ad_thread_.joinable()) { adapt_apply(false); adapt_count(l, cpu_ids.data(), cpu_ids.size()); }
         if (!canon_off_.empty() && T <= 8 && size_t(T) * size_t(K) == cpu_ids.size()) {
             std::map<int, std::vector<int>> held, rest;
             for (int i = 0; i < T * K; ++i) {
@@ -7155,8 +7390,20 @@ private:
                 if (e < 0) continue;
                 if (e >= c.experts) throw std::runtime_error("ds41: canonical tier route out of bounds");
                 ++canon_cpu_routes_;
-                if (!own_.empty() && own_[size_t(l) * c.experts + e]) continue;   // the remote owner's (STRATA_DS41_REMOTE_OWN)
+                if (!own_.empty() && own_[size_t(l) * c.experts + e] && canon_off_[size_t(l) * c.experts + e] < 0) continue;   // the remote owner's (STRATA_DS41_REMOTE_OWN)
                 (canon_off_[size_t(l) * c.experts + e] >= 0 ? held : rest)[e].push_back(i);
+            }
+            // STRATA_DS41_CANON_CAP=n: at most n resident experts run on the GPU in a pass (worker-owned ones first, then the widest);
+            // the others stay on the lanes - the values are the same - when the GPU would be the slower path
+            static const int canon_cap = std::getenv("STRATA_DS41_CANON_CAP") ? std::max(0, std::atoi(std::getenv("STRATA_DS41_CANON_CAP"))) : 0;
+            if (canon_cap > 0 && held.size() > size_t(canon_cap)) {
+                std::vector<std::pair<int, std::vector<int>>> h(held.begin(), held.end());
+                std::stable_sort(h.begin(), h.end(), [&](const auto& a, const auto& b) {
+                    const bool oa = !own_.empty() && own_[size_t(l) * c.experts + a.first], ob = !own_.empty() && own_[size_t(l) * c.experts + b.first];
+                    return oa != ob ? oa : a.second.size() > b.second.size();
+                });
+                held.clear();
+                for (size_t i = 0; i < size_t(canon_cap); ++i) held.emplace(h[i].first, std::move(h[i].second));
             }
             // STRATA_DS41_CANON_STREAM=q: the q widest remaining CPU experts (most routes; lower id first) are copied
             // to the GPU this pass and run there with the same arithmetic
@@ -7201,6 +7448,7 @@ private:
             if (own_n) {
                 if (canon_original.empty()) canon_original = cpu_ids;
                 for (size_t i = 0; i < cpu_ids.size(); ++i) if (own_ids[i] >= 0) cpu_ids[i] = -1;
+                own_start_t_ = std::chrono::steady_clock::now();
                 own_remote_->start(l, T, K, own_ids.data(), wts.data(), pinned_[0], own_n);
                 own_routes_ += size_t(own_n);
             }
@@ -7255,8 +7503,23 @@ private:
             for (size_t i = 0; i < cpu_ids.size(); ++i)
                 if (cpu_ids[i] >= 0 && int(i % size_t(K)) >= defer_rank) { def_ids_[i] = cpu_ids[i]; cpu_ids[i] = -1; defer_now = true; }
         }
+        static const bool defer_remote_on = strata_env_is_one("STRATA_DS41_DEFER_REMOTE");
+        const bool defer_remote = defer_remote_on && own_n > 0 && T <= 16 && !hook && !remote && lane_async && !defer_now;
+        if (defer_remote) {
+            if (!def_in_) {
+                def_in_ = static_cast<float*>(pinned_keep(size_t(16) * H * 4));
+                def_out_ = static_cast<float*>(pinned_keep(size_t(16) * H * 4));
+                def_dev_ = Dev(size_t(16) * H * 4);
+                def_coeff_ = Dev(size_t(16) * 24 * 4);
+            }
+            std::memcpy(def_in_, pinned_[0], size_t(T) * H * 4);
+            dr_ids_ = cpu_ids;
+            dr_wts_ = wts;
+            lane_->begin(experts_[size_t(l)], def_in_, T, dr_ids_.data(), dr_wts_.data(), K, def_out_);
+        } else
         if (lane_async) lane_->begin(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
         if (!canon_entries.empty()) canon_enqueue(l, T, K, canon_entries, canon_gstart, canon_groups);
+        if (ad_thread_.joinable()) adapt_apply(true);
         bool any_gpu = false;
         bool batched = false;
         if (dev_route) {   // GPU_ROUTE: the GPU-held experts already ran into g_sum_
@@ -7418,6 +7681,19 @@ private:
             ck(cudaStreamSynchronize(stream_), "canonical tier results sync");
             if (strata_env_is_one("STRATA_DS41_CANON_CHECK") && !canon_checked_[size_t(l)]) canon_check(l, K, canon_entries[0]);
             lane_->finish_with_external(canon_original.data(), canon_entries.data(), canon_res_, int(canon_entries.size()), K);
+        } else if (own_n > 0 && defer_remote) {
+            ext_entries_.clear();
+            for (size_t i = 0; i < own_ids.size(); ++i) if (own_ids[i] >= 0) ext_entries_.push_back(int32_t(i));
+            if (int(ext_entries_.size()) != own_n || size_t(own_n) * size_t(H) > own_remote_->reply.size())
+                throw std::runtime_error("ds41: remote_own merge geometry");
+            defer_job_ = [this, l, K, own_n, orig = canon_original, ent = canon_entries, ext = ext_entries_] {
+                if (!ent.empty()) {
+                    ck(cudaStreamSynchronize(stream_), "deferred canonical tier results sync");
+                    if (strata_env_is_one("STRATA_DS41_CANON_CHECK") && !canon_checked_[size_t(l)]) canon_check(l, K, ent[0]);
+                }
+                own_remote_->finish_raw(0);
+                lane_->finish_with_external2(orig.data(), ent.data(), canon_res_, int(ent.size()), ext.data(), own_remote_->reply.data(), own_n, K);
+            };
         } else if (own_n > 0) {   // the remote worker's routes (and the canonical tier's): one merge in the lane's order
             const auto o0 = std::chrono::steady_clock::now();
             if (!canon_entries.empty()) {
@@ -7430,6 +7706,7 @@ private:
             if (T <= 8) {   // decode / verify passes: GPU sync, the worker's reply, then the merge (below)
                 own_ms_[0] += std::chrono::duration<double, std::milli>(o1 - o0).count();
                 own_ms_[1] += std::chrono::duration<double, std::milli>(o2 - o1).count();
+                own_latency_ms_ += std::chrono::duration<double, std::milli>(o2 - own_start_t_).count();
                 own_pending_merge_ = true;
                 own_merge_t0_ = o2;
             }
@@ -7467,6 +7744,11 @@ private:
                       << " relative_l2=" << std::sqrt(sq / (norm + 1e-300)) << "\n";
         }
         const auto x2 = std::chrono::steady_clock::now();
+        if (defer_remote) {   // the merge job above runs in defer_apply; this layer's post coefficients kept for its add
+            ck(cudaMemcpyAsync(def_coeff_.p, coeff_ffn_.p, size_t(T) * 24 * 4, cudaMemcpyDeviceToDevice, stream_), "defer coeff");
+            defer_pending_ = true;
+            defer_tokens_ = T;
+        }
         if (defer_now) {   // the deferred routes on the lane now; this layer's post coefficients kept for their add
             if (!def_in_) {
                 def_in_ = static_cast<float*>(pinned_keep(size_t(16) * H * 4));
@@ -7501,6 +7783,8 @@ private:
         xt_[1] += std::chrono::duration<double>(x2 - x1).count();   // the lane (its wait when async)
         xt_[2] += std::chrono::duration<double>(x3 - x2).count();   // the peer's collect and merge
         prof_[2] += std::chrono::duration<double>(std::chrono::steady_clock::now() - e0).count();
+        if (defer_remote) ck(cudaMemsetAsync(moe_.p, 0, size_t(T) * H * 4, stream_), "experts (deferred)");
+        else
         ck(cudaMemcpyAsync(moe_.p, host_y, size_t(T) * H * 4, cudaMemcpyHostToDevice, stream_), "experts");
         if (fuse_ && !hook) {   // the adds inside the post-mix (forward's tail)
             tail_fused_ = true;
@@ -9719,7 +10003,7 @@ int run(int argc, char** argv) {
     if (d.own_ms_[3] > 0)
         std::cerr << "DS41 remote_own_decode layer_calls=" << d.own_ms_[3] << " total_s gpu_sync=" << d.own_ms_[0] / 1e3
                   << " worker_wait=" << d.own_ms_[1] / 1e3 << " merge=" << d.own_ms_[2] / 1e3 << " (per layer call ms "
-                  << d.own_ms_[0] / d.own_ms_[3] << " / " << d.own_ms_[1] / d.own_ms_[3] << " / " << d.own_ms_[2] / d.own_ms_[3] << ")\n";
+                  << d.own_ms_[0] / d.own_ms_[3] << " / " << d.own_ms_[1] / d.own_ms_[3] << " / " << d.own_ms_[2] / d.own_ms_[3] << ") request_to_reply_ms=" << d.own_latency_ms_ / d.own_ms_[3] << "\n";
     std::cout << "tokens:";
     for (int t : out) std::cout << ' ' << t;
     std::cout << "\n";

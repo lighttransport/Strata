@@ -64,6 +64,14 @@ std::vector<int> node_cpus(int node) {
     }
     return cpus;
 }
+std::vector<int> g_helper_cpus;   // --helper-cpus: where the Engram, fetch and ucomm helper threads run, away from the lane's pinned cores
+void pin_helper() {
+    if (g_helper_cpus.empty()) return;
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    for (int c : g_helper_cpus) CPU_SET(c, &set);
+    pthread_setaffinity_np(pthread_self(), sizeof set, &set);
+}
 void pin_to(const std::vector<int>& cpus) {
     cpu_set_t set;
     CPU_ZERO(&set);
@@ -113,6 +121,7 @@ class EngramServer {
 
   private:
     void serve() {
+        pin_helper();
         std::vector<uint8_t> request(ew::kMaxRequestBytes), reply;
         double reads = 0, ms = 0;
         for (;;) {
@@ -139,6 +148,7 @@ class EngramServer {
             std::vector<std::thread> pool;
             for (int w = 0; w < nt; ++w)
                 pool.emplace_back([&, w] {
+                    pin_helper();
                     for (uint32_t i = uint32_t(w); i < h.count; i += uint32_t(nt))
                         if (pread(fds_[entries[i].shard - 1], reply.data() + at[i], entries[i].len, off_t(entries[i].offset)) != ssize_t(entries[i].len)) failed = true;
                 });
@@ -162,7 +172,8 @@ class EngramServer {
 int main(int argc, char** argv) {
     std::string root, backend = "auto", model;
     int threads = 0, engram_port = 0, engram_threads = 16, fetch_port = 0;
-    bool numa_place = false;
+    std::string helper_cpus;
+    bool numa_place = false, persist = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--root" && i + 1 < argc) root = argv[++i];
@@ -174,10 +185,17 @@ int main(int argc, char** argv) {
         else if (a.starts_with("--engram-threads=")) engram_threads = std::stoi(a.substr(17));
         else if (a.starts_with("--fetch-port=")) fetch_port = std::stoi(a.substr(13));
         else if (a == "--numa-place") numa_place = true;
+        else if (a.starts_with("--helper-cpus=")) helper_cpus = a.substr(14);   // e.g. 14,15,30,31
+        else if (a == "--persist") persist = true;   // serve one decoder session after another with the same rows (the setup must repeat)
         else {
             std::fprintf(stderr, "usage: %s --root HOST:PORT --model FIRST_SHARD.gguf [--threads=N] [--backend=auto|ib|udp] [--engram-port=P] [--engram-threads=N] [--fetch-port=P]\n", argv[0]);
             return 2;
         }
+    }
+    for (size_t at = 0; at < helper_cpus.size();) {
+        const size_t comma = std::min(helper_cpus.find(',', at), helper_cpus.size());
+        g_helper_cpus.push_back(std::atoi(helper_cpus.substr(at, comma - at).c_str()));
+        at = comma + 1;
     }
     if (root.empty() || model.empty()) {
         std::fprintf(stderr, "--root and --model are required\n");
@@ -185,6 +203,16 @@ int main(int argc, char** argv) {
     }
     try {
         strata::core::ModelArtifact art{std::filesystem::path(model)};
+        // rows, geometry and the lane outlive a decoder session (--persist)
+        std::vector<Layer> layers;
+        std::vector<uint8_t> loaded_setup;
+        net::TpSetup setup{};
+        size_t total = 0;
+        int H = 0, rows = 0;
+        double fill_ms = 0;
+        bool loaded = false;
+        std::unique_ptr<strata::ds41::ExpertLane> lane;
+        for (int session = 0;; ++session) {
         // the decoder opens its Engram context before the main one: the same order here
         std::unique_ptr<EngramServer> engram;
         if (engram_port > 0) {
@@ -204,8 +232,11 @@ int main(int argc, char** argv) {
         std::vector<uint8_t> setup_msg(1 << 20);
         size_t n = 0;
         ok(ucomm_recv(c, 0, net::kTagSetup, setup_msg.data(), setup_msg.size(), &n), "setup");
-        net::TpSetup setup;
         std::memcpy(&setup, setup_msg.data(), sizeof setup);
+        if (loaded) {
+            if (n != loaded_setup.size() || !std::equal(loaded_setup.begin(), loaded_setup.end(), setup_msg.begin()))
+                throw std::runtime_error("the decoder's setup differs from the one the rows were read for");
+        } else {
         if (setup.magic != net::kTpMagicDs41Own || setup.weights != net::kWeightsStreamed || setup.reply != net::kReplyRaw || setup.layers > 4096 ||
             n < sizeof setup + setup.layers * sizeof(net::TpLayer))
             throw std::runtime_error("bad setup message (a DS4.1 whole-expert decoder is expected)");
@@ -219,10 +250,10 @@ int main(int argc, char** argv) {
         const size_t counts_bytes = setup.pad == 1 ? owned_ids * sizeof(float) : 0;
         if (n != sizeof setup + setup.layers * sizeof(net::TpLayer) + owned_ids * sizeof(int32_t) + counts_bytes) throw std::runtime_error("bad setup message size");
         const int32_t* owned_list = reinterpret_cast<const int32_t*>(setup_msg.data() + sizeof setup + setup.layers * sizeof(net::TpLayer));
-        const int H = int(setup.hidden);
-        std::vector<Layer> layers(setup.layers);
-        size_t total = 0;
-        int rows = 0;
+        H = int(setup.hidden);
+        layers.assign(setup.layers, Layer());
+        total = 0;
+        rows = 0;
         for (uint32_t i = 0; i < setup.layers; ++i) {
             net::TpLayer s;
             std::memcpy(&s, setup_msg.data() + sizeof setup + i * sizeof s, sizeof s);
@@ -291,8 +322,11 @@ int main(int argc, char** argv) {
                 fill(0);
             }
         }
-        const double fill_ms = since(fill0);
+        fill_ms = since(fill0);
         std::fprintf(stderr, "DS41_CPU_WORKER rows GiB=%.2f read from the local model in %.1f s\n", total / 1073741824.0, fill_ms / 1e3);
+        loaded = true;
+        loaded_setup.assign(setup_msg.begin(), setup_msg.begin() + std::ptrdiff_t(n));
+        }
         net::TpAccept accept{};
         accept.ok = 1;
         accept.have = 1;   // nothing is sent: the decoder skips the weights
@@ -300,7 +334,7 @@ int main(int argc, char** argv) {
         ok(ucomm_send(c, 0, net::kTagAccept, &accept, sizeof accept), "accept");
 
         const int K_max = 16, maxT = 1024;
-        auto lane = std::make_unique<strata::ds41::ExpertLane>(H, rows, threads > 0 ? threads : int(std::max(1u, std::thread::hardware_concurrency() / 2)), true);
+        if (!lane) lane = std::make_unique<strata::ds41::ExpertLane>(H, rows, threads > 0 ? threads : int(std::max(1u, std::thread::hardware_concurrency() / 2)), true);
         const size_t msg_bytes = sizeof(net::TpRequest) + size_t(maxT) * K_max * sizeof(net::TpJob) + size_t(maxT) * H * 4;
         std::vector<uint8_t> msg(msg_bytes);
         std::vector<float> reply(size_t(maxT) * K_max * H), cpu_rows(size_t(maxT) * K_max * H);
@@ -321,16 +355,22 @@ int main(int argc, char** argv) {
             fcfg.root_addr = addr.c_str();
             ok(ucomm_init(&fcfg, &fetch_c), "fetch ucomm_init");
             fetch_thread = std::thread([&] {
+                pin_helper();
                 std::vector<uint8_t> blob;
                 double served = 0;
                 for (;;) {
-                    int32_t req[2];
-                    ok(ucomm_recv(fetch_c, 0, 50, req, sizeof req, nullptr), "fetch request");
+                    int32_t req[3] = {0, 0, 0};
+                    size_t got = 0;
+                    ok(ucomm_recv(fetch_c, 0, 50, req, sizeof req, &got), "fetch request");
                     if (req[0] < 0) break;
+                    if (got != sizeof req) req[2] = 0;
                     if (req[0] >= int(layers.size()) || req[1] < 0 || req[1] >= int(layers[size_t(req[0])].local.size()) || layers[size_t(req[0])].local[size_t(req[1])] < 0)
                         throw std::runtime_error("fetch names an expert this worker does not own");
                     const Layer& L = layers[size_t(req[0])];
-                    ok(ucomm_send(fetch_c, 0, 51, L.base + size_t(L.local[size_t(req[1])]) * L.slot_bytes, L.f.bytes), "fetch reply");
+                    const uint8_t* src = L.base + size_t(L.local[size_t(req[1])]) * L.slot_bytes;
+                    const size_t piece = req[2] > 0 ? size_t(req[2]) : L.f.bytes;
+                    for (size_t off = 0; off < L.f.bytes; off += piece)
+                        ok(ucomm_send(fetch_c, 0, 51, src + off, std::min(piece, L.f.bytes - off)), "fetch reply");
                     served += 1;
                 }
                 std::fprintf(stderr, "DS41_CPU_WORKER fetch experts=%.0f\n", served);
@@ -399,7 +439,9 @@ int main(int argc, char** argv) {
         if (fetch_thread.joinable()) fetch_thread.join();
         ucomm_finalize(c);
         if (engram) engram->join();
-        return 0;
+        if (!persist) return 0;
+        lane.reset();   // its threads would yield-spin through the wait for the next decoder
+        }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "DS41_CPU_WORKER error: %s\n", e.what());
         return 1;

@@ -323,6 +323,10 @@ def cmd_no_root_gpu(args):
     print("\n  Measured first layout and its next levers (tools/sim/data/measured_ds41f_rev_layout.json; hit 0.309 and B550 share 0.33 fitted to t6/t7, acceptance 3.12 tokens/round of that run):")
     for label, o in ds41f.no_root_gpu_measured_levers():
         print(f"  {label:<80}{o['tok_s']:6.1f} tok/s  verify {o['verify_ms']:6.1f} ms (experts {o['expert_ms']:5.1f}: B550 {o['lane_experts']:.1f} + TR16 {o['gpu_experts']:.1f} experts per layer)")
+    best, need = ds41f.rev_best_decode(), ds41f.rev_best_targets()
+    print(f"\n  Best exact settings measured so far (rev_best.env; 15.8-16.3 tok/s on c_osd, 15.9 on c_llama against 11.7 plain): the model gives {best['tok_s']:.1f} tok/s from a "
+          f"{best['round_ms']:.0f} ms round (verify {best['verify_ms']:.0f} + draft {best['draft_ms']:.0f}); 25 tok/s needs the round at {need['round_ms_for_25']:.0f} ms, "
+          f"{need['cut_ms']:.0f} ms ({need['cut_share']:.0%}) shorter.")
     print("  Hypotheses: the layer overhead (1.0 ms) and merge (0.31 ms) are today's; GPU trunk/attention terms are today's 9070 XT figures (the 5060 Ti may differ); "
           "TR16/B550 lane ratio 0.65 (measured 0.58-0.71 with a proxy kernel); the faster, tensor-core and streaming kernels and every lever below the first row are what-ifs.")
 

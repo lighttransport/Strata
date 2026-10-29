@@ -219,6 +219,15 @@ class TwoNodePrefillTest(unittest.TestCase):
         self.assertEqual(ds41f.two_node_prefill(base)["route_share"] > 0, True)
 
 
+class RevBestTest(unittest.TestCase):
+    def test_reproduces_the_measured_best(self):
+        r = ds41f.rev_best_decode()
+        self.assertAlmostEqual(r["tok_s"], sum(ds41f.REV_BEST["measured_tok_s"]) / 5, delta=1.0)
+        need = ds41f.rev_best_targets()
+        self.assertGreater(need["cut_share"], 0.3)       # 25 tok/s needs a round more than 30 % shorter
+        self.assertGreater(ds41f.rev_best_decode(verify_scale=0.8)["tok_s"], r["tok_s"])
+
+
 class NoRootGpuTest(unittest.TestCase):
     def test_formula_reproduces_today_and_ranks_levers(self):
         self.assertAlmostEqual(ds41f.no_root_gpu_check(), 90.0, delta=3.0)          # measured 88-91 ms expert phase

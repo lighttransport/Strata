@@ -142,6 +142,26 @@
    },
    "worker_rows_load_s": 105.8,
    "ids_equal_to_t8": true
+  },
+  {
+   "name": "t13",
+   "worker": "16 threads, --numa-place, LANE_NUMA=1, STRATA_IQ1S_GRID8 off (PAIR, exact grouping on)",
+   "decode_tok_s": 9.778,
+   "prompt_tok_s": 31.54,
+   "per_layer_call_ms": {
+    "gpu_sync": 0.903,
+    "worker_wait": 3.866,
+    "merge": 0.279
+   },
+   "worker_request_ms_by_owned_routes": {
+    "0-3": 1.462,
+    "4-7": 2.365,
+    "8-11": 3.584,
+    "12-15": 5.194,
+    "16-19": 6.794,
+    "20+": 10.055
+   },
+   "ids_equal_to_t8": true
   }
  ],
  "checks": {
@@ -161,5 +181,385 @@
  "profile_coverage_c_osd": "routes_code4k says the hottest 5.6 GiB serve 55 % of routes and 26 GiB 89 %, but this prompt's canon hit is 0.309 at 789 experts: the profile is flatter for this prompt than for the 4K code prompt it was taken from",
  "reading_t8": "the kernel flags the single-node runs used (grid8, pair, exact grouping) were missing from the TR16 worker; with them the verify pass at width 5 falls 262.8 -> 224.4 ms and decode 10.30 -> 10.96 tok/s, tokens unchanged; the prompt pass was slower (32.3 vs 39.7 tok/s), so the flags are worth setting for decode only",
  "reading_promotion": "adaptive local band (experts fetched from the TR16 worker over ucomm into the B550's mapped model files, then run on the B550 lane) is exact (tokens equal t8) and moves 58 % of the decode routes of the setup-owned experts to the B550, but decode got slower (10.96 -> 10.74 -> 8.63 tok/s): the TR16 worker's per-request time did not fall (2.8 ms) and the B550 side grew (gpu_sync 0.90 -> 1.59 ms, merge 0.40 -> 0.92 ms). The B550 CPU also runs the decoder's host work, so its lane is not an independent extra resource; the worker's per-request time looks dominated by fixed costs (barriers, wake-ups, IB) rather than by expert bytes",
- "reading_noise_and_lane": "t8 and t11 are the same configuration: 10.96 and 10.05 tok/s (verify 224 vs 256 ms), so run-to-run spread is about +-0.5 tok/s and the t6 -> t8 steps (10.30, 10.47, 10.96, 10.05, 10.23) are not separable from noise; only the t5 -> t6 step (9.7 -> 10.3, rows on one node vs interleaved) is plausibly real. The worker's request time equals its lane time (request-to-reply = lane ms) and grows linearly with the owned routes of the request, about 0.36 ms per route plus 0.6 ms (1.35 ms at 0-3 routes, 4.96 at 12-15, 9.5 at 20+), independent of NUMA placement (t12): the TR16 lane is compute-bound (IQ1_S decode), not memory- or latency-bound"
+ "reading_noise_and_lane": "t8 and t11 are the same configuration: 10.96 and 10.05 tok/s (verify 224 vs 256 ms), so run-to-run spread is about +-0.5 tok/s and the t6 -> t8 steps (10.30, 10.47, 10.96, 10.05, 10.23) are not separable from noise; only the t5 -> t6 step (9.7 -> 10.3, rows on one node vs interleaved) is plausibly real. The worker's request time equals its lane time (request-to-reply = lane ms) and grows linearly with the owned routes of the request, about 0.36 ms per route plus 0.6 ms (1.35 ms at 0-3 routes, 4.96 at 12-15, 9.5 at 20+), independent of NUMA placement (t12): the TR16 lane is compute-bound (IQ1_S decode), not memory- or latency-bound",
+ "kernel_experiments": {
+  "iq1s_gather": "an AVX2 gather of the four grid8 reads per half (same table and indices, so identical values): TR16 width 1/2/4 = +3 / +2 / -2 % against grid8 without gather; the B550 bench did not move at all with any of GRID8, GATHER or PAIR. Reverted, no gain on Zen 1",
+  "grid8_on_tr16_worker": "bench: grid8 is 19 % slower at width 1 on TR16 (71.6 vs 88.0 GMAC/s), equal at width 4; in the real decode mix the lane request time is 4-6 % lower with grid8 on than off (t12 vs t13), so it stays on",
+  "reading": "the IQ1_S lane is at about 1.8 MAC/cycle/core on Zen 1; a same-bytes repack would have to remove decode work per weight, and the cheap candidates (gather, delta through block sums) do not on these cores"
+ },
+ "goal_session": {
+  "date": "2026-10-29/30",
+  "note": "persistent-worker experiment (rev_node.sh wstart) was abandoned: the second session on the same worker is 20-35 % slower (worker_wait 5.1-5.7 vs 3.6 ms) and with the lane recreated per session 15x slower; non-persistent runs (one row load per run) are used",
+  "runs": [
+   {
+    "name": "c1",
+    "note": "first session on a fresh persistent worker, same as t8 config",
+    "decode_tok_s": 10.135,
+    "verify_ms_w5": 269.1
+   },
+   {
+    "name": "a1",
+    "dspark_n": 3,
+    "decode_tok_s": 10.986,
+    "tokens_per_step": 2.592,
+    "verify_ms_w3": 214.2,
+    "ids_equal": true
+   },
+   {
+    "name": "a2",
+    "dspark_n": 4,
+    "decode_tok_s": 10.823,
+    "tokens_per_step": 2.953,
+    "verify_ms_w4": 245.1,
+    "ids_equal": true
+   },
+   {
+    "name": "a3",
+    "dspark_n": 6,
+    "decode_tok_s": 9.761,
+    "tokens_per_step": 3.122,
+    "verify_ms_w5": 282.1,
+    "ids_equal": true,
+    "note": "the drafter block stops at 5, N=6 = N=5"
+   },
+   {
+    "name": "a4",
+    "dspark_n": 5,
+    "decode_tok_s": 9.698,
+    "tokens_per_step": 3.122,
+    "verify_ms_w5": 286.5,
+    "ids_equal": true,
+    "note": "baseline repeat (the D_THREADS=12 intended here did not reach the script)"
+   },
+   {
+    "name": "d1",
+    "canon_adapt": 3000,
+    "decode_tok_s": 7.973,
+    "canon_hit": 0.625,
+    "per_layer_call_ms": {
+     "gpu_sync": 3.304,
+     "worker_wait": 2.742,
+     "merge": 0.132
+    },
+    "verify_ms_w5": 348.1,
+    "ids_equal": true,
+    "note": "the adaptive GPU tier doubles the tier hit (0.309 -> 0.625) with identical tokens, but the swaps' uploads share the compute stream and the GPU path (3.3 ms per layer) became the slower one"
+   },
+   {
+    "name": "e1",
+    "note": "TR16 worker: 14 lane threads, Engram/fetch/ucomm helper threads pinned to the two spare cores (--helper-cpus=14,15,30,31)",
+    "decode_tok_s": 11.777,
+    "prompt_tok_s": 37.94,
+    "verify_ms_w5": 229.1,
+    "per_layer_call_ms": {
+     "gpu_sync": 0.903,
+     "worker_wait": 2.347,
+     "merge": 0.454
+    },
+    "ids_equal": true
+   },
+   {
+    "name": "r1",
+    "note": "repeat of e1 with the decoder's request-to-reply timer",
+    "decode_tok_s": 11.702,
+    "verify_ms_w5": 228.9,
+    "request_to_reply_ms": 3.317,
+    "worker_lane_ms_by_owned_routes": {
+     "0-3": 1.327,
+     "4-7": 1.6,
+     "8-11": 2.414,
+     "12-15": 3.674,
+     "16-19": 4.648,
+     "20+": 6.723
+    },
+    "ids_equal": true
+   },
+   {
+    "name": "e2/r2",
+    "note": "e1 + STRATA_DS41_CANON_ADAPT=3000 (adaptive GPU tier, uploads after the pass's GPU work is queued)",
+    "decode_tok_s": [
+     9.9,
+     null
+    ],
+    "canon_hit": 0.625,
+    "per_layer_call_ms": {
+     "gpu_sync": 3.458,
+     "worker_wait": 0.651,
+     "merge": 0.198
+    },
+    "request_to_reply_ms": 4.212,
+    "worker_lane_ms_by_owned_routes": {
+     "0-3": 3.865,
+     "4-7": 3.872,
+     "8-11": 4.14,
+     "12-15": 4.8,
+     "16-19": 5.643,
+     "20+": 7.584
+    },
+    "reading": "the worker's requests fell to 0-7 routes but cost 3.9 ms each (1.3-1.6 ms without ADAPT): the fetch server's 7.4 MB blobs share the IB link with the lane's requests and replies; GPU experts 42.6 -> 79.5 ms per pass is linear in the tier hit (0.16 ms per expert-eval) and the pass total (258 vs 263 ms) does not move"
+   },
+   {
+    "name": "f1-f3",
+    "note": "ADAPT with CANON_CAP 6/8/10 GPU groups per pass",
+    "decode_tok_s": [
+     9.739,
+     10.022,
+     9.759
+    ],
+    "canon_hit": [
+     0.458,
+     0.549,
+     0.598
+    ],
+    "gpu_sync_ms": [
+     2.63,
+     3.31,
+     3.4
+    ]
+   },
+   {
+    "name": "s1/s2/s3",
+    "note": "CANON_ADAPT=3000 with the fetch blob sent in 512 KiB pieces and a gap between fetches",
+    "decode_tok_s": [
+     11.208,
+     12.415,
+     10.887
+    ],
+    "settings": [
+     "gap 5 ms",
+     "gap 20 ms",
+     "chunk 128 KiB gap 10 ms"
+    ],
+    "ids_equal": true
+   },
+   {
+    "name": "t1",
+    "note": "ADAPT, chunk 512 KiB, gap 40 ms",
+    "decode_tok_s": 12.703,
+    "verify_ms_w5": 209.5,
+    "ids_equal": true
+   },
+   {
+    "name": "t2",
+    "note": "ADAPT gap 20 + CANON_CAP=10",
+    "decode_tok_s": 12.242,
+    "ids_equal": true
+   },
+   {
+    "name": "t3",
+    "note": "ADAPT gap 20 + decoder lane 14 threads",
+    "decode_tok_s": 12.551,
+    "ids_equal": true
+   },
+   {
+    "name": "t4",
+    "note": "ADAPT gap 20 + DSPARK_N=3",
+    "decode_tok_s": 13.863,
+    "verify_ms_w3": 160.4,
+    "tokens_per_step": 2.592,
+    "ids_equal": true
+   },
+   {
+    "name": "u1",
+    "note": "ADAPT gap 20, N=3, decoder lane 14 threads, STRATA_DS41_HELPER_CPUS=14,15,30,31",
+    "decode_tok_s": 14.906,
+    "verify_ms_w3": 149.7,
+    "ids_equal": true
+   },
+   {
+    "name": "u2",
+    "note": "as u1 with gap 40",
+    "decode_tok_s": 15.123,
+    "verify_ms_w3": 144.6,
+    "ids_equal": true
+   },
+   {
+    "name": "u3",
+    "note": "as u1 with N=2",
+    "decode_tok_s": 15.959,
+    "tokens_per_step": 2.327,
+    "verify_ms_w2": 122.8,
+    "ids_equal": true
+   },
+   {
+    "name": "v1",
+    "note": "best-config, N=1",
+    "decode_tok_s": 14.524,
+    "tokens_per_step": 1.693,
+    "ids_equal": true
+   },
+   {
+    "name": "v2",
+    "note": "N=3 PMIN=0.5",
+    "decode_tok_s": 16.057,
+    "tokens_per_step": 2.309,
+    "verify_ms_by_width_1_to_4": [
+     75.5,
+     98.6,
+     117.6,
+     152.6
+    ],
+    "ids_equal": true
+   },
+   {
+    "name": "v3",
+    "note": "N=4 SCHED=1 DEVICE_HEAD=1",
+    "decode_tok_s": 15.199,
+    "ids_equal": true
+   },
+   {
+    "name": "w1-w4",
+    "note": "N=5 PMIN .5 / N=3 PMIN .7 / N=3 PMIN .35 / N=3 PMIN .5 + LOOKUP=1",
+    "decode_tok_s": [
+     15.957,
+     14.85,
+     16.233,
+     15.27
+    ],
+    "ids_equal": true
+   },
+   {
+    "name": "x1-x3",
+    "note": "CANON_CAP 5/7/9 on the best config",
+    "decode_tok_s": [
+     15.132,
+     15.443,
+     16.235
+    ],
+    "ids_equal": true
+   },
+   {
+    "name": "m3",
+    "note": "TIMING of the best config, ms per pass",
+    "decode_gpu_ms_per_pass": {
+     "pre": 2.6,
+     "q": 10.7,
+     "kv_index": 2.8,
+     "attn": 10.3,
+     "out": 14.3,
+     "ffn_pre": 1.3,
+     "router": 2.1,
+     "experts": 41.2,
+     "tail": 0.24,
+     "lane_wait": 30.5
+    },
+    "host_ms_per_pass": {
+     "attention": 6.4,
+     "ffn": 107.7,
+     "layers": 116.1
+    }
+   },
+   {
+    "name": "y1-y4",
+    "note": "lossy knobs on the best config (tokens differ from the exact run; first differing index 11/32/31/4)",
+    "decode_tok_s": {
+     "cpu_trim_0125": 20.887,
+     "cpu_trim_025": 25.487,
+     "cpu_topk_4": 20.667,
+     "cpu_topk_3": 23.011
+    }
+   }
+  ],
+  "reading": "verify time is about 140 ms + 25 ms per window token: window size is not a lever (10.0 - 11.0 tok/s for N=3..6) and the fixed per-layer part dominates",
+  "lever_findings": {
+   "helper_thread_pinning": "+17 % lossless (10.0 -> 11.7-11.8 tok/s, ids identical): the Engram server's 16-thread pool, the fetch/ucomm helpers and 16 spin-barrier lane threads were sharing cores on the TR16 worker; 14 lane threads + helpers on the 2 spare cores cut the lane time per request about 25 % (4.9 -> 3.7 ms at 12-15 routes) and the decoder's worker wait 3.57 -> 2.35 ms per layer",
+   "dspark_window": "N=3/4/5/6: 10.99 / 10.82 / 10.1 / 9.76 tok/s before the pinning fix (identical tokens); verify time is about 140 ms + 25 ms per window token",
+   "adaptive_gpu_tier": "STRATA_DS41_CANON_ADAPT (opt-in): canonical tier follows the routes, rows fetched from the worker (in pieces, rate limited) or from the mapped model, swapped over the least-used resident on a copy stream. Tier hit 0.31 -> 0.62, tokens identical. It only pays once the fetch traffic is kept off the lane's critical path (chunking + a 20-40 ms gap: 8.0 -> 12.4-12.7 tok/s at N=5) and the helper threads are off the lane's cores",
+   "best_lossless_so_far": "u3 15.96 tok/s (N=2) and u2 15.12 (N=3) on c_osd/128 tokens with the CUDA exact tokens, against 10.0 for the same layout before this session's changes"
+  },
+  "quality_c_osd_1000_positions": {
+   "cpu_trim_0125": {
+    "decode_tok_s": 20.89,
+    "mean_kl": 0.1063,
+    "p99_kl": 1.024,
+    "top1_agree_pct": 90.2,
+    "next_acc_delta_pp": -1.8,
+    "ppl_delta_pct": 0.64
+   },
+   "cpu_trim_025": {
+    "decode_tok_s": 25.49,
+    "mean_kl": 0.3402,
+    "p99_kl": 2.555,
+    "top1_agree_pct": 80.0,
+    "next_acc_delta_pp": -3.7,
+    "ppl_delta_pct": 19.99
+   },
+   "cpu_topk_4": {
+    "decode_tok_s": 20.67,
+    "mean_kl": 0.1638,
+    "p99_kl": 1.573,
+    "top1_agree_pct": 87.4,
+    "next_acc_delta_pp": -1.8,
+    "ppl_delta_pct": 12.03
+   },
+   "reference": "the exact run of the same layout (CUDA decoder, chunk-5 teacher-forced capture), KL against it; none of the three meets KL <= 0.08 / top-1 >= 97 %"
+  },
+  "best_exact_config": {
+   "file": "experiment/ds41f_tr16_decode/rev_best.env",
+   "c_osd_tok_s": [
+    16.05,
+    16.23,
+    16.24,
+    16.32,
+    15.81
+   ],
+   "c_llama_tok_s": 15.87,
+   "c_llama_plain_tok_s": 11.74,
+   "c_llama_tokens_identical": true,
+   "draft_ms_per_round": 26.0,
+   "verify_ms_by_width": [
+    75.5,
+    98.6,
+    117.6,
+    152.6
+   ]
+  },
+  "not_worth_it": {
+   "canon_cap": "15.1-16.2 (no gain)",
+   "tier_6100": "15.6",
+   "worker_threads_12": "15.5",
+   "lookup": "15.3",
+   "sched": "15.2",
+   "dspark_cache_slots_100": "does not fit beside the tier",
+   "adapt_owned_weight": "16.2-16.3 (noise)"
+  },
+  "lossy_points": [
+   {
+    "config": "DENSE_Q5K",
+    "tok_s": 17.4,
+    "kl": 0.05,
+    "top1": 94.7
+   },
+   {
+    "config": "DENSE_Q4K",
+    "tok_s": 17.7,
+    "kl": 0.085,
+    "top1": 91.4
+   },
+   {
+    "config": "DEFER_REMOTE",
+    "tok_s": 19.9,
+    "kl": 0.249,
+    "top1": 82.6
+   },
+   {
+    "config": "CPU_TRIM=0.25",
+    "tok_s": 25.5,
+    "kl": 0.34,
+    "top1": 80.0
+   },
+   {
+    "config": "DENSE_Q4K+CPU_TRIM=0.25",
+    "tok_s": 26.8,
+    "kl": 0.391,
+    "top1": 77.2
+   },
+   {
+    "config": "DEFER_REMOTE+CPU_TRIM=0.25+DENSE_Q4K",
+    "tok_s": 29.4,
+    "kl": 0.622,
+    "top1": 72.6
+   }
+  ]
+ }
 }

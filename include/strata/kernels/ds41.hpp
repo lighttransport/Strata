@@ -34,7 +34,8 @@ void ds41_hc_post(const float* x, const float* res, const float* post, const flo
 /// held in VRAM (slots[e]: the expert's tier blob, 0 when not resident); cpu_topk >= 0 drops non-resident picks of
 /// rank >= cpu_topk (weight 0). table: GroupedRunner's layout at capacity cap = T * K.
 void ds41_route_table(const float* logits, const float* bias, const unsigned long long* slots, int T, int E, int K, bool normalize,
-                      float scale, int cpu_topk, int cap, int* ids, float* wts, void* table, void* stream);
+                      float scale, int cpu_topk, int cap, int* ids, float* wts, void* table, void* stream,
+                      bool original_weight = false);
 /// ds41_scatter_axpy with the row count m on the device
 void ds41_scatter_axpy_dev(const float* src, const int* idx, const float* w, const int* m, int n, float* dst, void* stream);
 void ds41_defer_add(const float* y, float* h, const float* post, const float* comb, int n, void* stream, int tokens = 1);
@@ -61,10 +62,10 @@ size_t ds41_attention_scratch(int heads);
 /// ds41_attention for `tokens` queries in one launch (wss, css: token t's window and comp at t wss, t css floats -
 /// batched sessions); info[4 t..] = {first slot, window rows, selected rows (with
 /// nsel_dev: the bound, the count at nsel_dev[t]), -} on the device; bound >= every token's rows; scores: tokens x
-/// ds41_attention_scratch(heads) bytes.
+/// ds41_attention_scratch(heads) bytes followed by optional split-output scratch; `scores_bytes` is the full capacity.
 void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info, int bound,
                           const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, const float* sinks,
-                          float scale, float* scores, float* out, void* stream, size_t wss = 0, size_t css = 0);
+                          float scale, float* scores, float* out, void* stream, size_t scores_bytes, size_t wss = 0, size_t css = 0);
 /// ds41_attention for `tokens` queries at once (prefill): info[4 t..] = {first window slot, window rows, selected rows,
 /// unused} per token, its selected rows at sel + t sel_stride; window row r of token t is slot (first + r) % ring.
 /// q, out: [tokens][heads][dim]. dim 256 or 512, heads % 8 == 0.
@@ -72,7 +73,7 @@ void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const 
 /// to a float buffer first. Same values, the window stays FP32.
 void ds41_attention_batched(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info,
                             const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale,
-                            float* out, void* stream, bool comp_half = false);
+                            float* out, void* stream, bool comp_half = false, int comp_rows = 0, int* bounds_error = nullptr);
 /// score[t] = sum_h relu(keys[t].q[h]) (w[h] w_scale) for rows t < rows (keys[t] at t * key_stride, width dim).
 void ds41_index_score(const float* q, int heads, int dim, const float* keys, int key_stride, int rows, const float* w,
                       float w_scale, float* score, void* stream, bool half = false);
@@ -134,8 +135,12 @@ void ds41_mxfp4_moe(const uint8_t* w, size_t expert_bytes, size_t row_bytes, con
                     float* y, int ldy, int out, int in, void* stream);
 /// DSpark's Markov chain on the device: row = w1[tok[i]] as floats (dim BF16); tok[i + 1] = argmax v (the first of equal
 /// maxima); conf[i] = sigmoid(cw . [x (hidden); row (dim)]).
-void ds41_markov_row(const uint16_t* w1, int dim, const int* tok, int i, float* row, void* stream);
-void ds41_argmax_into(const float* v, int n, int* tok, int i, void* stream);
+void ds41_markov_row(const uint16_t* w1, int dim, int vocab, const int* tok, int i, float* row, int* bad, void* stream);
+void ds41_argmax_into(const float* v, int n, int* tok, int i, int* bad, void* stream);
+/// argmax(a + b) with the same finite-value and bounds checks as ds41_argmax_into, without materializing the sum.
+void ds41_add_argmax_into(const float* a, const float* b, int n, int* tok, int i, int* bad, void* stream);
+/// One argmax for each row of v [rows][stride], with first-index tie behavior and a device error flag for NaNs/bad indices.
+void ds41_argmax_rows(const float* v, int rows, int stride, int n, int* tokens, int* bad, void* stream);
 void ds41_confidence(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i, void* stream);
 /// keys: with half, an FP16 cache (IEEE half bits; the pointer cast to float*) - for ds41_index_score*.
 /// An FP16 cache's selected rows as floats: out[(t topk + j) rw ..] = cache[sel[t topk + j] rw ..] for each token's

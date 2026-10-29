@@ -222,7 +222,7 @@ __global__ void hc_post_kernel(const float* x, const float* res, const float* po
 // picks kept, times scale). cpu_topk >= 0: picks of rank >= cpu_topk not held on the GPU are dropped (weight 0).
 __global__ void route_table_kernel(const float* __restrict__ logits, const float* __restrict__ bias,
                                    const unsigned long long* __restrict__ slots, int T, int E, int K, int normalize,
-                                   float scale, int cpu_topk, int cap, int* __restrict__ ids, float* __restrict__ wts,
+                                   float scale, int cpu_topk, int cap, int original_weight, int* __restrict__ ids, float* __restrict__ wts,
                                    unsigned char* __restrict__ table) {
     __shared__ float sel[1024], prob[1024];
     __shared__ float bv[256];
@@ -268,7 +268,7 @@ __global__ void route_table_kernel(const float* __restrict__ logits, const float
             bool cut[16];
             for (int k = 0; k < K; ++k) {
                 cut[k] = cpu_topk >= 0 && k >= cpu_topk && slots[pick[k]] == 0ull;
-                if (!cut[k]) sum += prob[pick[k]];
+                if (!cut[k] || original_weight) sum += prob[pick[k]];
             }
             for (int k = 0; k < K; ++k) {
                 float v = prob[pick[k]];
@@ -636,7 +636,7 @@ __global__ void __launch_bounds__(256) attn_batched_kernel(const float* q, int h
     const int t = blockIdx.x, h0 = blockIdx.y * kHeadGroup, tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
     const int4 in = info[t];
     const int first = in.x, wrows = in.y, rows = in.y + in.z;
-    const int* tsel = sel + size_t(t) * sel_stride;
+    const int* tsel = sel ? sel + size_t(t) * size_t(sel_stride) : nullptr;
     const float* qt = q + (size_t(t) * heads + h0) * dim;
     for (int i = tid; i < kHeadGroup * dim; i += 256) qs[i] = qt[i];
     if (tid < kHeadGroup) { m[tid] = -INFINITY; l[tid] = 0; }
@@ -742,7 +742,7 @@ __global__ void __launch_bounds__(256) attn_tiled_kernel(const float* q, int hea
     const int t = blockIdx.x, h0 = blockIdx.y * kTG, th = threadIdx.x;
     const int4 in = info[t];
     const int first = in.x, wrows = in.y, rows = in.y + in.z;
-    const int* tsel = sel + size_t(t) * sel_stride;
+    const int* tsel = sel ? sel + size_t(t) * size_t(sel_stride) : nullptr;
     const float4* qt = reinterpret_cast<const float4*>(q + (size_t(t) * heads + h0) * dim);
     for (int i = th; i < kTG * dim / 4; i += 256) reinterpret_cast<float4*>(qs)[i] = qt[i];
     const int sh = th / 16, sr = th % 16;           // scores: head sh, rows sr + 16 j
@@ -862,7 +862,7 @@ __global__ void __launch_bounds__(128) attn_wmma_kernel(const float* q, int head
     const int t = blockIdx.x, h0 = blockIdx.y * kWG, th = threadIdx.x, warp = th / 32;
     const int4 in = info[t];
     const int first = in.x, wrows = in.y, rows = in.y + in.z;
-    const int* tsel = sel + size_t(t) * sel_stride;
+    const int* tsel = sel ? sel + size_t(t) * size_t(sel_stride) : nullptr;
     const float* qt = q + (size_t(t) * heads + h0) * kWD;
     for (int i = th; i < kWG * kWD; i += 128) qs[(i / kWD) * kWLQ + i % kWD] = __float2half(qt[i]);
     for (int i = th; i < kWG * kWLO; i += 128) os[i] = 0.0f;
@@ -1800,17 +1800,28 @@ __global__ void __launch_bounds__(256) mxfp4_moe_kernel(const uint8_t* __restric
 
 // DSpark's Markov chain on the device: row = w1[tok[i]] (BF16 -> f32); the argmax of v (the first of equal maxima)
 // into tok[i + 1]; conf[i] = sigmoid(cw . [x; row])
-__global__ void markov_row_kernel(const uint16_t* w1, int dim, const int* tok, int i, float* row) {
-    const uint16_t* r = w1 + size_t(tok[i]) * dim;
+__global__ void markov_row_kernel(const uint16_t* w1, int dim, int vocab, const int* tok, int i, float* row, int* bad) {
+    const int id = tok[i];
+    if (id < 0 || id >= vocab) {
+        for (int j = threadIdx.x; j < dim; j += blockDim.x) row[j] = 0.0f;
+        if (threadIdx.x == 0) atomicExch(bad, 1);
+        return;
+    }
+    const uint16_t* r = w1 + size_t(id) * size_t(dim);
     for (int j = threadIdx.x; j < dim; j += blockDim.x) row[j] = __uint_as_float(uint32_t(r[j]) << 16);
 }
-__global__ void __launch_bounds__(1024) argmax_kernel(const float* v, int n, int* tok, int i) {
+__global__ void __launch_bounds__(1024) argmax_kernel(const float* v, const float* addend, int n, int* tok, int i, int* bad) {
     __shared__ float bv[32];
     __shared__ int bi[32];
     float best = -INFINITY;
     int at = 0x7fffffff;
-    for (int j = threadIdx.x; j < n; j += 1024)
-        if (v[j] > best) { best = v[j]; at = j; }
+    bool bad_value = false;
+    for (int j = threadIdx.x; j < n; j += 1024) {
+        const float x = addend ? v[j] + addend[j] : v[j];
+        if (!isfinite(x)) bad_value = true;
+        if (x > best) { best = x; at = j; }
+    }
+    if (bad_value) atomicExch(bad, 1);
     for (int o = 16; o; o >>= 1) {
         const float ov = __shfl_xor_sync(0xffffffffu, best, o);
         const int oi = __shfl_xor_sync(0xffffffffu, at, o);
@@ -1826,7 +1837,50 @@ __global__ void __launch_bounds__(1024) argmax_kernel(const float* v, int n, int
             const int oi = __shfl_xor_sync(0xffffffffu, at, o);
             if (ov > best || (ov == best && oi < at)) { best = ov; at = oi; }
         }
-        if (threadIdx.x == 0) tok[i + 1] = at;
+        if (threadIdx.x == 0) {
+            if (at < 0 || at >= n) {
+                atomicExch(bad, 1);
+                tok[i + 1] = 0;   // keep the next Markov row lookup inside w1
+            } else tok[i + 1] = at;
+        }
+    }
+}
+__global__ void __launch_bounds__(1024) argmax_rows_kernel(const float* v, int rows, int stride, int n, int* tokens, int* bad) {
+    const int row = int(blockIdx.x);
+    if (row >= rows) return;
+    __shared__ float bv[32];
+    __shared__ int bi[32];
+    float best = -INFINITY;
+    int at = 0x7fffffff;
+    bool bad_value = false;
+    const float* src = v + size_t(row) * size_t(stride);
+    for (int j = threadIdx.x; j < n; j += 1024) {
+        const float x = src[j];
+        if (isnan(x)) bad_value = true;
+        else if (x > best || (x == best && j < at)) { best = x; at = j; }
+    }
+    if (bad_value) atomicExch(bad, 1);
+    for (int o = 16; o; o >>= 1) {
+        const float ov = __shfl_xor_sync(0xffffffffu, best, o);
+        const int oi = __shfl_xor_sync(0xffffffffu, at, o);
+        if (ov > best || (ov == best && oi < at)) { best = ov; at = oi; }
+    }
+    if (threadIdx.x % 32 == 0) { bv[threadIdx.x / 32] = best; bi[threadIdx.x / 32] = at; }
+    __syncthreads();
+    if (threadIdx.x < 32) {
+        best = bv[threadIdx.x];
+        at = bi[threadIdx.x];
+        for (int o = 16; o; o >>= 1) {
+            const float ov = __shfl_xor_sync(0xffffffffu, best, o);
+            const int oi = __shfl_xor_sync(0xffffffffu, at, o);
+            if (ov > best || (ov == best && oi < at)) { best = ov; at = oi; }
+        }
+        if (threadIdx.x == 0) {
+            if (at < 0 || at >= n) {
+                atomicExch(bad, 1);
+                tokens[row] = 0;
+            } else tokens[row] = at;
+        }
     }
 }
 __global__ void conf_kernel(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i) {
@@ -1879,9 +1933,9 @@ void ds41_hc_post(const float* x, const float* res, const float* post, const flo
 }
 
 void ds41_route_table(const float* logits, const float* bias, const unsigned long long* slots, int T, int E, int K, bool normalize,
-                      float scale, int cpu_topk, int cap, int* ids, float* wts, void* table, void* stream) {
+                      float scale, int cpu_topk, int cap, int* ids, float* wts, void* table, void* stream, bool original_weight) {
     if (E > 1024 || K > 16) throw std::invalid_argument("ds41_route_table: experts <= 1024, top_k <= 16");
-    route_table_kernel<<<1, 256, 0, (cudaStream_t)stream>>>(logits, bias, slots, T, E, K, normalize ? 1 : 0, scale, cpu_topk, cap, ids,
+    route_table_kernel<<<1, 256, 0, (cudaStream_t)stream>>>(logits, bias, slots, T, E, K, normalize ? 1 : 0, scale, cpu_topk, cap, original_weight ? 1 : 0, ids,
                                                            wts, static_cast<unsigned char*>(table));
 }
 
@@ -1954,7 +2008,7 @@ static bool ds41_device_is_gfx12() {
 }
 #endif
 
-// ---- gfx12 (RDNA4) WMMA attention, opt-in with STRATA_DS41_ATTN_WMMA=1 -------------------------------------------
+// ---- gfx12 (RDNA4) WMMA attention: STRATA_DS41_ATTN_WMMA=1 (original), =2 (optimized) ---------------------------
 // One block per (token, 16-head group); 256 threads = 8 waves. QK and PV on the gfx12 WMMA engine
 // (__builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12: wave32, lane l -> half = l/16, id = l%16; A[i] = A[id][half*8+i],
 // B[i] = B[half*8+i][id], C[i] = C[half*8+i][id]), which sustains ~40 TF/s at these shapes against ~10 for the CUDA-core
@@ -1967,6 +2021,7 @@ namespace wm12 {
 constexpr int kDim = 512, kHeads = 16, kRows = 32, kWaves = 8;
 constexpr size_t kLds = size_t(kHeads * kDim + kRows * kDim) * 2 + size_t(kHeads * kRows) * 4 + size_t(kHeads * kRows) * 2 +
                         size_t(4 * kHeads) * 4;   // Q + K/VT + S + P + (m, l, f, sink)
+static_assert(kLds + size_t(8 * 256) * sizeof(float) <= 64 * 1024, "gfx12 WMMA attention exceeds the 64 KiB LDS budget");
 using f8 = float __attribute__((ext_vector_type(8)));
 using h8 = _Float16 __attribute__((ext_vector_type(8)));
 __device__ inline _Float16 bits_h(uint16_t u) { _Float16 f; __builtin_memcpy(&f, &u, 2); return f; }
@@ -1976,9 +2031,10 @@ __device__ inline float f16_to_f32(_Float16 f) { float r; __builtin_memcpy(&r, &
 template <class CT>
 __global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
         const float* q, int heads, const float* window, int ring, const int4* info, const CT* comp, int comp_stride,
-        const int* sel, int sel_stride, const float* sinks, float scale, float* out) {
+        const int* sel, int sel_stride, int comp_rows, const float* sinks, float scale, float* out, bool optimized, int* bounds_error) {
 #if defined(__HIP_DEVICE_COMPILE__) && (defined(__gfx1200__) || defined(__gfx1201__))
     using namespace wm12;
+    __shared__ int block_error;
     extern __shared__ __align__(16) unsigned char wsm[];
     _Float16* smQ = reinterpret_cast<_Float16*>(wsm);                       // [16][512]
     _Float16* smK = smQ + kHeads * kDim;                                    // [32][512], then V transposed [512][32]
@@ -1988,11 +2044,32 @@ __global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
     float* smM = smF + kHeads;                                             // [16] running max
     float* smL = smM + kHeads;                                             // [16] running sum
     float* smK0 = smL + kHeads;                                            // [16] sink
+    float* smPart = smK0 + kHeads; // optional [8 waves][16 heads][16 rows]
     const int t = blockIdx.x, h0 = blockIdx.y * kHeads;
     const int tid = threadIdx.x, wid = tid >> 5, lid = tid & 31, hf = lid >> 4, id = lid & 15;
     const int4 in = info[t];
-    const int first = in.x, wrows = in.y, rows = in.y + in.z;
-    const int* tsel = sel + size_t(t) * sel_stride;
+    const int first = in.x, wrows = in.y, nsel = in.z;
+    if (ring <= 0 || first < 0 || first >= ring || wrows < 0 || wrows > ring || nsel < 0 || nsel > sel_stride ||
+        wrows > 4096 || nsel > 4096 - wrows ||
+        (nsel > 0 && (!sel || !comp || comp_rows <= 0 || comp_stride < kDim))) {
+        if (tid == 0 && bounds_error) atomicOr(bounds_error, 1);
+        return;
+    }
+    const int rows = wrows + nsel;
+    const int* tsel = sel ? sel + size_t(t) * size_t(sel_stride) : nullptr;
+    if (tid == 0) block_error = 0;
+    __syncthreads();
+    if (nsel > 0) {
+        for (int i = tid; i < nsel; i += 256) {
+            const int row = tsel[i];
+            if (row < 0 || row >= comp_rows) atomicOr(&block_error, 1);
+        }
+    }
+    __syncthreads();
+    if (block_error) {
+        if (tid == 0 && bounds_error) atomicOr(bounds_error, 2);
+        return;
+    }
     // Q for this 16-head group, FP32 -> FP16
     for (int i = tid; i < kHeads * kDim; i += 256) {
         const int h = i / kDim, d = i % kDim;
@@ -2001,10 +2078,42 @@ __global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
     if (tid < kHeads) { smM[tid] = -INFINITY; smL[tid] = 0.f; smK0[tid] = sinks[h0 + tid]; }
     // one row of the tile, dim `d` (window rows from the FP32 ring, selected rows from the cache)
     auto tile_val = [&](int rr, int d) -> _Float16 {
-        if (rr < wrows) return (_Float16) window[size_t((first + rr) % ring) * kDim + d];
-        const CT* p = comp + size_t(tsel[rr - wrows]) * comp_stride + d;
+        if (rr < wrows) return (_Float16) window[((size_t(first) + size_t(rr)) % size_t(ring)) * kDim + d];
+        const CT* p = comp + size_t(tsel[rr - wrows]) * size_t(comp_stride) + d;
         if constexpr (sizeof(CT) == 4) return (_Float16) (*reinterpret_cast<const float*>(p));
         else return bits_h(*reinterpret_cast<const uint16_t*>(p));
+    };
+    // A vector is always wholly within a row. Fall back for an unaligned cache stride.
+    auto tile_vec = [&](int rr, int d) -> h8 {
+        h8 v{};
+        if (rr >= rows) return v;
+        if (rr < wrows) {
+            const float* p = window + ((size_t(first) + size_t(rr)) % size_t(ring)) * kDim + d;
+            const float4 x = *reinterpret_cast<const float4*>(p);
+            const float4 y = *reinterpret_cast<const float4*>(p + 4);
+            v[0] = (_Float16)x.x; v[1] = (_Float16)x.y; v[2] = (_Float16)x.z; v[3] = (_Float16)x.w;
+            v[4] = (_Float16)y.x; v[5] = (_Float16)y.y; v[6] = (_Float16)y.z; v[7] = (_Float16)y.w;
+        } else {
+            const CT* p = comp + size_t(tsel[rr - wrows]) * size_t(comp_stride) + d;
+            if constexpr (sizeof(CT) == 2) {
+                if ((reinterpret_cast<uintptr_t>(p) & 15) == 0) __builtin_memcpy(&v, p, sizeof(v));
+                else for (int i = 0; i < 8; ++i) v[i] = bits_h(reinterpret_cast<const uint16_t*>(p)[i]);
+            } else {
+                if ((reinterpret_cast<uintptr_t>(p) & 15) == 0) {
+                    const float4 x = *reinterpret_cast<const float4*>(p);
+                    const float4 y = *reinterpret_cast<const float4*>(p + 4);
+                    v[0] = (_Float16)x.x; v[1] = (_Float16)x.y; v[2] = (_Float16)x.z; v[3] = (_Float16)x.w;
+                    v[4] = (_Float16)y.x; v[5] = (_Float16)y.y; v[6] = (_Float16)y.z; v[7] = (_Float16)y.w;
+                } else for (int i = 0; i < 8; ++i) v[i] = (_Float16)reinterpret_cast<const float*>(p)[i];
+            }
+        }
+        return v;
+    };
+    auto v_index = [&](int d, int r) -> size_t {
+        return size_t(d) * kRows + r;
+    };
+    auto k_index = [&](int r, int d) -> size_t {
+        return size_t(r) * kDim + (optimized ? (d ^ ((r & 7) << 3)) : d);
     };
     f8 o[4];
 #pragma unroll
@@ -2014,33 +2123,66 @@ __global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
     __syncthreads();
     for (int r0 = 0; r0 < rows; r0 += kRows) {
         // ---- K for this tile
-        for (int i = tid; i < kRows * kDim; i += 256) {
-            const int r = i / kDim, d = i % kDim, rr = r0 + r;
-            smK[i] = rr < rows ? tile_val(rr, d) : (_Float16) 0;
+        if (optimized) {
+            for (int j = tid; j < kRows * kDim / 8; j += 256) {
+                const int i = j * 8, r = i / kDim, d = i % kDim;
+                const h8 v = tile_vec(r0 + r, d);
+                __builtin_memcpy(smK + k_index(r, d), &v, sizeof(v));
+            }
+        } else {
+            for (int i = tid; i < kRows * kDim; i += 256) {
+                const int r = i / kDim, d = i % kDim, rr = r0 + r;
+                smK[k_index(r, d)] = rr < rows ? tile_val(rr, d) : (_Float16) 0;
+            }
         }
         for (int i = tid; i < kHeads * kRows; i += 256) smS[i] = 0.f;   // the 8 waves' partial sums
         __syncthreads();
-        // ---- QK: this wave sums its 4 k-steps (64 dims) into smS
-        for (int c = 0; c < 2; ++c) {   // two n-tiles of 16 rows
-            f8 s;
-#pragma unroll
-            for (int i = 0; i < 8; ++i) s[i] = 0.f;
-#pragma unroll
-            for (int ks = 0; ks < 4; ++ks) {
-                h8 a, b;
-#pragma unroll
-                for (int i = 0; i < 8; ++i) a[i] = smQ[id * kDim + wid * 64 + ks * 16 + hf * 8 + i];
-#pragma unroll
-                for (int i = 0; i < 8; ++i) b[i] = smK[(c * 16 + id) * kDim + wid * 64 + ks * 16 + hf * 8 + i];
-                s = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a, b, s);
+        if (optimized) {
+            const int tile = wid / 4, kwave = wid % 4;
+            f8 acc;
+            for (int i = 0; i < 8; ++i) acc[i] = 0.f;
+            for (int ks = 0; ks < 8; ++ks) {
+                h8 qa, kb;
+                for (int i = 0; i < 8; ++i) {
+                    const int d = kwave * 128 + ks * 16 + hf * 8 + i;
+                    qa[i] = smQ[id * kDim + d];
+                    kb[i] = smK[k_index(tile * 16 + id, d)];
+                }
+                acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(qa, kb, acc);
             }
-#pragma unroll
-            for (int i = 0; i < 8; ++i) {
-                const int m = hf * 8 + i, n = c * 16 + id;   // head, row of the tile
-                if (r0 + n < rows) atomicAdd(&smS[m * kRows + n], s[i]);   // (8 waves, same 512 cells)
+            for (int i = 0; i < 8; ++i)
+                smPart[wid * 256 + (hf * 8 + i) * 16 + id] = acc[i];
+            __syncthreads();
+            for (int i = tid; i < kHeads * kRows; i += 256) {
+                const int h = i / kRows, n = i % kRows, tile0 = n / 16, col = n % 16;
+                float sum = 0;
+                for (int w = 0; w < 4; ++w) sum += smPart[(tile0 * 4 + w) * 256 + h * 16 + col];
+                smS[i] = sum;
             }
+            __syncthreads();
+        } else {
+            // ---- QK: this wave sums its 4 k-steps (64 dims) into smS
+            for (int c = 0; c < 2; ++c) {   // two n-tiles of 16 rows
+                f8 s;
+    #pragma unroll
+                for (int i = 0; i < 8; ++i) s[i] = 0.f;
+    #pragma unroll
+                for (int ks = 0; ks < 4; ++ks) {
+                    h8 a, b;
+    #pragma unroll
+                    for (int i = 0; i < 8; ++i) a[i] = smQ[id * kDim + wid * 64 + ks * 16 + hf * 8 + i];
+    #pragma unroll
+                    for (int i = 0; i < 8; ++i) b[i] = smK[k_index(c * 16 + id, wid * 64 + ks * 16 + hf * 8 + i)];
+                    s = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a, b, s);
+                }
+    #pragma unroll
+                for (int i = 0; i < 8; ++i) {
+                    const int m = hf * 8 + i, n = c * 16 + id;   // head, row of the tile
+                    if (r0 + n < rows) atomicAdd(&smS[m * kRows + n], s[i]);   // (8 waves, same 512 cells)
+                }
+            }
+            __syncthreads();
         }
-        __syncthreads();
         // ---- softmax over the tile, per head (16 threads of a head: thread th -> head th/16, rows (th%16)*2 + 0..1)
         {
             const int h = tid / 16, j = tid % 16;
@@ -2072,12 +2214,14 @@ __global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
             }
         }
         __syncthreads();
-        // ---- V transposed into the K buffer: smK[dim][row]
-        for (int i = tid; i < kRows * kDim; i += 256) {
-            const int r = i / kDim, d = i % kDim, rr = r0 + r;
-            smK[size_t(d) * kRows + r] = rr < rows ? tile_val(rr, d) : (_Float16) 0;
+        if (!optimized) {
+            // The original path restages V transposed. The optimized path reuses the K tile.
+            for (int i = tid; i < kRows * kDim; i += 256) {
+                const int r = i / kDim, d = i % kDim, rr = r0 + r;
+                smK[v_index(d, r)] = rr < rows ? tile_val(rr, d) : (_Float16) 0;
+            }
+            __syncthreads();
         }
-        __syncthreads();
         // ---- PV: each wave owns a 64-dim output slice; rescale the running sum by this tile's factor first
         const float f4 = smF[hf * 8];   // (the 16 lanes of a half share the same 8 heads' factors)
 #pragma unroll
@@ -2092,7 +2236,8 @@ __global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
 #pragma unroll
                 for (int i = 0; i < 8; ++i) a[i] = smP[id * kRows + ks * 16 + hf * 8 + i];
 #pragma unroll
-                for (int i = 0; i < 8; ++i) b[i] = smK[(wid * 64 + c * 16 + id) * kRows + ks * 16 + hf * 8 + i];
+                for (int i = 0; i < 8; ++i) b[i] = optimized ? smK[k_index(ks * 16 + hf * 8 + i, wid * 64 + c * 16 + id)]
+                               : smK[v_index(wid * 64 + c * 16 + id, ks * 16 + hf * 8 + i)];
                 o[c] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a, b, o[c]);
             }
         }
@@ -2115,7 +2260,7 @@ __global__ __launch_bounds__(256) void attn_wmma_gfx12_kernel(
 
 void ds41_attention_batched(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info,
                             const float* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale,
-                            float* out, void* stream, bool comp_half) {
+                            float* out, void* stream, bool comp_half, int comp_rows, int* bounds_error) {
     static const bool v1 = std::getenv("STRATA_DS41_ATTN_V1") != nullptr;
 #ifdef STRATA_DS41_WMMA
     static const bool wmma = std::getenv("STRATA_DS41_ATTN_WMMA") && std::string(std::getenv("STRATA_DS41_ATTN_WMMA")) == "1";
@@ -2132,21 +2277,36 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
     }
 #endif
 #if defined(__HIP_PLATFORM_AMD__)
-    static const bool wmma12 = std::getenv("STRATA_DS41_ATTN_WMMA") && std::string(std::getenv("STRATA_DS41_ATTN_WMMA")) == "1";
-    if (wmma12 && !v1 && dim == wm12::kDim && heads % wm12::kHeads == 0 && ds41_device_is_gfx12()) {
+    static const std::string wmma12_mode = std::getenv("STRATA_DS41_ATTN_WMMA") ? std::getenv("STRATA_DS41_ATTN_WMMA") : "";
+    static const bool wmma12 = wmma12_mode == "1" || wmma12_mode == "2";
+    static const bool wmma12_optimized = wmma12_mode == "2";
+    static const bool require_bounds = std::getenv("STRATA_DS41_ATTN_BOUNDS_CHECK") &&
+                                       std::string(std::getenv("STRATA_DS41_ATTN_BOUNDS_CHECK")) == "1";
+    if (wmma12 && ds41_device_is_gfx12()) {
+        if (v1 || tokens <= 0 || heads <= 0 || dim != wm12::kDim || heads % wm12::kHeads != 0 || ring <= 0 || !q || !window || !info ||
+            !sinks || !out || (comp_rows > 0 && (!comp || comp_stride < dim)) || comp_rows < 0 || sel_stride < 0 ||
+            (require_bounds && !bounds_error) || (bounds_error && comp_rows > 0 && !sel))
+            throw std::invalid_argument("ds41_attention_batched: invalid gfx12 WMMA geometry or pointer");
+        const size_t lds = wm12::kLds + (wmma12_optimized ? 8 * 256 * sizeof(float) : 0);
+        if (lds > 64 * 1024) throw std::invalid_argument("ds41_attention_batched: gfx12 WMMA LDS exceeds 64 KiB");
         static bool configured = false;
         if (!configured) {
-            cudaFuncSetAttribute(attn_wmma_gfx12_kernel<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(wm12::kLds));
-            cudaFuncSetAttribute(attn_wmma_gfx12_kernel<uint16_t>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(wm12::kLds));
+            cudaError_t attr = cudaFuncSetAttribute(attn_wmma_gfx12_kernel<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(lds));
+            if (attr != cudaSuccess)
+                throw std::runtime_error(std::string("ds41 attention wmma gfx12 shared memory: ") + cudaGetErrorString(attr));
+            attr = cudaFuncSetAttribute(attn_wmma_gfx12_kernel<uint16_t>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(lds));
+            if (attr != cudaSuccess)
+                throw std::runtime_error(std::string("ds41 attention wmma gfx12 shared memory: ") + cudaGetErrorString(attr));
             configured = true;
         }
         if (comp_half)
-            attn_wmma_gfx12_kernel<uint16_t><<<dim3(unsigned(tokens), unsigned(heads / wm12::kHeads)), 256, wm12::kLds, (cudaStream_t)stream>>>(
+            attn_wmma_gfx12_kernel<uint16_t><<<dim3(unsigned(tokens), unsigned(heads / wm12::kHeads)), 256, lds, (cudaStream_t)stream>>>(
                 q, heads, window, ring, reinterpret_cast<const int4*>(info), reinterpret_cast<const uint16_t*>(comp), comp_stride, sel,
-                sel_stride, sinks, scale, out);
+                sel_stride, comp_rows, sinks, scale, out, wmma12_optimized, bounds_error);
         else
-            attn_wmma_gfx12_kernel<float><<<dim3(unsigned(tokens), unsigned(heads / wm12::kHeads)), 256, wm12::kLds, (cudaStream_t)stream>>>(
-                q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
+            attn_wmma_gfx12_kernel<float><<<dim3(unsigned(tokens), unsigned(heads / wm12::kHeads)), 256, lds, (cudaStream_t)stream>>>(
+                q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, comp_rows, sinks, scale, out,
+                wmma12_optimized, bounds_error);
         check("attention wmma gfx12");
         return;
     }
@@ -2213,11 +2373,38 @@ void ds41_index_topk(const float* score, int score_stride, int tokens, int pos0,
         if (nchunks <= 1024) {
             static void* buf = nullptr;
             static size_t buf_bytes = 0;
-            const size_t need = size_t(tokens) * nchunks * (size_t(k) + 1) * 4;
+            if (k < 1) throw std::invalid_argument("ds41_index_topk: invalid top-k scratch width");
+            size_t elements = size_t(tokens);
+            if (elements > SIZE_MAX / size_t(nchunks)) throw std::invalid_argument("ds41_index_topk: scratch size overflow");
+            elements *= size_t(nchunks);
+            if (elements > SIZE_MAX / (size_t(k) + 1)) throw std::invalid_argument("ds41_index_topk: scratch size overflow");
+            elements *= size_t(k) + 1;
+            if (elements > SIZE_MAX / sizeof(int)) throw std::invalid_argument("ds41_index_topk: scratch size overflow");
+            const size_t need = elements * sizeof(int);
             if (need > buf_bytes) {
-                if (buf) cudaFree(buf);
-                if (cudaMalloc(&buf, need * 2) != cudaSuccess) throw std::runtime_error("ds41_index_topk: two-stage buffer");
-                buf_bytes = need * 2;
+                if (buf) {
+                    const cudaError_t freed = cudaFree(buf);
+                    if (freed != cudaSuccess) throw std::runtime_error(std::string("ds41_index_topk: release old two-stage buffer: ") + cudaGetErrorString(freed));
+                    buf = nullptr;
+                    buf_bytes = 0;
+                }
+                size_t reserve_mib = 2048;
+                if (const char* raw = std::getenv("STRATA_DS41_DESKTOP_MIB")) {
+                    char* end = nullptr;
+                    const long value = std::strtol(raw, &end, 10);
+                    if (end == raw || *end || value < 0 || std::uint64_t(value) > std::uint64_t(SIZE_MAX >> 20))
+                        throw std::invalid_argument("ds41_index_topk: invalid desktop VRAM reserve");
+                    reserve_mib = size_t(value);
+                }
+                const size_t reserve = reserve_mib << 20;
+                size_t free_bytes = 0, total_bytes = 0;
+                const cudaError_t info_error = cudaMemGetInfo(&free_bytes, &total_bytes);
+                if (info_error != cudaSuccess)
+                    throw std::runtime_error(std::string("ds41_index_topk: memory info: ") + cudaGetErrorString(info_error));
+                if (free_bytes < reserve || need > free_bytes - reserve)
+                    throw std::runtime_error("ds41_index_topk: two-stage scratch would cross the configured desktop VRAM reserve");
+                if (cudaMalloc(&buf, need) != cudaSuccess) throw std::runtime_error("ds41_index_topk: two-stage buffer allocation");
+                buf_bytes = need;
             }
             int* cbuf = static_cast<int*>(buf);
             int* ccnt = cbuf + size_t(tokens) * nchunks * k;
@@ -2338,6 +2525,9 @@ __global__ void ring_rows_kernel(const float* src, int width, int pos, int ring,
 }
 void ds41_ring_rows(const float* src, int rows, int width, int pos, int ring, float* dst, void* stream) {
     if (rows < 1) return;
+    if (!src || !dst || width < 1 || ring < 1 || pos < 0 || pos > INT_MAX - (rows - 1) ||
+        size_t(rows) > SIZE_MAX / size_t(width))
+        throw std::invalid_argument("ds41_ring_rows: bounds");
     ring_rows_kernel<<<dim3(std::min(unsigned(blocks(width, 256)), 4u), unsigned(rows)), 256, 0, (cudaStream_t)stream>>>(src, width, pos, ring, dst);
     check("ring_rows");
 }
@@ -2358,14 +2548,44 @@ void ds41_stream_mean(const float* h, float* dst, size_t ld_dst, int n, int toke
 
 void ds41_attention_multi(const float* q, int tokens, int heads, int dim, const float* window, int ring, const int* info, int bound,
                           const float* comp, int comp_stride, const int* sel, int sel_stride, const int* nsel_dev, const float* sinks,
-                          float scale, float* scores, float* out, void* stream, size_t wss, size_t css) {
-    if (bound > kMaxRows || bound < 1 || heads % kHeadGroup || dim % kDimChunk || tokens < 1) throw std::invalid_argument("ds41_attention_multi: shape");
+                          float scale, float* scores, float* out, void* stream, size_t scores_bytes, size_t wss, size_t css) {
+    if (!q || !window || !info || !sinks || !scores || !out || ring < 1 || bound > kMaxRows || bound < 1 ||
+        heads < kHeadGroup || heads % kHeadGroup || dim < kDimChunk || dim % kDimChunk || tokens < 1 ||
+        comp_stride < 0 || sel_stride < 0 || (comp_stride && !comp) || (sel_stride && !sel))
+        throw std::invalid_argument("ds41_attention_multi: shape or pointer bounds (tokens " + std::to_string(tokens) +
+                                    " heads " + std::to_string(heads) + " dim " + std::to_string(dim) + " ring " + std::to_string(ring) +
+                                    " bound " + std::to_string(bound) + " comp_stride " + std::to_string(comp_stride) + " comp " +
+                                    std::to_string(comp != nullptr) + " sel_stride " + std::to_string(sel_stride) + " sel " +
+                                    std::to_string(sel != nullptr) + " sinks " + std::to_string(sinks != nullptr) + ")");
+    auto checked_mul = [](size_t a, size_t b) {
+        if (a && b > SIZE_MAX / a) throw std::invalid_argument("ds41_attention_multi: scratch size overflow");
+        return a * b;
+    };
+    const size_t score_bytes = checked_mul(checked_mul(checked_mul(size_t(tokens), size_t(heads)), size_t(kMaxRows)), sizeof(float));
+    int split = 1;
+    if (const char* raw = std::getenv("STRATA_DS41_ATTN_SPLIT")) {
+        char* end = nullptr;
+        const long value = std::strtol(raw, &end, 10);
+        if (end == raw || *end || value < 1 || value > kMaxRows)
+            throw std::invalid_argument("ds41_attention_multi: STRATA_DS41_ATTN_SPLIT must be in [1, 4096]");
+        split = int(value);
+    }
+    const bool use_split = split > 1 && split <= bound / 2;
+    size_t required_bytes = score_bytes;
+    if (use_split) {
+        if (tokens > INT_MAX / split) throw std::invalid_argument("ds41_attention_multi: split grid overflow");
+        const size_t part_bytes = checked_mul(checked_mul(checked_mul(checked_mul(size_t(tokens), size_t(split)), size_t(heads)),
+                                                          size_t(dim)), sizeof(float));
+        if (part_bytes > SIZE_MAX - score_bytes) throw std::invalid_argument("ds41_attention_multi: scratch size overflow");
+        required_bytes += part_bytes;
+    }
+    if (required_bytes > scores_bytes)
+        throw std::invalid_argument("ds41_attention_multi: score and split scratch exceed allocated capacity");
     const dim3 g1(unsigned(heads / kHeadGroup), unsigned((bound + kRowChunk - 1) / kRowChunk), unsigned(tokens));
     attn_scores_multi_kernel<<<g1, 256, size_t(kHeadGroup) * dim * sizeof(float), (cudaStream_t)stream>>>(
         q, heads, dim, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, nsel_dev, scale, scores, wss, css);
     check("attention multi scores");
-    static const int split = std::getenv("STRATA_DS41_ATTN_SPLIT") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_ATTN_SPLIT"))) : 1;
-    if (split > 1 && bound >= 2 * split) {
+    if (use_split) {
         float* part = scores + size_t(tokens) * heads * kMaxRows;   // the caller's scratch: tokens' scores, then the parts
         const int chunk = (bound + split - 1) / split;
         const dim3 g3(unsigned(heads / kHeadGroup), unsigned(dim / kDimChunk), unsigned(tokens * split));
@@ -2404,13 +2624,31 @@ void ds41_mxfp4_moe(const uint8_t* w, size_t expert_bytes, size_t row_bytes, con
     check("mxfp4_moe");
 }
 
-void ds41_markov_row(const uint16_t* w1, int dim, const int* tok, int i, float* row, void* stream) {
-    markov_row_kernel<<<1, 256, 0, (cudaStream_t)stream>>>(w1, dim, tok, i, row);
+void ds41_markov_row(const uint16_t* w1, int dim, int vocab, const int* tok, int i, float* row, int* bad, void* stream) {
+    if (!w1 || !tok || !row || !bad || dim <= 0 || vocab <= 0 || i < 0)
+        throw std::invalid_argument("markov_row: shape or pointer bounds");
+    markov_row_kernel<<<1, 256, 0, (cudaStream_t)stream>>>(w1, dim, vocab, tok, i, row, bad);
     check("markov_row");
 }
-void ds41_argmax_into(const float* v, int n, int* tok, int i, void* stream) {
-    argmax_kernel<<<1, 1024, 0, (cudaStream_t)stream>>>(v, n, tok, i);
+void ds41_argmax_into(const float* v, int n, int* tok, int i, int* bad, void* stream) {
+    if (!v || !tok || !bad || n <= 0 || i < 0)
+        throw std::invalid_argument("argmax: shape or pointer bounds");
+    argmax_kernel<<<1, 1024, 0, (cudaStream_t)stream>>>(v, nullptr, n, tok, i, bad);
     check("argmax");
+}
+void ds41_add_argmax_into(const float* a, const float* b, int n, int* tok, int i, int* bad, void* stream) {
+    if (!a || !b || !tok || !bad || n <= 0 || i < 0)
+        throw std::invalid_argument("add_argmax: shape or pointer bounds");
+    argmax_kernel<<<1, 1024, 0, (cudaStream_t)stream>>>(a, b, n, tok, i, bad);
+    check("add_argmax");
+}
+void ds41_argmax_rows(const float* v, int rows, int stride, int n, int* tokens, int* bad, void* stream) {
+    if (!v || !tokens || !bad || rows <= 0 || rows > 65535 || n <= 0 || stride < n)
+        throw std::invalid_argument("argmax_rows: shape or pointer bounds");
+    if (size_t(rows - 1) > SIZE_MAX / size_t(stride))
+        throw std::invalid_argument("argmax_rows: input offset overflow");
+    argmax_rows_kernel<<<unsigned(rows), 1024, 0, (cudaStream_t)stream>>>(v, rows, stride, n, tokens, bad);
+    check("argmax_rows");
 }
 void ds41_confidence(const float* cw, const float* x, int hidden, const float* row, int dim, float* conf, int i, void* stream) {
     conf_kernel<<<1, 512, 0, (cudaStream_t)stream>>>(cw, x, hidden, row, dim, conf, i);

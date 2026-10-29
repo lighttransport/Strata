@@ -33,7 +33,7 @@ __global__ void cand_kernel(int type, const uint8_t* const* wptr, const int* gst
                 if (type == 19) {
                     unsigned hh[8], ix[8], gr[8];
 #pragma unroll
-                    for (int ib = 0; ib < 8; ++ib) hh[ib] = unsigned(p[34 + 2*ib]) | (unsigned(p[35 + 2*ib]) << 8);
+                    for (int ib = 0; ib < 8; ++ib) hh[ib] = *reinterpret_cast<const unsigned short*>(p + 34 + 2*ib);
 #pragma unroll
                     for (int ib = 0; ib < 8; ++ib) ix[ib] = p[2 + 4*ib + gi] | (((hh[ib] >> (3*gi)) & 7) << 8);
 #pragma unroll
@@ -57,7 +57,7 @@ __global__ void cand_kernel(int type, const uint8_t* const* wptr, const int* gst
 #pragma unroll
                     for (int ib = 0; ib < 8; ++ib) {
                         const uint8_t* q = p + 2 + 8*ib;
-                        hw[ib] = unsigned(q[4]) | (unsigned(q[5]) << 8) | (unsigned(q[6]) << 16) | (unsigned(q[7]) << 24);
+                        hw[ib] = unsigned(*reinterpret_cast<const unsigned short*>(q + 4)) | (unsigned(*reinterpret_cast<const unsigned short*>(q + 6)) << 16);
                         qi[ib] = q[gi];
                     }
                     uint64_t gv[8];
