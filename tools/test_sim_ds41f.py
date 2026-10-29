@@ -102,13 +102,39 @@ class KernelBoundTest(unittest.TestCase):
 class ValidationTest(unittest.TestCase):
     def test_rows(self):
         rows = ds41f.validate()
-        self.assertEqual(len(rows), 22)
+        self.assertEqual(len(rows), 26)
         for r in rows:
             self.assertTrue(r["within"], r["name"])
         fitted = [r for r in rows if r["fit"]]
-        self.assertEqual(len(fitted), 9)
+        self.assertEqual(len(fitted), 13)
         for r in fitted:
-            self.assertLessEqual(abs(r["error"]), 0.05, r["name"])
+            self.assertLessEqual(abs(r["error"]), r["tolerance"] if r["kind"] == "two_node_decode" else 0.05, r["name"])
+
+
+class TwoNodeTest(unittest.TestCase):
+    def test_runs_and_constants(self):
+        import json
+        runs = json.loads((ds41f.DATA / "measured_ds41f_two_node.json").read_text())["runs"]
+        exact = [r for r in runs if r["mode"] == "exact" and r["grid8"]]
+        ratio = lambda r: ds41f.routing.union_ratio(5, 384, 6) * (1 - r["canon_hit"])
+        # the fitted expert time per union unit reproduces the grid8 runs' width-5 mean within 2 %
+        b = sum(r["w5_ms"]["cpu"] for r in exact) / sum(ratio(r) for r in exact)
+        self.assertAlmostEqual(b / ds41f.TWO_NODE["cpu_ms_per_union"], 1.0, delta=0.03)
+        for r in runs:
+            o = ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=r["canon_mib"], grid8=bool(r["grid8"]),
+                                                        trim={"exact": 0.0, "trim0.125": 0.125, "trim0.15": 0.15}[r["mode"]]))
+            self.assertLess(abs(o["tok_s"] / r["decode_tok_s"] - 1), 0.09, r["name"])
+
+    def test_levers_ordered(self):
+        rows = dict(ds41f.two_node_levers())
+        base = rows["measured configuration"]["tok_s"]
+        self.assertGreater(rows["worker + local expert kernels 30 % faster"]["tok_s"], rows["worker + local expert kernels 15 % faster"]["tok_s"])
+        self.assertGreater(rows["worker + local expert kernels 15 % faster"]["tok_s"], base)
+        self.assertLess(rows["grid8 off (the pre-2026-10-29 kernel)"]["tok_s"], base)
+
+    def test_vram_floor(self):
+        self.assertTrue(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3033.0))["vram_ok"])
+        self.assertFalse(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3600.0))["vram_ok"])
 
 
 class OrderingTest(unittest.TestCase):
@@ -150,7 +176,7 @@ class UntouchedTest(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             code = glm_ds41f_sim.main(["validate"])
         self.assertEqual(code, 0)
-        self.assertIn("22 of 22 rows within tolerance", out.getvalue())
+        self.assertIn("26 of 26 rows within tolerance", out.getvalue())
 
 class RunnerTest(unittest.TestCase):
     def test_target_beats_now(self):

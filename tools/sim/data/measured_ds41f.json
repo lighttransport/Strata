@@ -372,6 +372,61 @@
    "measured": {
     "tok_s": 27.1
    }
+  },
+  {
+   "name": "TR16+B550 UD-IQ1_S exact, grid8, canon 3033 MiB, DSpark N=5 (4 runs)",
+   "kind": "two_node_decode",
+   "tolerance": 0.07,
+   "fit": true,
+   "source": "experiment/ds41f_tr16_decode/results_2026-10-29.json + logs/t3{2,8,9}_*, t40_* (c_osd 1000 tokens, 128 generated, DSpark N=5, TR16 + B550 over IB, 48 GiB worker-owned); mean of 23.86/25.12/24.99/26.14",
+   "plan": {
+    "canon_mib": 3033.0
+   },
+   "measured": {
+    "tok_s": 25.03
+   }
+  },
+  {
+   "name": "TR16+B550 UD-IQ1_S exact, grid8 off, DSpark N=5 (2 runs)",
+   "kind": "two_node_decode",
+   "tolerance": 0.07,
+   "fit": true,
+   "source": "experiment/ds41f_tr16_decode/results_2026-10-29.json + logs/t3{2,8,9}_*, t40_* (c_osd 1000 tokens, 128 generated, DSpark N=5, TR16 + B550 over IB, 48 GiB worker-owned); mean of 22.81/22.22",
+   "plan": {
+    "canon_mib": 3033.0,
+    "grid8": false
+   },
+   "measured": {
+    "tok_s": 22.52
+   }
+  },
+  {
+   "name": "TR16+B550 UD-IQ1_S trim 0.125, canon 2302 MiB, DSpark N=5 (2 runs)",
+   "kind": "two_node_decode",
+   "tolerance": 0.07,
+   "fit": true,
+   "source": "experiment/ds41f_tr16_decode/results_2026-10-29.json + logs/t3{2,8,9}_*, t40_* (c_osd 1000 tokens, 128 generated, DSpark N=5, TR16 + B550 over IB, 48 GiB worker-owned); mean of 30.46/30.57; lossy, fails the KL gate",
+   "plan": {
+    "canon_mib": 2302.0,
+    "trim": 0.125
+   },
+   "measured": {
+    "tok_s": 30.52
+   }
+  },
+  {
+   "name": "TR16+B550 UD-IQ1_S trim 0.15, canon 3254 MiB, DSpark N=5 (2 runs)",
+   "kind": "two_node_decode",
+   "tolerance": 0.07,
+   "fit": true,
+   "source": "experiment/ds41f_tr16_decode/results_2026-10-29.json + logs/t3{2,8,9}_*, t40_* (c_osd 1000 tokens, 128 generated, DSpark N=5, TR16 + B550 over IB, 48 GiB worker-owned); mean of 30.75/31.18; lossy",
+   "plan": {
+    "canon_mib": 3254.0,
+    "trim": 0.15
+   },
+   "measured": {
+    "tok_s": 30.96
+   }
   }
  ],
  "engram": {

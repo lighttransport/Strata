@@ -33,6 +33,9 @@ ACCEPTANCE = {
     "csv":    [0.85, 0.74, 0.66, 0.60, 0.55, 0.50, 0.45],    # 300/380 at depth 2
     "coding": [0.70, 0.55, 0.45, 0.40, 0.35, 0.30, 0.25],    # REAP 1K: 131/246 at depth 2
     "mixed":  [0.90, 0.82, 0.75, 0.70, 0.65, 0.60, 0.55],
+    # TR16 + B550 UD-IQ1_S, DSpark N=5 (verify width 5), c_osd 1000 tokens, 2026-10-29: 28 + 27 rounds accepted 100 + 101 drafts -> 4.65 tokens per round;
+    # a flat conditional rate that reproduces that at depth 4 (the real chain is not geometric; only the width-5 total is measured)
+    "ds41_osd_n5": [0.965],
     "b550_screen": [96/171, 64/96, 49/64], # Q23 B550 screen, MTP3, 3 x 128 tokens; not a universal acceptance rate
     # Fixed 2048-input/512-output fixture, binary 8c2c7542, 2026-10-09. Pool position 0 from
     # MTP1/2 (199/311 and 164/233); position 1 is conditional 114/164. Position 2 retains

@@ -1177,6 +1177,109 @@ def tr16_levers(profile="now"):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------
+# The measured two-node runner: TR16 (RX 9070 XT) + B550, UD-IQ1_S, worker owning 48 GiB of whole experts over IB, DSpark N=5.
+# Fitted to tools/sim/data/measured_ds41f_two_node.json (ten 2026-10-29 runs, c_osd 1000-token prompt, 128 generated). The generic
+# decode() above predicts 15.0 tok/s plain and 33.2 with DSpark for this pair; the runner's measured breakdown differs in four places:
+# the expert pass is a flat ~37 ms per unit of union x non-canonical share and gains nothing from width (decode() assumed a 2.3x
+# width gain: measured width-5 / width-1 expert time is 3.9x against a union ratio of 3.6), the GPU-to-router wait grows to ~50 ms at
+# width 5 (the per-token attention), Engram is 6 ms per width-5 step, and a DSpark round also pays ~25 ms drafting.
+TWO_NODE = dict(
+    cpu_ms_per_union=37.3,        # LS fit through the origin, grid8 runs: width 1 23.3 ms and width 5 90.8 ms at canon hit 0.325 (sim union ratio 1 / 3.585)
+    grid8_off_factor=1.13,        # worker CPU 1.580 -> 1.435 ms/request; cpu_experts 103.5 / 90.8 ms at width 5, 26.1 / 23.3 at width 1
+    g2r_ms=(2.95, 40.4),          # gpu_to_router wait at width 1 / width 5 before the CPU coupling below
+    g2r_per_cpu_ms=0.127,         # ... plus this per ms of expert pass at width 5 (LS over the four configuration means: 46.8-55.6 ms wait for 55-104 ms of experts)
+    engram_ms=(0.37, 6.25),       # per step at width 1 / 5 (cache hit and async both unchanged: STRATA_DS41_ENGRAM_ASYNC=0)
+    head_ms=(0.077, 2.1),
+    other_ms=5.8,                 # step minus the four terms above: 6.1 at width 1, 5.7 at width 5
+    draft_ms_per_token=5.0,       # draft_s / steps = 23.0-27.2 ms at N=5 (mean of the ten runs 25.3; flat: its slope against the expert pass is within noise)
+    inject_ms=0.4,
+    first_step_ms=30.5,           # the plain step that produces the first generated token (profile_prompt_s step, width 1)
+    hit_ref=(2302.0, 0.3097, 0.1816),   # canonical-tier hit h = 0.3097 (MiB / 2302) ^ 0.1816, from 2302 MiB (0.3097) and 3033 MiB (0.3253)
+    trim_cut_ref=(0.125, 0.232, 2.64),  # CPU expert time removed by STRATA_DS41_CPU_TRIM t: 0.232 (t / 0.125) ^ 2.64, from t = 0.125 and 0.15 (0.375)
+    vram_free_ref=(3033.0, 3130449920.0),   # minimum free VRAM at 3033 MiB loaded; each loaded MiB costs one MiB
+    vram_floor_bytes=2.5 * GIB,
+    canon_loaded_mib_default=3033.0,    # what a 3328 MiB request loads on the desktop as of 2026-10-29 (3254 on an earlier day)
+    accept_profile="ds41_osd_n5",
+)
+
+
+@dataclasses.dataclass
+class TwoNodePlan:
+    width: int = 5                       # verify width (DSpark N); only 1 and 5 are measured, others interpolate/extrapolate linearly
+    canon_mib: float = -1.0              # canonical tier loaded MiB; -1 = TWO_NODE default
+    trim: float = 0.0                    # STRATA_DS41_CPU_TRIM
+    grid8: bool = True
+    cpu_speed: float = 1.0               # what-if: expert-pass speedup (worker kernel / threads)
+    draft_overlap: float = 0.0           # what-if: share of the drafting time hidden behind the verify
+    engram_hidden: float = 0.0           # what-if: share of the Engram time hidden (async)
+    generated: int = 128
+    acceptance: str = ""                 # "" = the fitted profile
+
+    to_dict = lambda self: dataclasses.asdict(self)
+
+
+def two_node_hit(canon_mib):
+    ref, h, a = TWO_NODE["hit_ref"]
+    return min(0.95, h * (canon_mib / ref) ** a)
+
+
+def two_node_trim_cut(trim):
+    if trim <= 0:
+        return 0.0
+    t, c, k = TWO_NODE["trim_cut_ref"]
+    return min(0.6, c * (trim / t) ** k)
+
+
+def two_node_vram_free_gib(canon_mib):
+    mib, free = TWO_NODE["vram_free_ref"]
+    return (free - (canon_mib - mib) * 2 ** 20) / GIB
+
+
+def two_node_decode(plan):
+    """Width-`plan.width` DSpark decode on the measured TR16 + B550 runner, ms per component. Returns a dict like a64fx_decode."""
+    c = TWO_NODE
+    mib = plan.canon_mib if plan.canon_mib > 0 else c["canon_loaded_mib_default"]
+    w = plan.width
+    frac = (w - 1) / 4.0                                     # 0 at the measured width 1, 1 at width 5
+    lerp = lambda pair: pair[0] + (pair[1] - pair[0]) * frac
+    hit = two_node_hit(mib)
+    union = routing.union_ratio(w, 384, 6)
+    cut = two_node_trim_cut(plan.trim)
+    cpu = c["cpu_ms_per_union"] * union * (1 - hit) * (1 - cut) * (1.0 if plan.grid8 else c["grid8_off_factor"]) / plan.cpu_speed
+    g2r, engram, head = lerp(c["g2r_ms"]) + c["g2r_per_cpu_ms"] * cpu * frac, lerp(c["engram_ms"]) * (1 - plan.engram_hidden), lerp(c["head_ms"])
+    verify = g2r + cpu + engram + head + c["other_ms"]
+    out = dict(width=w, canon_hit=hit, cpu_ms=cpu, g2r_ms=g2r, engram_ms=engram, head_ms=head, other_ms=c["other_ms"], verify_ms=verify,
+               vram_free_gib=two_node_vram_free_gib(mib), vram_ok=two_node_vram_free_gib(mib) * GIB >= c["vram_floor_bytes"])
+    if w == 1:
+        out.update(step_ms=verify, tok_s=1e3 / verify, tokens_per_round=1.0, draft_ms=0.0, round_ms=verify)
+        return out
+    profile = plan.acceptance or c["accept_profile"]
+    tokens = routing.tokens_per_round(w - 1, profile)
+    draft = c["draft_ms_per_token"] * w * (1 - plan.draft_overlap)
+    round_ms = verify + draft + c["inject_ms"]
+    rounds = (plan.generated - 1) / tokens                  # expected rounds; measured runs are 27 or 28
+    total = c["first_step_ms"] + rounds * round_ms
+    out.update(tokens_per_round=tokens, draft_ms=draft, round_ms=round_ms, rounds=rounds, step_ms=verify, tok_s=plan.generated / total * 1e3)
+    return out
+
+
+def two_node_levers(base=None):
+    """What-ifs on the calibrated runner. Each row changes one thing and says what it would take; none is measured."""
+    base = base or TwoNodePlan()
+    rows = [("measured configuration", base)]
+    for label, kw in (("canonical tier at the VRAM floor (3458 MiB; +425 MiB)", dict(canon_mib=3458.0)),
+                      ("worker + local expert kernels 15 % faster", dict(cpu_speed=1.15)),
+                      ("worker + local expert kernels 30 % faster", dict(cpu_speed=1.30)),
+                      ("Engram fully hidden by async prefetch", dict(engram_hidden=1.0)),
+                      ("drafting half hidden behind the verify", dict(draft_overlap=0.5)),
+                      ("drafting fully hidden (drafter on its own stream)", dict(draft_overlap=1.0)),
+                      ("trim 0.125 (lossy; fails the KL gate)", dict(trim=0.125)),
+                      ("grid8 off (the pre-2026-10-29 kernel)", dict(grid8=False))):
+        rows.append((label, dataclasses.replace(base, **kw)))
+    return [(label, two_node_decode(p)) for label, p in rows]
+
+
 def load_records(path=None):
     import json
     return json.loads(pathlib.Path(path or DATA / "measured_ds41f.json").read_text())
@@ -1194,6 +1297,8 @@ def validate(records=None):
             predicted = r["tok_s"]
         elif rec["kind"] == "runner_decode":
             predicted = runner_decode(RunnerPlan(**rec["plan"]))["tok_s"]
+        elif rec["kind"] == "two_node_decode":
+            predicted = two_node_decode(TwoNodePlan(**rec["plan"]))["tok_s"]
         elif rec["kind"] == "v100_decode":
             predicted = v100_decode(V100Plan(**rec["plan"]))["tok_s"]
         elif rec["kind"] == "runner_prefill":

@@ -267,6 +267,19 @@ def cmd_levers(args):
         print(f"  VRAM left for the expert tier + drafter: {info['vram_for_experts_and_drafter_gib']:.1f} GiB (DSpark drafter {info['drafter_gib']} GiB)")
 
 
+def cmd_two_node(args):
+    base = ds41f.TwoNodePlan(width=args.width, canon_mib=args.canon_mib, trim=args.trim, grid8=not args.no_grid8)
+    print("TR16 + B550, UD-IQ1_S, worker owning 48 GiB, DSpark, calibrated to the ten 2026-10-29 runs "
+          "(tools/sim/data/measured_ds41f_two_node.json; generic `estimate` gives 15.0 plain / 33.2 DSpark for this pair)")
+    for label, o in ds41f.two_node_levers(base):
+        print(f"  {label:<56}{o['tok_s']:6.1f} tok/s  verify {o['verify_ms']:6.1f} ms = experts {o['cpu_ms']:5.1f} + gpu wait {o['g2r_ms']:4.1f} "
+              f"+ engram {o['engram_ms']:4.1f} + head {o['head_ms']:3.1f} + other {o['other_ms']:3.1f}; round {o['round_ms']:6.1f}; "
+              f"tokens/round {o['tokens_per_round']:.2f}; canon hit {o['canon_hit']:.3f}; VRAM free {o['vram_free_gib']:.2f} GiB")
+    print("  residuals against the measured configuration means: exact +2.7 %, grid8 off +6.5 %, trim 0.125 -4.3 %, trim 0.15 +5.3 % "
+          "(individual runs span +/-4.5 %). Hypotheses: widths other than 1 and 5, N, the trim curve outside 0.125-0.15 and canon sizes "
+          "outside 2302-3458 MiB are extrapolations; what-if rows are not measured.")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -279,6 +292,12 @@ def main(argv=None):
         p.set_defaults(func=fn)
     p = sub.add_parser("v100", help="the Strata runner on 2x Tesla V100: decode levers, sessions, long context")
     p.set_defaults(func=cmd_v100)
+    p = sub.add_parser("two-node", help="the measured TR16 + B550 DSpark runner: calibrated decode and what-ifs")
+    p.add_argument("--width", type=int, default=5)
+    p.add_argument("--canon-mib", type=float, default=-1.0)
+    p.add_argument("--trim", type=float, default=0.0)
+    p.add_argument("--no-grid8", action="store_true")
+    p.set_defaults(func=cmd_two_node)
     p = sub.add_parser("levers", help="research levers: V100 decode / prefill and TR16 estimates")
     p.set_defaults(func=cmd_levers)
     p = sub.add_parser("a64fx", help="A64FX node counts, both profiles")

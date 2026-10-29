@@ -1,0 +1,275 @@
+{
+ "source": "experiment/ds41f_tr16_decode/logs/<name>.log, 2026-10-29: 'DS41 profile_prompt_s' (plain width-1 step, ms), 'DS41 profile_s' and 'dspark steps' (verify width 5, seconds / steps -> ms), c_osd 1000-token prompt, 128 generated, DSpark N=5, IQ1_S UD pack, TR16 + B550 over IB, worker owns 48 GiB",
+ "runs": [
+  {
+   "name": "t38_grid8_1_r1",
+   "mode": "exact",
+   "grid8": 1,
+   "canon_mib": 3055.0,
+   "canon_hit": 0.325758,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 33.7966,
+    "g2r": 3.05173,
+    "cpu": 23.9713,
+    "engram": 0.371185,
+    "head": 0.0750515
+   },
+   "w5_ms": {
+    "step": 162.05,
+    "g2r": 53.35,
+    "cpu": 94.18,
+    "engram": 6.62,
+    "head": 2.24
+   },
+   "draft_ms": 27.18,
+   "inject_ms": 0.44,
+   "decode_tok_s": 23.8575,
+   "generated": 128
+  },
+  {
+   "name": "t38_grid8_1_r2",
+   "mode": "exact",
+   "grid8": 1,
+   "canon_mib": 2956.0,
+   "canon_hit": 0.323308,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 33.7386,
+    "g2r": 2.99773,
+    "cpu": 24.0339,
+    "engram": 0.379193,
+    "head": 0.0764
+   },
+   "w5_ms": {
+    "step": 154.29,
+    "g2r": 50.34,
+    "cpu": 89.84,
+    "engram": 6.17,
+    "head": 2.46
+   },
+   "draft_ms": 25.46,
+   "inject_ms": 0.36,
+   "decode_tok_s": 25.1231,
+   "generated": 128
+  },
+  {
+   "name": "t39_validate_r1",
+   "mode": "exact",
+   "grid8": 1,
+   "canon_mib": 3033.0,
+   "canon_hit": 0.325328,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 33.5162,
+    "g2r": 2.9965,
+    "cpu": 23.8285,
+    "engram": 0.389733,
+    "head": 0.0769199
+   },
+   "w5_ms": {
+    "step": 155.46,
+    "g2r": 50.69,
+    "cpu": 91.13,
+    "engram": 6.27,
+    "head": 1.98
+   },
+   "draft_ms": 25.17,
+   "inject_ms": 0.43,
+   "decode_tok_s": 24.9935,
+   "generated": 128
+  },
+  {
+   "name": "t39_validate_r2",
+   "mode": "exact",
+   "grid8": 1,
+   "canon_mib": 3033.0,
+   "canon_hit": 0.325328,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 30.5575,
+    "g2r": 2.8253,
+    "cpu": 21.2798,
+    "engram": 0.364829,
+    "head": 0.0774663
+   },
+   "w5_ms": {
+    "step": 148.52,
+    "g2r": 46.93,
+    "cpu": 88.12,
+    "engram": 6.22,
+    "head": 1.98
+   },
+   "draft_ms": 24.17,
+   "inject_ms": 0.43,
+   "decode_tok_s": 26.1361,
+   "generated": 128
+  },
+  {
+   "name": "t38_grid8_0_r1",
+   "mode": "exact",
+   "grid8": 0,
+   "canon_mib": 3055.0,
+   "canon_hit": 0.325758,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 35.3137,
+    "g2r": 3.07349,
+    "cpu": 25.2088,
+    "engram": 0.36746,
+    "head": 0.0830154
+   },
+   "w5_ms": {
+    "step": 170.68,
+    "g2r": 55.82,
+    "cpu": 100.5,
+    "engram": 6.32,
+    "head": 2.34
+   },
+   "draft_ms": 27.23,
+   "inject_ms": 0.48,
+   "decode_tok_s": 22.8114,
+   "generated": 128
+  },
+  {
+   "name": "t38_grid8_0_r2",
+   "mode": "exact",
+   "grid8": 0,
+   "canon_mib": 3033.0,
+   "canon_hit": 0.325328,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 36.7872,
+    "g2r": 3.04537,
+    "cpu": 26.9379,
+    "engram": 0.368473,
+    "head": 0.077884
+   },
+   "w5_ms": {
+    "step": 176.36,
+    "g2r": 55.4,
+    "cpu": 106.54,
+    "engram": 6.5,
+    "head": 2.2
+   },
+   "draft_ms": 26.93,
+   "inject_ms": 0.37,
+   "decode_tok_s": 22.2235,
+   "generated": 128
+  },
+  {
+   "name": "t40_n5_0125_r1",
+   "mode": "trim0.125",
+   "grid8": 1,
+   "canon_mib": 2302.0,
+   "canon_hit": 0.309653,
+   "steps": 27.0,
+   "tokens_per_step": 4.74074,
+   "w1_ms": {
+    "step": 30.021,
+    "g2r": 2.85926,
+    "cpu": 20.5847,
+    "engram": 0.363309,
+    "head": 0.0712818
+   },
+   "w5_ms": {
+    "step": 130.58,
+    "g2r": 46.73,
+    "cpu": 70.5,
+    "engram": 6.11,
+    "head": 2.13
+   },
+   "draft_ms": 23.04,
+   "inject_ms": 0.36,
+   "decode_tok_s": 30.4605,
+   "generated": 128
+  },
+  {
+   "name": "t40_n5_0125_r2",
+   "mode": "trim0.125",
+   "grid8": 1,
+   "canon_mib": 2302.0,
+   "canon_hit": 0.309653,
+   "steps": 27.0,
+   "tokens_per_step": 4.74074,
+   "w1_ms": {
+    "step": 30.6893,
+    "g2r": 2.84413,
+    "cpu": 21.4435,
+    "engram": 0.364617,
+    "head": 0.0741952
+   },
+   "w5_ms": {
+    "step": 129.95,
+    "g2r": 46.96,
+    "cpu": 69.67,
+    "engram": 6.18,
+    "head": 2.01
+   },
+   "draft_ms": 23.09,
+   "inject_ms": 0.37,
+   "decode_tok_s": 30.5729,
+   "generated": 128
+  },
+  {
+   "name": "t32_trim_0p15_r1",
+   "mode": "trim0.15",
+   "grid8": 1,
+   "canon_mib": 3254.0,
+   "canon_hit": 0.382455,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 34.0385,
+    "g2r": 2.96554,
+    "cpu": 24.4637,
+    "engram": 0.374199,
+    "head": 0.0683841
+   },
+   "w5_ms": {
+    "step": 119.89,
+    "g2r": 49.74,
+    "cpu": 55.54,
+    "engram": 6.43,
+    "head": 1.86
+   },
+   "draft_ms": 26.72,
+   "inject_ms": 0.43,
+   "decode_tok_s": 30.7496,
+   "generated": 128
+  },
+  {
+   "name": "t32_trim_0p15_r2",
+   "mode": "trim0.15",
+   "grid8": 1,
+   "canon_mib": 3254.0,
+   "canon_hit": 0.382455,
+   "steps": 28.0,
+   "tokens_per_step": 4.57143,
+   "w1_ms": {
+    "step": 34.7261,
+    "g2r": 2.9308,
+    "cpu": 25.2273,
+    "engram": 0.365504,
+    "head": 0.0683906
+   },
+   "w5_ms": {
+    "step": 119.06,
+    "g2r": 49.73,
+    "cpu": 55.2,
+    "engram": 6.27,
+    "head": 1.81
+   },
+   "draft_ms": 25.57,
+   "inject_ms": 0.42,
+   "decode_tok_s": 31.1793,
+   "generated": 128
+  }
+ ]
+}
