@@ -1280,6 +1280,117 @@ def two_node_levers(base=None):
     return [(label, two_node_decode(p)) for label, p in rows]
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Two-node whole-expert prefill (resume-ds41f.md): UNCALIBRATED against a two-node run, none exists yet. Anchored on the single-node
+# Strata runner at 8192 tokens on the RX 9070 XT (docs/DS41F_PLAN.md, 2026-10-27/28):
+#   - 15.22 s warm pass with PREFILL_TIMING: attention 1.83 + output projection 1.49 + experts 9.71 (2.66 s of it GPU copy waits), 116.1 GB
+#     crossing the copy stream in 9.28 s (12.5 GB/s); the rest of the pass (Engram, mixers, router) 2.2 s;
+#   - 12.7 s warm pass (645 tok/s, four paired passes 12.65-13.08 s) without that profiling, same prompt and model, no breakdown.
+# A layer-major pass: per layer the trunk (root only), then the FFN over all rows. Expert copies run on their own stream and hide behind the
+# compute only partly: exposed wait = max(0, DMA - f x compute); f = 0.527 from the 15.22 s breakdown (DMA 9.28, compute 12.55, wait 2.66).
+# The 12.7 s pass is explained either by faster compute at the same f ("compute") or by better overlap at the same compute ("overlap", f = 0.727).
+TWO_NODE_PREFILL = dict(
+    prompt=8192,
+    dma_gb=116.1, root_dma_gbps=12.5,        # copy stream bytes and rate of the 15.22 s pass
+    breakdown_s=dict(trunk=5.52, ffn=7.05),   # 1.83 + 1.49 + 2.2 other; experts 9.71 - 2.66 waits
+    wait_s=2.66, target_s=12.7,
+    ib_gbps=2.44,                            # resume-ds41f.md: interconnect around 2.44 GB/s (sim LINKS ib-qdr measured 3.26 on 2026-10-16)
+    worker_dma_gbps=6.84,                    # 5060 Ti on PCIe 3.0 x8: 7.2 GB/s pinned (MiMo study) x 0.95; sim b550() preset says 13.0
+    owned_share=0.445,                       # 6834 of 15360 experts, 48 GiB (UD-IQ1_S, 7.2 MiB each)
+    route_curve=(1.16, 0.545),               # share of routes on the hottest fraction p of experts: 1.16 p^0.545 (GLM-fitted tier curve; hypothesis for DS)
+    q8_bytes_per_value=144 / 128,            # logical block: 16 metadata + 128 quant bytes
+)
+
+
+@dataclasses.dataclass
+class TwoNodePrefillPlan:
+    prompt: int = 8192
+    calibration: str = "compute"        # compute | overlap: how the 12.7 s single-node pass is explained
+    worker_share: float = -1.0          # share of expert bytes executed on the worker; -1 = DMA-balanced, capped by what it owns
+    ib_gbps: float = -1.0
+    worker_dma_gbps: float = -1.0
+    root_dma_gbps: float = -1.0
+    worker_speed: float = 1.0           # worker GPU MMQ speed relative to the root's (hypothesis: equal)
+    trunk_speed: float = 1.0            # what-if: root trunk (attention, output projection, mixers) speedup
+    ffn_speed: float = 1.0              # what-if: expert kernels on both GPUs
+    overlap_f: float = -1.0             # -1 = the calibration's
+    slabs: int = 8                      # row slabs per layer pipelined through quantize/send, worker MMQ, return
+    return_bytes: float = 4.0           # bytes per hidden value in the worker's reply (FP32 partial sums; 2 = FP16)
+    dma_scale: float = 1.0              # what-if: expert bytes copied per pass (e.g. a higher tier hit)
+
+    to_dict = lambda self: dataclasses.asdict(self)
+
+
+def two_node_prefill_base(plan):
+    """Single-node anchor: (trunk_s, ffn_s, f) such that the model reproduces the 12.7 s pass."""
+    c = TWO_NODE_PREFILL
+    d0 = c["dma_gb"] / c["root_dma_gbps"]
+    k_prof = c["breakdown_s"]["trunk"] + c["breakdown_s"]["ffn"]
+    f_prof = (d0 - c["wait_s"]) / k_prof
+    if plan.calibration == "overlap":
+        k, f = k_prof, 1 - (c["target_s"] - d0) / k_prof     # (1-f) K + D = target
+    else:
+        f = f_prof
+        k = (c["target_s"] - d0) / (1 - f)
+    share = c["breakdown_s"]["trunk"] / k_prof
+    return k * share, k * (1 - share), f
+
+
+def two_node_prefill(plan, single=False):
+    c = TWO_NODE_PREFILL
+    trunk, ffn, f = two_node_prefill_base(plan)
+    scale = plan.prompt / c["prompt"]
+    trunk, ffn = trunk * scale / plan.trunk_speed, ffn * scale / plan.ffn_speed
+    if plan.overlap_f >= 0:
+        f = plan.overlap_f
+    layers, hidden = 40, 5120
+    rate_r = plan.root_dma_gbps if plan.root_dma_gbps > 0 else c["root_dma_gbps"]
+    rate_w = plan.worker_dma_gbps if plan.worker_dma_gbps > 0 else c["worker_dma_gbps"]
+    ib = plan.ib_gbps if plan.ib_gbps > 0 else c["ib_gbps"]
+    dma = c["dma_gb"] * scale * plan.dma_scale
+    if single:
+        share = 0.0
+    elif plan.worker_share >= 0:
+        share = min(plan.worker_share, c["owned_share"])
+    else:
+        share = min(c["owned_share"], rate_w / (rate_r + rate_w))
+    a, b = c["route_curve"]
+    q = min(1.0, a * share ** b) if share > 0 else 0.0            # share of the routes on the worker
+    d_root, d_work = dma * (1 - share) / rate_r, dma * share / rate_w
+    f_root, f_work = ffn * (1 - q), ffn * q / plan.worker_speed
+    t_out = plan.prompt * hidden / 128 * 144 / ib / 1e9 * 1e3      # ms per layer, Q8 blocks
+    t_back = plan.prompt * hidden * plan.return_bytes / ib / 1e9 * 1e3
+    n = max(1, plan.slabs)
+    stage = [t_out / n, f_work / layers * 1e3 / n, t_back / n]
+    chain = (sum(stage) + (n - 1) * max(stage)) * 1e-3 if q > 0 else 0.0   # s per layer: pipelined slabs
+    window = trunk + max(f_root, chain * layers)                 # compute the copy stream can hide behind, waits excluded (as in the anchor)
+    wait_r, wait_w = max(0.0, d_root - f * window), max(0.0, d_work - f * window)
+    p = trunk + max(f_root + wait_r, (chain * layers + wait_w) if q > 0 else 0.0)
+    total = p + 0.05                                           # final norm, head and logits for the last position
+    bound = "worker chain" if q > 0 and chain * layers + wait_w > f_root + wait_r else ("root DMA" if wait_r > 0 else "root compute")
+    return dict(tok_s=plan.prompt / total, seconds=total, bound=bound, share=share, route_share=q, trunk_s=trunk, root_ffn_s=f_root,
+                worker_ffn_s=f_work, chain_s=chain * layers, root_dma_s=d_root, worker_dma_s=d_work, root_wait_s=wait_r, worker_wait_s=wait_w,
+                link_out_s=t_out * layers * 1e-3, link_back_s=t_back * layers * 1e-3, overlap_f=f, meets_1200=plan.prompt / total >= 1200)
+
+
+def two_node_prefill_levers(base=None):
+    base = base or TwoNodePrefillPlan()
+    rows = [("single node (the anchor)", None)]
+    rows.append(("two nodes, DMA-balanced share", base))
+    for label, kw in (("IB 3.26 GB/s (the 2026-10-16 measurement)", dict(ib_gbps=3.26)),
+                      ("FP16 worker reply (changes the activation precision of the reduction)", dict(return_bytes=2.0)),
+                      ("16 row slabs", dict(slabs=16)),
+                      ("worker PCIe 12 GB/s (x16 slot or better staging)", dict(worker_dma_gbps=12.0)),
+                      ("worker GPU 1.5x the root's MMQ speed", dict(worker_speed=1.5)),
+                      ("copies fully overlapped (f = 1)", dict(overlap_f=1.0)),
+                      ("trunk 1.5x faster (WMMA attention)", dict(trunk_speed=1.5)),
+                      ("expert kernels 1.5x faster", dict(ffn_speed=1.5)),
+                      ("overlap calibration (12.7 s explained by overlap)", dict(calibration="overlap")),
+                      ("overlap calibration + trunk and experts 1.5x faster", dict(calibration="overlap", trunk_speed=1.5, ffn_speed=1.5))):
+        rows.append((label, dataclasses.replace(base, **kw)))
+    return [(label, two_node_prefill(p if p else base, single=p is None)) for label, p in rows]
+
+
 def load_records(path=None):
     import json
     return json.loads(pathlib.Path(path or DATA / "measured_ds41f.json").read_text())

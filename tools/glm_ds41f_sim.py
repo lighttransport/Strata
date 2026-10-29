@@ -280,6 +280,19 @@ def cmd_two_node(args):
           "outside 2302-3458 MiB are extrapolations; what-if rows are not measured.")
 
 
+def cmd_two_node_prefill(args):
+    base = ds41f.TwoNodePrefillPlan(prompt=args.prompt, calibration=args.calibration)
+    print(f"TR16 (RX 9070 XT) + B550 (RTX 5060 Ti) whole-expert prefill, {args.prompt} tokens, calibration '{args.calibration}'. UNCALIBRATED for two nodes: "
+          "anchored on the single-node 12.7 s / 645 tok/s pass; no two-node prefill has been measured.")
+    for label, o in ds41f.two_node_prefill_levers(base):
+        print(f"  {label:<72}{o['seconds']:6.2f} s {o['tok_s']:6.0f} tok/s  {'MEETS 1200' if o['meets_1200'] else '          '} bound {o['bound']:<12} "
+              f"worker share {o['share']:.2f} (routes {o['route_share']:.2f}); DMA root/worker {o['root_dma_s']:.1f}/{o['worker_dma_s']:.1f} s, "
+              f"waits {o['root_wait_s']:.1f}/{o['worker_wait_s']:.1f}; chain {o['chain_s']:.1f} s; IB out/back {o['link_out_s']:.1f}/{o['link_back_s']:.1f} s")
+    print("  Hypotheses: copy overlap f = 0.527 from the one 15.22 s profiled pass (0.727 under the 'overlap' calibration); worker GPU as fast as the root's; "
+          "route share on the worker = 1.16 p^0.545 of its expert-byte share p (GLM tier curve); worker PCIe 7.2 GB/s x 0.95; IB 2.44 GB/s; only 8192 tokens "
+          "anchored (other prompts scale linearly, attention growth ignored); decode-cache VRAM borrowing, staging-slot limits and cold setup not modeled.")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -298,6 +311,10 @@ def main(argv=None):
     p.add_argument("--trim", type=float, default=0.0)
     p.add_argument("--no-grid8", action="store_true")
     p.set_defaults(func=cmd_two_node)
+    p = sub.add_parser("two-node-prefill", help="two-node whole-expert prefill estimate and levers (uncalibrated for two nodes)")
+    p.add_argument("--prompt", type=int, default=8192)
+    p.add_argument("--calibration", choices=("compute", "overlap"), default="compute")
+    p.set_defaults(func=cmd_two_node_prefill)
     p = sub.add_parser("levers", help="research levers: V100 decode / prefill and TR16 estimates")
     p.set_defaults(func=cmd_levers)
     p = sub.add_parser("a64fx", help="A64FX node counts, both profiles")

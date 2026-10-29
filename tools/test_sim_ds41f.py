@@ -137,6 +137,31 @@ class TwoNodeTest(unittest.TestCase):
         self.assertFalse(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3600.0))["vram_ok"])
 
 
+class TwoNodePrefillTest(unittest.TestCase):
+    def test_anchor_reproduces_single_node(self):
+        for cal in ("compute", "overlap"):
+            o = ds41f.two_node_prefill(ds41f.TwoNodePrefillPlan(calibration=cal), single=True)
+            self.assertAlmostEqual(o["seconds"], 12.7, delta=0.1, msg=cal)
+
+    def test_two_nodes_faster_and_bounded(self):
+        rows = dict(ds41f.two_node_prefill_levers())
+        single, two = rows["single node (the anchor)"], rows["two nodes, DMA-balanced share"]
+        self.assertLess(two["seconds"], single["seconds"])
+        self.assertLessEqual(two["share"], ds41f.TWO_NODE_PREFILL["owned_share"])
+        # no lever beats the DMA-balanced floor of the copy streams
+        floor = ds41f.TWO_NODE_PREFILL["dma_gb"] / (ds41f.TWO_NODE_PREFILL["root_dma_gbps"] + ds41f.TWO_NODE_PREFILL["worker_dma_gbps"])
+        self.assertGreater(two["seconds"], floor)
+
+    def test_levers_directions(self):
+        base = ds41f.TwoNodePrefillPlan()
+        t = lambda **kw: ds41f.two_node_prefill(ds41f.TwoNodePrefillPlan(**kw))["seconds"]
+        self.assertLess(t(ib_gbps=3.26), t())
+        self.assertLess(t(return_bytes=2.0), t())
+        self.assertLess(t(overlap_f=1.0), t())
+        self.assertLess(t(worker_dma_gbps=12.0), t())
+        self.assertEqual(ds41f.two_node_prefill(base)["route_share"] > 0, True)
+
+
 class OrderingTest(unittest.TestCase):
     def test_xeon_faster_than_tr16_two_node_between(self):
         a = ds41f.decode(ds41f.Plan(machine="tr16+b550", pack="iq1s")).tok_s
