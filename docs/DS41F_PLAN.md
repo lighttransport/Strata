@@ -1368,3 +1368,211 @@ best 24.9 tok/s, repeats 21.3-24.9 exact (spread from desktop load on TR16 and o
 trial.sh now waits for quiet nodes). 30 tok/s was not reached: per 6-wide verify pass ~155-170 ms (trunk ~45 ms GPU,
 per layer ~1.4 ms waiting for the worker whose CPU lane at ~27 GB/s is the bound, ~0.5 ms TR16 GPU, ~0.4 ms merge),
 plus ~24 ms drafting per step.
+
+**Pending screens completed (2026-10-29, same two-node configuration, c_osd 1,000 prompt / 128 output).**
+All generated IDs matched the exact greedy reference and every guard reported none:
+
+| Arm | Run 1 tok/s | Run 2 tok/s |
+|---|---:|---:|
+| Baseline controls (first / last) | 20.99 | 22.30 |
+| Shared Q8 | 24.05 | 19.98 |
+| FUSE | 22.68 | 19.88 |
+| Lookup N=4 | 18.54 | 22.45 |
+| Asynchronous Engram | 23.36 | 22.92 |
+
+These screens do not establish a repeatable gain. Worker CPU lane time ranged from 1.53 to 2.58 ms/request.
+Lookup accepted 5 of 24 history-drafted tokens and reduced output per verify step from 4.57 to 4.27.
+Retain the baseline configuration while testing the opt-in direct external merge. Its standalone bitwise test
+passes 48 configurations including local/external routes and asynchronous workers; full-model parity and
+throughput measurements remain pending. The separate HIP executable preserves the original measurement binary.
+
+**Direct-source merge screen (2026-10-29, same hardware/prompt/protocol).** The opt-in
+`STRATA_DS41_MERGE_DIRECT=1` consumes both external buffers in place and omits the intermediate collect.
+Alternating off/on runs: 22.081 / 23.135 and 23.473 / 23.853 tok/s, all IDs exact, guards none.
+Off/on means 22.777 / 23.494 tok/s (+3.1%, two runs per arm, exploratory). Worker CPU time stayed
+1.575–1.576 ms/request; merge time fell 0.628 -> 0.425 and 0.491 -> 0.424 ms/layer call. The timing
+spread prevents a strong speed claim; 25 tok/s is not demonstrated. Full-model byte parity remains pending.
+
+**C++ task baseline (2026-10-29).** DS41 exact configuration generated the strict C++17 `parse_u64` task from
+183 prompt tokens with a 512-token output cap. The fenced implementation compiled with warnings as errors
+and UBSan, then passed the independent oracle's 400,532 cases inside a networkless bwrap namespace.
+Decode was 13.70 tok/s on this task, versus the separate c_osd throughput workload's 22–24 tok/s.
+This validates one generated implementation, not broad coding quality. Candidate comparisons remain pending.
+
+**Direct merge qualification and draft depth (2026-10-29).** Target-only, chunk-5 teacher-forced captures
+on c_osd and c_llama (1,000 positions each) are byte-identical to the all-CPU exact frozen references.
+The first capture attempt retained DSpark settings and was rejected before inference; corrected v2 captures
+omit those settings. HIP and CUDA alternate executables linked with the new lane object (compile/link checks,
+existing remaining objects); CUDA execution and SYCL build remain untested.
+With direct merge on, N=5 controls bracketing N=6 measured 24.196/23.369 tok/s; N=6 measured
+22.447/22.415, all generated IDs exact. N=6 raised output/step 4.571 -> 4.923 but worker CPU time
+1.575 -> 1.832–1.846 ms/request: keep N=5. The last N=5 run completed, but its summary step was
+interrupted by an edit to its live launcher; its original log and exact-ID comparison remain the evidence.
+
+**One-row dense GEMV screen (2026-10-29).** Passed the existing `STRATA_NO_MMVQ_ROWS2=1` through the guard
+without changing its legacy truthiness. With direct merge, N=5 and EXTEND=1, c_osd runs measured
+24.366/23.110 tok/s, all IDs exact, guards none. Mean 23.738 versus nearby two-row controls 23.783:
+no overall gain established. The first profile's output projection improved (~15.3 -> 12.2 ms/pass),
+but other timings and run-to-run spread offset it. Keep the existing launch selection.
+
+**Lossy trimming sweep in progress (2026-10-29, original merge path, same c_osd protocol).**
+CPU_TRIM=0.05: 23.266/23.351 tok/s; 0.10: 24.381/24.462; 0.125: 27.794/26.629.
+All generated IDs match this prompt's exact greedy reference, but trimming is not lossless: routes are omitted.
+At 0.10 the worker CPU lane falls to 1.388–1.389 ms/request; at 0.125 it falls to 1.123 and output/step
+rises 4.571 -> 4.741. The 0.125 arm reports 74.34 dropped routes per generated token across all layers
+and verification attempts. Coding-task and six-prompt quality qualification remain pending; do not promote.
+
+CPU_TRIM=0.15 cleared the c_osd speed screen: 30.750/31.179 tok/s (mean 30.964), same 128 generated IDs
+as exact greedy, guards none. Worker CPU 0.697–0.698 ms/request, 146.94 routes dropped per generated token
+across layers and verification attempts. This is an unqualified lossy result: C++ task grading and six-prompt
+prediction metrics are the next checks. Matching greedy IDs on this prompt is not proof of losslessness.
+
+**Register merge (2026-10-29).** `STRATA_DS41_MERGE_VECTOR=1` with direct merge retains four SSE vectors across
+routes instead of repeatedly reading/writing y. Separate multiply and add, FMA disabled. CPU microbenchmark:
+7.513 -> 4.110 ms for 2,000 six-route, 5,120-wide collects (cache-warm diagnostic, not decode timing).
+96 synthetic configurations pass bitwise, including mixed local/external routes, sync/async and tails.
+Full-model logits are byte-identical on both 1,000-position C++ references. HIP/CUDA alternate executables
+compile and link with the new host object and existing other objects; CUDA execution remains untested.
+Two vector off/on pairs: 23.392/23.814 and 23.928/24.317 tok/s, all IDs exact, guards none (~1.7% mean gain).
+
+The subsequent `t33_no_timing` pair (25.478/23.561 tok/s, exact) still had profiling: this switch is enabled
+by presence, so `=0` does not disable it. Preserve that legacy shape. Separate production controls omit the
+switch entirely and verify the GPU phase profile is absent. Repeated 25 tok/s lossless remains unverified.
+
+## External optimization reference: 64 GB RAM and one 16 GB GPU (checked 2026-10-29)
+
+The highest matching DeepSeek-V4.1-Flash-1017 result found in this web search was Siege-Ladder's
+author-reported **23–24.7 tok/s fast preset**. This is a custom llama.cpp research engine, not stock Strata;
+it has not been reproduced here. It is a reference for possible optimizations, not a B550 forecast or a
+lossless result. Sources: [repository and reproduction recipe](https://github.com/MasherDon/Siege-Ladder),
+[measurement method](https://github.com/MasherDon/Siege-Ladder/blob/main/docs/measuring.md).
+
+| Siege-Ladder setup / measurement | Author's report |
+|---|---|
+| Hardware | RTX 5070 Ti 16 GB, Ryzen 5 7600, 64 GB DDR5, Windows 11 |
+| Storage | Gen5 NVMe ~13.5 GB/s plus Gen4 NVMe ~5 GB/s holding duplicate expert files |
+| Model | IQ2_XS gate/up, Q2_K down, Q5_K dense; fast preset uses lighter IQ2_XXS gate/up |
+| Short-context default / fast | 20.3 / 23–24.7 tok/s |
+| Actual agent turns, 2–27K context | 17–20 tok/s |
+| 256K / 512K context | 16–20 tok/s |
+
+Headline decode uses 3,072 teacher-forced tokens, ABBA order and drive-stall corrections; it is distinct from
+free generation. Defaults include approximations. The author reports HumanEval 157/164 versus API 158/164;
+this does not establish equivalence to our numerical gates. Memory tiers hold 43–46 GiB in pinned RAM and
+about 23 experts/layer in VRAM. Changes include balancing reads across drives, two-layer expert prediction,
+fewer host wake-ups and omitting uncached experts below 14% routing weight.
+
+**Experiments suggested for our engine (hypotheses, not measured gains):**
+
+- Measure SSD bytes per generated token and cache misses weighted by routing frequency. Missing capacity alone
+  does not predict missing traffic; the earlier 2–5 tok/s standalone estimate was too narrow.
+- Test predictive expert reads separately from route omission. Record prediction precision, recall, wasted
+  transfers and exposed I/O wait, and require byte parity for the read-ahead-only arm.
+- Profile host wake-ups and PCIe copies before adopting GPU staging. Siege-Ladder's GPU computes the experts;
+  our CPU lane changes the trade-off. Compare total token time, not an isolated transfer benchmark.
+- Evaluate route omission as an explicitly lossy arm with our C++ task and six-prompt quality checks. Its
+  reported threshold is not interchangeable with our CPU_TRIM setting.
+
+The 5070 Ti and dual-drive storage differ materially from the B550's 5060 Ti and DDR4. These results show
+that 64 GB RAM does not itself impose a 2–5 tok/s ceiling; they do not establish 20+ tok/s on the B550.
+No matching result above 24.7 tok/s was found in this search; this is not an exhaustive record claim.
+A separate [5070 Ti report](https://www.reddit.com/r/LocalLLM/comments/1xfdb1o/my_experience_with_5070ti_and_strata/)
+was excluded because its machine has 128 GB RAM. Qwen Flash-Next measurements are a different model and are
+also excluded from this DeepSeek comparison.
+
+**Profiling-free exact validation (2026-10-29, same two-node c_osd 1,000/128 workload).**
+`DECODE_TIMING` is presence-enabled; setting it to zero still profiles. A separate environment snapshot omits
+it and the launcher unsets it. With direct/vector merge, 14 host threads measured 23.4334/23.1597 tok/s,
+versus 22.4561/23.398 with 16. Selected 14; independent runs measured 23.3178/25.0237. All token IDs matched
+the exact reference and guards reported none, but the independent pair does not establish sustained 25 tok/s.
+The 183/512 C++ task measured 17.5194 tok/s, generated exactly the prior exact task's token IDs, and passed
+all 400,532 cases with fatal UBSan. This is a different generation workload.
+
+A block-major IQ1_S gate/up tile (16 rows, widths at least three) passed bitwise CPU parity across four seeds,
+widths 1–8, clamp/separate-up cases and partial row ranges. On one pinned TR1950X core, H=5120, FF=2304,
+16 experts/172 MB, six tokens and seven repetitions, original gate/up medians were 7.776/7.799 ms and tiled
+7.904/7.854 ms. Rejected and removed the engine prototype; this was a CPU microbenchmark, not a decode speedup.
+
+**Opt-in IQ1_S pre-scaled grid candidate (2026-10-29, not yet a decoder result).**
+`STRATA_IQ1S_GRID8=1` prepares 2,048 64-bit grid entries on first dispatch, multiplying each byte by eight
+modulo 256. This retains a 16 KiB lookup footprint and removes three byte additions per unpack. The default
+uses the original grid and dispatch. A C11 strict-one environment helper reads the switch; initialization
+uses `call_once` after the CPU dispatch guard. Gate/up and down dots retain their integer and float order.
+On one pinned TR1950X core, H=5120, FF=2304, 16 experts, nine repetitions, six-token gate/up medians were
+8.042/8.017 ms disabled versus 7.627/7.574 ms enabled; one-token medians were 2.841/2.890 versus 2.608/2.346 ms.
+These are exploratory CPU measurements on a shared system. Synthetic bitwise gate/up parity passed across
+four seeds, widths 1–8, clamp/separate-up cases and row guards. HIP and CUDA alternate decoders linked, as
+did an alternate CUDA worker, with original executables preserved. Full-model parity and decoder timing
+are queued; CUDA decoder GPU execution and SYCL are untested.
+
+**Worker prefetch controls (2026-10-29, profiling-free exact path, same hardware/workload).**
+2048-byte prefetch measured 22.2165/24.0684 tok/s; zero measured 23.2545/23.7609; 4096 measured
+24.4817/22.0782. All token IDs matched and guards reported none. Worker CPU time stayed 1.575–1.595 ms/request,
+so these results do not establish a prefetch gain. Retain the default. Deferred the not-yet-started 32-thread
+and lower-trim trials to prioritize full-model validation of the pre-scaled IQ1_S grid.
+
+Grid8 full-model validation completed with the switch disabled and enabled on both nodes: c_osd and c_llama,
+1,000 teacher-forced positions each, all logits byte-identical to the frozen exact references in all four captures.
+The original executable builds were kept intact. Two profiling-free decode pairs measured disabled
+22.8114/22.2235 versus enabled 23.8575/25.1231 tok/s (means 22.5175/24.4903, +8.76%). All generated IDs matched
+and guards reported none. Worker CPU time fell consistently from 1.580/1.576 to 1.435/1.434 ms/request.
+The shared desktop's merge wait also varied; do not attribute the whole end-to-end difference to the kernel.
+Independent throughput validation and the C++ task remain pending. The candidate has one run above 25 tok/s,
+while the two-run mean remains below 25.
+
+The first grid8 C++ generation stopped before grading: the live guard measured 2,676,707,328 bytes free,
+just below the 2.5 GiB physical-VRAM floor. No OOM or GPU fault was reported. This is an interrupted run,
+not a quality or throughput result. The retry requests a 2,304 MiB canonical cache to add headroom; the
+physical floor is unchanged. Subsequent lossy speed and quality tests use that same smaller cache for a controlled comparison.
+Correction: canonical offload does not change trim eligibility here; trimming is decided for the logical
+CPU-expert set before canonical offload. The prior/current trim-0.125 c_osd captures are byte-identical.
+
+The smaller-cache grid8 C++ retry completed: 512 output tokens identical to the exact baseline, all 400,532
+cases passed with fatal UBSan, guard none, minimum free VRAM 3,801,755,648 bytes. Its 15.7042 tok/s is a coding
+task result with a 2,304 MiB cache, not a matched comparison with the 3,328 MiB decode controls. Reducing the
+worker to eight threads was slower: 19.5799 tok/s and 2.625 ms/request CPU time, versus about 1.435 with 16.
+All tokens matched and the guard was clear. Reject eight threads. The existing drafter-only `DSPARK_Q8` option
+is next under evaluation on this workload; older measurements on a different node do not qualify it here.
+
+**Independent exact validation (same c_osd 1,000/128 configuration).** After retaining 16 worker threads,
+independent grid8 runs measured 24.9935/26.1361 tok/s, mean 25.5648. All generated IDs matched and guards
+reported none. Including the earlier two grid-on controls, all four runs average 25.02755 tok/s. The requested
+25 tok/s mean is reached on this workload; the shared-desktop range is 23.8575–26.1361, not a 25 tok/s floor.
+The 32-thread worker did not improve its CPU time (1.451 versus about 1.435 ms/request), so retain 16.
+Drafter-Q8 off measured 24.1652/23.9803 versus on 25.0199/23.8798; all IDs and acceptance matched, but
+average draft time did not improve reliably and the predeclared minimum-run check failed. Retain Q8 off.
+
+## Two-node DSpark decode, calibrated to the 2026-10-29 runs
+
+`python3 tools/glm_ds41f_sim.py two-node` (`ds41f.two_node_decode`, constants `TWO_NODE`, data `tools/sim/data/measured_ds41f_two_node.json`, four
+`two_node_decode` rows in `measured_ds41f.json`). The generic `estimate` gave 15.0 tok/s plain and 33.2 with DSpark for TR16 + B550; the runner measured
+25.0 (exact) and 30.5 (trim 0.125). The measured breakdown at verify width 5 is 90 ms of expert pass (flat ~37 ms per union unit x non-canonical share,
+no width gain), ~50 ms GPU-to-router wait, 6 ms Engram, plus ~25 ms drafting per round and 4.65 tokens per round. The calibrated model reproduces the
+configuration means within +2.7 % (exact), +6.5 % (grid8 off), -4.4 % (trim 0.125), +5.3 % (trim 0.15); single runs span +/-4.5 %.
+
+What-ifs (not measured, with drafting overlap now charged for contention on the shared GPU): see `python3 tools/glm_ds41f_sim.py two-node` and
+`sensitivity`. The expert pass and the drafting/GPU-wait overlap are the levers that matter; the canonical-tier size is not (a 425 MiB larger tier adds ~0.2 tok/s).
+
+### Two-node prefill model (uncalibrated for two nodes)
+`ds41f.two_node_prefill` / `glm_ds41f_sim.py two-node-prefill`: anchored on the single-node 8K pass (12.7 s, 645 tok/s; the 15.22 s profiled pass gives the
+copy-stream overlap f = 0.527). Measured 2026-10-29: the B550's 5060 Ti sustains 14.38 GB/s H2D (PCIe 4.0 x8; the 7.2 GB/s assumption was wrong); the root
+9070 XT averaged 9.6 GB/s (peaks 14.3; 12.5 in the profiled pass). With those rates the default two-node design models at ~1,209 tok/s (6.78 s), bound by the
+worker's chain; if the root only manages 9.6 GB/s, 1,098; under the alternative calibration (12.7 s explained by overlap) 727. No two-node prefill run exists.
+
+### Research-driven 2x decode plan and what-ifs (simulator, 2026-10-29)
+Targets: 50 tok/s lossless, 60 under the strict gate (KL <= 0.08, C++ top-1 >= 97 %). Plan: `~/.claude/plans/research-web-throughoutly-and-cosmic-music.md`
+(literature: async/pipelined drafting, draft/lookahead expert prefetch, union-aware verification, expert deferral, graphs/megakernels, row-interleaved CPU kernels).
+Levers added to the model, all hypotheses: `draft_overlap`/`draft_place`, `prefetch_share`, `sync_merge_scale`, `cpu_speed`, `gpu_wait_scale`, `engram_hidden`,
+`deferral`, plus three derived from the decoder source: `stagger_split` (verify as two sub-windows so the second one's attention overlaps the first one's experts),
+`root_steal` (the root lane takes worker tier misses; needs the root lane's busy ms per layer, unmeasured) and the drafter on the worker GPU. Cumulative lossless
+stack 61.2 tok/s, 64 % chance of >= 50 over my lever ranges; with deferral 77 (42 % of >= 60). Caveats: the 25 tok/s "exact" runs set
+`STRATA_DS41_VERIFY_FAST_TRUNK=1`, which the refined gate records as failing (96.2 % agreement), so the baseline is token-exact on the test prompts but not
+bitwise in the trunk; expert deferral exists in `ds41_decode.cpp` (`DEFER_RANK`/`DEFER_ALL`) but is disabled on the remote path.
+
+### Without the RX 9070 XT (amdgpu faults), measured pieces and model
+No end-to-end run: the worker needs a CUDA device and the B550 has neither the model nor a CUDA DS41 decoder. Measured with the 9070 XT untouched
+(`tools/sim/data/measured_ds41f_cpu_gpu_bench.json`): CPU lane proxy (`iq1s_w1a8_bench`) B550 24.0 / TR16 17.0 GB/s at width 1 (TR16/B550 0.71, 0.58 at width 4);
+5060 Ti canonical IQ1_S kernel 53 / 42 GB/s (gate-up / down, 6-token window; 105 for one token), the bit-identical candidate in `kbench/cand.cuh` 72 / 59 (the
+simulator had assumed 235). `glm_ds41f_sim.py no-root-gpu` (decoder on the 5060 Ti, lanes on both CPUs) reproduces today's expert phase (90.7 vs 88-91 ms) and
+predicts 22.6 tok/s for the layout (25.7 today), capacity-bound by the two lanes and a ~49 GB/s GPU tier; the faster/tensor-core canonical kernel and the 1.0 ms
+per-layer overhead are the levers (what-ifs up to ~45 tok/s with every lever).
