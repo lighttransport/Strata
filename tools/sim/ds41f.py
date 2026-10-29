@@ -1197,6 +1197,11 @@ TWO_NODE = dict(
     first_step_ms=30.5,           # the plain step that produces the first generated token (profile_prompt_s step, width 1)
     hit_ref=(2302.0, 0.3097, 0.1816),   # canonical-tier hit h = 0.3097 (MiB / 2302) ^ 0.1816, from 2302 MiB (0.3097) and 3033 MiB (0.3253)
     trim_cut_ref=(0.125, 0.232, 2.64),  # CPU expert time removed by STRATA_DS41_CPU_TRIM t: 0.232 (t / 0.125) ^ 2.64, from t = 0.125 and 0.15 (0.375)
+    sync_merge_share=0.41,        # of the per-layer root<->worker time: gpu_sync 0.557 + merge 0.312 of 2.14 ms per layer call (remote_own_decode, 10 runs)
+    deferral_factor=0.5,          # hypothesis: deferring half of the experts by one layer hides that half behind the next layer's GPU work (KT: up to 1.45x)
+    prefetch_expert_mib=7.03,     # one UD-IQ1_S expert
+    tier_gbps=235.0,              # GPU tier kernel rate (sim Gpu.tier_gbps, 5060 Ti class)
+    link_gbps=(9.6, 14.38),       # root (sustained, 2026-10-29) / worker PCIe rates measured this session
     vram_free_ref=(3033.0, 3130449920.0),   # minimum free VRAM at 3033 MiB loaded; each loaded MiB costs one MiB
     vram_floor_bytes=2.5 * GIB,
     canon_loaded_mib_default=3033.0,    # what a 3328 MiB request loads on the desktop as of 2026-10-29 (3254 on an earlier day)
@@ -1213,6 +1218,10 @@ class TwoNodePlan:
     cpu_speed: float = 1.0               # what-if: expert-pass speedup (worker kernel / threads)
     draft_overlap: float = 0.0           # what-if: share of the drafting time hidden behind the verify
     engram_hidden: float = 0.0           # what-if: share of the Engram time hidden (async)
+    prefetch_share: float = 0.0          # what-if: share of the CPU-evaluated expert work moved to the GPU tiers by lookahead uploads (bounded by the links)
+    gpu_wait_scale: float = 1.0          # what-if: multiplier on the GPU-to-router wait (graphs, fused 5-token attention)
+    sync_merge_scale: float = 1.0        # what-if: multiplier on the root<->worker sync + merge share of the expert pass
+    deferral: float = 0.0                # what-if (lossy, must pass the gate): KT-style expert deferral, share of min(experts, GPU wait) overlapped
     generated: int = 128
     acceptance: str = ""                 # "" = the fitted profile
 
@@ -1247,9 +1256,18 @@ def two_node_decode(plan):
     union = routing.union_ratio(w, 384, 6)
     cut = two_node_trim_cut(plan.trim)
     cpu = c["cpu_ms_per_union"] * union * (1 - hit) * (1 - cut) * (1.0 if plan.grid8 else c["grid8_off_factor"]) / plan.cpu_speed
+    cpu *= 1 - (1 - plan.sync_merge_scale) * c["sync_merge_share"]
+    misses_layer = 6 * union * (1 - hit) * (1 - cut)                  # CPU-evaluated expert-layers per layer
+    period_ms = (lerp(c["g2r_ms"]) + cpu + lerp(c["engram_ms"]) + c["other_ms"]) / 40.0   # per layer, before the prefetch change
+    capacity = sum(c["link_gbps"]) * 1e9 * period_ms * 1e-3 / (c["prefetch_expert_mib"] * 2 ** 20)   # experts both links can upload per layer period
+    moved = min(plan.prefetch_share * misses_layer, capacity) if w > 1 else 0.0
+    cpu *= 1 - (moved / misses_layer if misses_layer else 0.0)
+    gpu_extra = moved * 40 * c["prefetch_expert_mib"] * 2 ** 20 / (c["tier_gbps"] * 1e9) * 1e3   # the moved experts run on the GPU tiers, un-overlapped (conservative)
     g2r, engram, head = lerp(c["g2r_ms"]) + c["g2r_per_cpu_ms"] * cpu * frac, lerp(c["engram_ms"]) * (1 - plan.engram_hidden), lerp(c["head_ms"])
-    verify = g2r + cpu + engram + head + c["other_ms"]
-    out = dict(width=w, canon_hit=hit, cpu_ms=cpu, g2r_ms=g2r, engram_ms=engram, head_ms=head, other_ms=c["other_ms"], verify_ms=verify,
+    g2r *= plan.gpu_wait_scale
+    saved = plan.deferral * c["deferral_factor"] * min(cpu, g2r) if w > 1 else 0.0
+    verify = g2r + cpu + engram + head + c["other_ms"] - saved + gpu_extra
+    out = dict(width=w, canon_hit=hit, prefetch_moved=moved, prefetch_capacity=capacity, deferral_saved_ms=saved, cpu_ms=cpu, g2r_ms=g2r, engram_ms=engram, head_ms=head, other_ms=c["other_ms"], verify_ms=verify,
                vram_free_gib=two_node_vram_free_gib(mib), vram_ok=two_node_vram_free_gib(mib) * GIB >= c["vram_floor_bytes"])
     if w == 1:
         out.update(step_ms=verify, tok_s=1e3 / verify, tokens_per_round=1.0, draft_ms=0.0, round_ms=verify)
@@ -1262,6 +1280,24 @@ def two_node_decode(plan):
     total = c["first_step_ms"] + rounds * round_ms
     out.update(tokens_per_round=tokens, draft_ms=draft, round_ms=round_ms, rounds=rounds, step_ms=verify, tok_s=plan.generated / total * 1e3)
     return out
+
+
+def two_node_roadmap(base=None):
+    """The cumulative stacks of the 2x plan (lossless 50 / gated-lossy 60). Hypothetical: every lever except the measured base is a what-if."""
+    base = base or TwoNodePlan()
+    steps = [("measured exact", {}),
+             ("+ async drafting (90 % hidden)", dict(draft_overlap=0.9)),
+             ("+ lookahead expert prefetch (40 % of CPU expert work to the GPU tiers)", dict(prefetch_share=0.4)),
+             ("+ merge/sync halved (GPU merge, batched request)", dict(sync_merge_scale=0.5)),
+             ("+ repacked IQ1_S rows (expert kernel 15 % faster)", dict(cpu_speed=1.15)),
+             ("+ GPU wait x0.7 (graphs, fused 5-token attention)", dict(gpu_wait_scale=0.7)),
+             ("+ Engram hidden", dict(engram_hidden=1.0)),
+             ("+ expert deferral (lossy tier; must pass the gate)", dict(deferral=1.0))]
+    acc, rows = {}, []
+    for label, kw in steps:
+        acc.update(kw)
+        rows.append((label, two_node_decode(dataclasses.replace(base, **acc))))
+    return rows
 
 
 def two_node_levers(base=None):

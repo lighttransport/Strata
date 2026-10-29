@@ -275,6 +275,10 @@ def cmd_two_node(args):
         print(f"  {label:<56}{o['tok_s']:6.1f} tok/s  verify {o['verify_ms']:6.1f} ms = experts {o['cpu_ms']:5.1f} + gpu wait {o['g2r_ms']:4.1f} "
               f"+ engram {o['engram_ms']:4.1f} + head {o['head_ms']:3.1f} + other {o['other_ms']:3.1f}; round {o['round_ms']:6.1f}; "
               f"tokens/round {o['tokens_per_round']:.2f}; canon hit {o['canon_hit']:.3f}; VRAM free {o['vram_free_gib']:.2f} GiB")
+    print("\n  Roadmap to 2x (cumulative what-ifs, docs: plan 'research-driven 2x decode'; lossless 50 / gated-lossy 60):")
+    for label, o in ds41f.two_node_roadmap(base):
+        print(f"  {label:<76}{o['tok_s']:6.1f} tok/s  round {o['round_ms']:6.1f} ms (experts {o['cpu_ms']:5.1f}, gpu {o['g2r_ms']:4.1f}, draft {o['draft_ms']:4.1f}); "
+              f"prefetch {o['prefetch_moved']:.1f}/{o['prefetch_capacity']:.1f} experts per layer")
     print("  residuals against the measured configuration means: exact +2.7 %, grid8 off +6.5 %, trim 0.125 -4.3 %, trim 0.15 +5.3 % "
           "(individual runs span +/-4.5 %). Hypotheses: widths other than 1 and 5, N, the trim curve outside 0.125-0.15 and canon sizes "
           "outside 2302-3458 MiB are extrapolations; what-if rows are not measured.")

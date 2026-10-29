@@ -132,6 +132,21 @@ class TwoNodeTest(unittest.TestCase):
         self.assertGreater(rows["worker + local expert kernels 15 % faster"]["tok_s"], base)
         self.assertLess(rows["grid8 off (the pre-2026-10-29 kernel)"]["tok_s"], base)
 
+    def test_roadmap_monotone_and_bounded(self):
+        rows = ds41f.two_node_roadmap()
+        speeds = [o["tok_s"] for _, o in rows]
+        self.assertEqual(speeds, sorted(speeds))
+        self.assertAlmostEqual(speeds[0], ds41f.two_node_decode(ds41f.TwoNodePlan())["tok_s"], places=6)
+        for _, o in rows:
+            self.assertLessEqual(o["prefetch_moved"], o["prefetch_capacity"] + 1e-9)
+        self.assertGreater(speeds[-2], 50.0)      # the lossless stack of the plan
+        self.assertGreater(speeds[-1], 60.0)      # with deferral
+
+    def test_prefetch_capacity_limits(self):
+        o = ds41f.two_node_decode(ds41f.TwoNodePlan(prefetch_share=1.0))
+        self.assertLess(o["prefetch_moved"], 6 * 3.585)
+        self.assertEqual(o["prefetch_moved"], o["prefetch_capacity"])
+
     def test_vram_floor(self):
         self.assertTrue(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3033.0))["vram_ok"])
         self.assertFalse(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3600.0))["vram_ok"])
