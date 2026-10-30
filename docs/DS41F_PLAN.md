@@ -1045,7 +1045,7 @@ the pass width, and the trunk's tiles are swapped in and out of them (h, x, coef
   on HIP - so the HIP attention is the CUDA-core tiled kernel. `STRATA_DS41_ATTN_V1=1` (the older batched kernel) is not
   a path: with FP16 caches it faults.
 
-**The gfx12 WMMA attention port (designed, not written).** The reference is `~/work/gemm/pixal3d/rdna4` on this card:
+**The gfx12 WMMA attention port (designed, not written).** The reference is the local RDNA4 GEMM reference on this card:
 gfx12 has the WMMA builtin `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(A, B, C)` (wave32; lane l -> half = l/16,
 id = l%16; A[i] = A[id][half*8+i], B[i] = B[half*8+i][id], C[i] = C[half*8+i][id]), and its FA2 port measures
 **37 TF/s** for an f16 flash attention at head_dim 128 (19.5 % of the 190 TF/s microbench peak) with an LDS XOR swizzle
@@ -1560,7 +1560,7 @@ copy-stream overlap f = 0.527). Measured 2026-10-29: the B550's 5060 Ti sustains
 worker's chain; if the root only manages 9.6 GB/s, 1,098; under the alternative calibration (12.7 s explained by overlap) 727. No two-node prefill run exists.
 
 ### Research-driven 2x decode plan and what-ifs (simulator, 2026-10-29)
-Targets: 50 tok/s lossless, 60 under the strict gate (KL <= 0.08, C++ top-1 >= 97 %). Plan: `~/.claude/plans/research-web-throughoutly-and-cosmic-music.md`
+Targets: 50 tok/s lossless, 60 under the strict gate (KL <= 0.08, C++ top-1 >= 97 %). Plan: the local research notes;
 (literature: async/pipelined drafting, draft/lookahead expert prefetch, union-aware verification, expert deferral, graphs/megakernels, row-interleaved CPU kernels).
 Levers added to the model, all hypotheses: `draft_overlap`/`draft_place`, `prefetch_share`, `sync_merge_scale`, `cpu_speed`, `gpu_wait_scale`, `engram_hidden`,
 `deferral`, plus three derived from the decoder source: `stagger_split` (verify as two sub-windows so the second one's attention overlaps the first one's experts),
@@ -1758,3 +1758,59 @@ worker's CPU work: aggregate ~ 1 / (worker routes per layer x ~0.3 ms x 40). 66 
 - Larger pinned level (3000 MiB kept + 10.5 GB worker-owned, 1045 experts fetched in 6 s, 32-slot ring, tier 6000 MiB, ADAPT, SYNC_SPIN), S=48: 57.9 tok/s, hit 0.61, worker 42 routes (was 44-46), B550 lane 70.
   The pinned experts cover a shrinking share of the cold routes (the tail is flat), so both CPU lanes stay at ~15 ms per layer: the same plateau.
 - B550 lane with SMT siblings (28 threads, helpers on CPUs 30,31): 56.2 tok/s, lane busy 505 ms per pass (unchanged), as for the worker (28 threads +2 %): the IQ1_S/IQ2_XXS row kernels are port/uop-bound per core, SMT adds nothing on either CPU.
+
+## 8n. Prefill on the reversed layout (B550 5060 Ti + TR16 CPU worker), Stage 0 measurements (2026-10-30)
+
+Today's prefill is ~37 tok/s (prompt chunks of 120-256 tokens run on the CPU lanes). Goal: 700+ tok/s for 16K-32K prompts. Plan: the local research notes; model: `glm_ds41f_sim.py prefill-cpuworker`.
+
+**GPU ceiling without the worker** (`experiment/ds41f_tr16_decode/pf0.sh`: the B550 decoder alone, `STRATA_DS41_STAGE_SKIP=1` so the stager threads never read the sparse shards, owned experts' bytes are garbage;
+timing of trunk / PCIe / MMQ is real; 12,000-token prompt):
+
+| pass tokens | tok/s | note |
+|---:|---:|---|
+| 2048 (6 passes) | 152.6 | per pass 12.6 s: attention 4.5 s, experts 6.1 s (copy stream 8.03 s for 116.1 GB at 14.45 GB/s, hidden), kv_index 0.3-1.4 s |
+| 4096 | 246.3 | |
+| 12000 (`PREFILL_HALVES=1 PREFILL_TILE=2048`) | **363.7** | sum 32.5 s = 2.71 ms/token: attention 1.00, experts 0.85 (MMQ ~0.65 + copy waits 0.19), kv_index 0.31, out 0.36, q 0.11, pre/router/tail 0.09 |
+| 8192 without halves, 16384 / 20480 / 24576 with halves | VRAM refusal | ~0.5 MB of pass-wide buffers per token on top of the 6.3 GB trunk: limit ~15.5K tokens |
+
+- **The bound on this pair is the 5060 Ti's non-expert work, not the link**: 2.71 ms/token => ~370 tok/s at any pass size. 700 tok/s needs <= 1.43 ms/token; the attention kernel (FP32 tiled, ~1.5 TFLOP/s achieved) is the biggest term.
+- **IB**: raw RDMA write (`ib_write_bw`, 4 MiB messages) 31.5 Gb/s = 3.94 GB/s each way on port 1; ucomm achieved 2.44 GB/s on 2026-10-29. Port 2 of the cards is not connected between the nodes (the test connects by LID but moves no data).
+  The ~74-79 GB of owned experts per pass cost 32 s at 2.44 GB/s, 20 s at 3.94, 15 s with keep 46 GB at the raw rate.
+- Model with hypothetical speedups (attention 5x, indexer 2x, q/out/mixers 2x, MMQ 1.5x) plus the raw link rate and keep 46 GB: 697 (12K prompt) to 822 tok/s (15.8K); with the ucomm rate it stays IB-bound near 480.
+- **Hazard found**: reading the zero holes of the sparse tmpfs shards through the shared mapping materializes their pages; the first probe filled `/dev/shm` (52 GB) and the kernel killed the decoder. `pf0.sh` sets `PIN_GB=0 POPULATE=0 STAGE_SKIP=1` and watches `/dev/shm`; the shards were re-fed (`NO_DSPARK=1 KEEP_MIB=34000 rev_node.sh feed`).
+
+### 8n, GPU kernels (2026-10-30): tensor-core prefill attention
+
+`attn_mma_kernel` in `src/kernels/cuda/ds41.cu` (`STRATA_DS41_ATTN_MMA=1`, CUDA sm_80+, FP32 or FP16 compressed cache): FlashAttention-style, block (token, 16 heads), 8 warps, Q and each 32-row key/value tile as FP16 in shared memory,
+S = Q K^T and O += P V with `mma.sync.m16n8k16` (FP32 accumulation), the 16 x 512 output accumulator in registers (rescaled in place by the online softmax), 16 gather loads per thread issued before use and the next tile's loads
+issued before the current tile's math. Standalone bench (`experiment/ds41f_tr16_decode/attnbench/attn_bench.cu`, includes the kernel file; 5060 Ti, 64 heads x 512, 128 window rows + 512 selected, vs the tiled FP32 kernel):
+
+| version | us / token-layer | speedup | rel L2 error |
+|---|---:|---:|---:|
+| tiled FP32 (production) | 43 | 1 | - |
+| first mma kernel (synchronous gathers) | 15 | 2.9x | 3.0e-4 |
+| + register prefetch of the next tile | 9.0-9.5 | 4.5-4.9x | 3.0e-4 (FP16 cache 2.3e-4) |
+
+In the timing harness (pf0.sh; 12,000-token pass, `PREFILL_HALVES=1 PREFILL_TILE=2048`): attention 11.97 -> 3.0 s, **363.7 -> 497.6 tok/s** (1.97 ms/token: experts 0.85, out 0.36, kv_index 0.31, attn 0.25, q 0.11).
+At 4,000 tokens (one pass, 8 s of PCIe copies): 247 -> 323 tok/s; with `STRATA_DS41_KV=f16 STRATA_DS41_INDEX_GEMM=1 STRATA_DS41_INDEX_GEMM_MIN=64` the indexer halves (690 -> 335 ms), 327 tok/s (copy-bound at that size).
+`nsys` kernel summary of a 4,000-token pass (before the mma kernel): attention 43 %, expert MMQ (IQ1_S + IQ2_XXS) 19 %, FP16 dense GEMMs + Q6_K dequant 12 %, indexer 5 %, hc_post / rms_norm / half_cast / scatter_axpy ~10 %.
+Not yet checked end to end: the FP16 rounding of Q, K/V and P in the attention against the FP32 path (logits after a real streamed prefill; needs Stage 1).
+
+### 8n, Stage 1: GPU-streamed prefill with the worker's experts over IB (2026-10-30)
+
+New (all opt-in): worker `--stream-port=P` (+ `--stream-cpu`), decoder `STRATA_DS41_OWN_STREAM=HOST:P` (`own_fetch()` thread, `StreamItem` runs of `order_[l]`): a streamed prompt pass (`STRATA_DS41_STREAM_MIN`, `PROMPT_BATCH`) takes the kept experts from the local shards
+(stager threads) and asks the worker for the others as a list of expert ids (tag 60 header {layer, n}, 61 ids, 62 one message per expert), received by `ucomm_irecv` straight into their positions of the pinned host slot (registered).
+`connect_own` no longer refuses a streamed chunk when the stream link is set. `experiment/ds41f_tr16_decode/pf1.sh` runs it (fresh worker, `STREAM=1`).
+
+Correctness: a 4000-token prompt then 16 greedy tokens are identical to the CPU-lane prefill of the same prompt (streamed with the default FP32 attention; with `ATTN_MMA=1` the 16 tokens of the 12,000-token prompt are the same on every run).
+
+| 4000-token prompt, one 4096 pass | prompt tok/s | note |
+|---|---:|---|
+| CPU lanes (today's reversed layout) | 37 | |
+| stream, unregistered worker rows | 90 | worker `ucomm_send` registers each 7.5 MB expert on the fly |
+| rows registered once (74 GB) | 66-102 | worker sends at 3.9 GB/s but scattered reads out of a 74 GB registered region cost the HCA translation: bench `ucbench/stream_pattern`: 2 GB region 3.47 GB/s, 30 GB 1.19, 30 GB with THP 2.68 |
+| experts copied by 4 helper threads into a 24-blob registered staging ring, sent from there | **151** | worker send 3.3 GB/s |
+
+12,000-token prompt, `PROMPT_BATCH=12288 PREFILL_HALVES=1 PREFILL_TILE=2048 ATTN_MMA=1`: **329 tok/s**, 344 with `STAGE_HOST_SLOTS=24` (pass 35 s: GPU phases 29.6 s of which the expert phase 16.8 s incl. stalls on the stream; the worker idles
+~11 s waiting for requests, so GPU compute (~1.7-2.0 ms/token) and the 79.6 GB stream (~25 s at 3.2 GB/s) are now about equally binding). Run-to-run spread is +-8 %. `LANE_SLEEP=1` on both sides: 317 (no gain).
+Hazards/lessons: a shared mapping of a sparse tmpfs shard materializes read holes (never let a streamed pass read the kept-less experts; `STAGE_SKIP` for timing probes); the library itself streams 3.94 GB/s (`ucomm_bench`), raw RDMA read 3.94 GB/s from either NUMA node.

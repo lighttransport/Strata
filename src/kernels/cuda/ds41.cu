@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <stdexcept>
+#include <type_traits>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>   // (hip_compat's under HIP)
 #if defined(__CUDACC__) && !defined(__HIP_PLATFORM_AMD__)
@@ -946,6 +947,191 @@ __global__ void __launch_bounds__(128) attn_wmma_kernel(const float* q, int head
 #endif
 }
 #endif
+
+#ifdef STRATA_DS41_WMMA
+// ---- STRATA_DS41_ATTN_MMA=1: batched attention on tensor cores with mma.sync (sm_80+), FlashAttention-style.
+// Block (token, 16-head group), 8 warps. Q (16 x 512) and each 32-row key/value tile (K = V) sit in shared memory as FP16;
+// S = Q K^T: warp w takes the 8-row column tile (w % 4) over half (w / 4) of the 512 dims (m16n8k16, FP32 accumulation), the two
+// halves are added through shared memory; the online softmax (FP32, sink at the end like the tiled kernel) writes P as FP16;
+// O += P V: warp w owns dims 64 w .. 64 w + 63 for the whole row loop, its 16 x 64 accumulator in registers (rescaled in place by the
+// softmax factors), so the output never goes through shared memory. Inputs are rounded to FP16 (Q, K/V, P); everything else FP32.
+constexpr int kMG = 16, kMR = 32, kMD = 512, kMQS = kMD + 8, kMPS = kMR + 8, kMSS = kMR + 4;
+constexpr size_t kMmaShared = size_t(kMG * kMQS + kMR * kMQS + kMG * kMPS) * 2 + size_t(2 * kMG * kMSS) * 4;
+__device__ inline uint32_t smem_u32(const void* p) { return static_cast<uint32_t>(__cvta_generic_to_shared(p)); }
+__device__ inline void ldsm_x4(uint32_t& a, uint32_t& b, uint32_t& c, uint32_t& d, const void* p) {
+    asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];" : "=r"(a), "=r"(b), "=r"(c), "=r"(d) : "r"(smem_u32(p)));
+}
+__device__ inline void ldsm_x2(uint32_t& a, uint32_t& b, const void* p) {
+    asm volatile("ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%0,%1}, [%2];" : "=r"(a), "=r"(b) : "r"(smem_u32(p)));
+}
+__device__ inline void ldsm_x2_t(uint32_t& a, uint32_t& b, const void* p) {
+    asm volatile("ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%0,%1}, [%2];" : "=r"(a), "=r"(b) : "r"(smem_u32(p)));
+}
+__device__ inline void mma16816(float* c, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t b0, uint32_t b1) {
+    asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};"
+                 : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3]) : "r"(a0), "r"(a1), "r"(a2), "r"(a3), "r"(b0), "r"(b1));
+}
+template <class CT>
+__global__ void __launch_bounds__(256) attn_mma_kernel(const float* q, int heads, const float* window, int ring, const int4* info,
+        const CT* comp, int comp_stride, const int* sel, int sel_stride, const float* sinks, float scale, float* out) {
+#if __CUDA_ARCH__ >= 800
+    extern __shared__ __align__(16) unsigned char msm[];
+    half* qs = reinterpret_cast<half*>(msm);            // [16][kMQS]
+    half* ks = qs + kMG * kMQS;                         // [32][kMQS]: keys = values
+    half* ps = ks + kMR * kMQS;                         // [16][kMPS]
+    float* sb = reinterpret_cast<float*>(ps + kMG * kMPS);   // [2][16][kMSS]: the two k halves of S
+    __shared__ float m_run[kMG], l_run[kMG], fac[kMG];
+    const int t = blockIdx.x, h0 = blockIdx.y * kMG, th = threadIdx.x, warp = th / 32, lane = th % 32;
+    const int4 in = info[t];
+    const int first = in.x, wrows = in.y, rows = in.y + in.z;
+    const int* tsel = sel ? sel + size_t(t) * size_t(sel_stride) : nullptr;
+    const float4* qt = reinterpret_cast<const float4*>(q + (size_t(t) * heads + h0) * kMD);
+    for (int i = th; i < kMG * kMD / 4; i += 256) {
+        const float4 v = qt[i];
+        const int h = i / (kMD / 4), c4 = i % (kMD / 4);
+        half2* d = reinterpret_cast<half2*>(qs + h * kMQS + 4 * c4);
+        d[0] = __floats2half2_rn(v.x, v.y);
+        d[1] = __floats2half2_rn(v.z, v.w);
+    }
+    if (th < kMG) { m_run[th] = -INFINITY; l_run[th] = 0.0f; }
+    float oacc[8][4];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) { oacc[j][0] = oacc[j][1] = oacc[j][2] = oacc[j][3] = 0.0f; }
+    __syncthreads();
+    const int nt = warp % 4, kh = warp / 4;
+    // the tile's rows are gathered 16 float4 per thread: row 2u + th/128 of the tile, columns 4 (th % 128) ..; all loads of a tile are issued before
+    // any is used, and the next tile's are issued before this tile's math (registers: 16 x 4 words)
+    using BufT = std::conditional_t<sizeof(CT) == 4, float4, uint2>;   // FP32 cache: float4; FP16 cache: four halves (window rows converted on the way in)
+    BufT buf[16];
+    auto gather = [&](int r0) {
+        const int rbase = r0 + th / 128, c4 = th % 128;
+        int idx[16];
+#pragma unroll
+        for (int u = 0; u < 16; ++u) {
+            const int rr = rbase + 2 * u;
+            idx[u] = rr < wrows ? -1 : (rr < rows ? tsel[rr - wrows] : -2);
+        }
+#pragma unroll
+        for (int u = 0; u < 16; ++u) {
+            const int rr = rbase + 2 * u;
+            if constexpr (sizeof(CT) == 4) {
+                float4 v = make_float4(0.f, 0.f, 0.f, 0.f);
+                if (rr < wrows) v = *reinterpret_cast<const float4*>(window + size_t((first + rr) % ring) * kMD + 4 * c4);
+                else if (idx[u] >= 0) v = *reinterpret_cast<const float4*>(comp + size_t(idx[u]) * comp_stride + 4 * c4);
+                buf[u] = v;
+            } else {
+                uint2 v = make_uint2(0u, 0u);
+                if (rr < wrows) {
+                    const float4 w4 = *reinterpret_cast<const float4*>(window + size_t((first + rr) % ring) * kMD + 4 * c4);
+                    const half2 lo = __floats2half2_rn(w4.x, w4.y), hi = __floats2half2_rn(w4.z, w4.w);
+                    v.x = *reinterpret_cast<const uint32_t*>(&lo);
+                    v.y = *reinterpret_cast<const uint32_t*>(&hi);
+                } else if (idx[u] >= 0) {
+                    v = *reinterpret_cast<const uint2*>(comp + size_t(idx[u]) * comp_stride + 4 * c4);
+                }
+                buf[u] = v;
+            }
+        }
+    };
+    auto store = [&]() {
+        const int rl = th / 128, c4 = th % 128;
+#pragma unroll
+        for (int u = 0; u < 16; ++u) {
+            half2* d = reinterpret_cast<half2*>(ks + (rl + 2 * u) * kMQS + 4 * c4);
+            if constexpr (sizeof(CT) == 4) {
+                d[0] = __floats2half2_rn(buf[u].x, buf[u].y);
+                d[1] = __floats2half2_rn(buf[u].z, buf[u].w);
+            } else {
+                *reinterpret_cast<uint2*>(d) = buf[u];
+            }
+        }
+    };
+    gather(0);
+    for (int r0 = 0; r0 < rows; r0 += kMR) {
+        store();
+        if (r0 + kMR < rows) gather(r0 + kMR);
+        __syncthreads();
+        {   // S partial: 8 rows (nt) over dims [kh 256, kh 256 + 256)
+            float sc[4] = {0.f, 0.f, 0.f, 0.f};
+#pragma unroll 4
+            for (int k = kh * 256; k < kh * 256 + 256; k += 16) {
+                uint32_t a0, a1, a2, a3, b0, b1;
+                ldsm_x4(a0, a1, a2, a3, qs + (lane % 16) * kMQS + k + (lane / 16) * 8);
+                ldsm_x2(b0, b1, ks + (nt * 8 + lane % 8) * kMQS + k + ((lane / 8) % 2) * 8);
+                mma16816(sc, a0, a1, a2, a3, b0, b1);
+            }
+            float* dst = sb + kh * (kMG * kMSS);
+            const int rr = lane / 4, cc = nt * 8 + (lane % 4) * 2;
+            dst[rr * kMSS + cc] = sc[0];
+            dst[rr * kMSS + cc + 1] = sc[1];
+            dst[(rr + 8) * kMSS + cc] = sc[2];
+            dst[(rr + 8) * kMSS + cc + 1] = sc[3];
+        }
+        __syncthreads();
+        if (th < 128) {   // online softmax: 8 threads per head, 4 columns each
+            const int h = th / 8, c0 = (th % 8) * 4;
+            float sv[4], mt = -INFINITY;
+#pragma unroll
+            for (int j = 0; j < 4; ++j) {
+                const int c = c0 + j;
+                sv[j] = r0 + c < rows ? (sb[h * kMSS + c] + sb[kMG * kMSS + h * kMSS + c]) * scale : -INFINITY;
+                mt = fmaxf(mt, sv[j]);
+            }
+            for (int o = 4; o; o /= 2) mt = fmaxf(mt, __shfl_xor_sync(0xffffffffu, mt, o, 8));
+            const float mo = m_run[h], mn = fmaxf(mo, mt);
+            const float f = mo == -INFINITY ? 0.0f : expf(mo - mn);
+            float sum = 0;
+#pragma unroll
+            for (int j = 0; j < 4; ++j) {
+                const float e = sv[j] == -INFINITY ? 0.0f : expf(sv[j] - mn);
+                ps[h * kMPS + c0 + j] = __float2half(e);
+                sum += e;
+            }
+            for (int o = 4; o; o /= 2) sum += __shfl_xor_sync(0xffffffffu, sum, o, 8);
+            __syncwarp();
+            if (th % 8 == 0) { l_run[h] = l_run[h] * f + sum; m_run[h] = mn; fac[h] = f; }
+        }
+        __syncthreads();
+        {   // O (16 x 64 per warp) = fac O + P V
+            const float f0 = fac[lane / 4], f1 = fac[lane / 4 + 8];
+#pragma unroll
+            for (int j = 0; j < 8; ++j) { oacc[j][0] *= f0; oacc[j][1] *= f0; oacc[j][2] *= f1; oacc[j][3] *= f1; }
+#pragma unroll
+            for (int kk = 0; kk < kMR; kk += 16) {
+                uint32_t a0, a1, a2, a3;
+                ldsm_x4(a0, a1, a2, a3, ps + (lane % 16) * kMPS + kk + (lane / 16) * 8);
+#pragma unroll
+                for (int j = 0; j < 8; ++j) {
+                    uint32_t b0, b1;
+                    ldsm_x2_t(b0, b1, ks + (kk + lane % 16) * kMQS + warp * 64 + j * 8);
+                    mma16816(oacc[j], a0, a1, a2, a3, b0, b1);
+                }
+            }
+        }
+        __syncthreads();
+    }
+    float* ot = out + (size_t(t) * heads + h0) * kMD;
+    const int h_lo = lane / 4, h_hi = lane / 4 + 8;
+    float s_lo, s_hi, m_lo, m_hi;
+    {
+        const float sink_lo = sinks[h0 + h_lo], sink_hi = sinks[h0 + h_hi];
+        const float ml = m_run[h_lo], mh = m_run[h_hi];
+        const float Ml = fmaxf(ml, sink_lo), Mh = fmaxf(mh, sink_hi);
+        const float fl = ml == -INFINITY ? 0.0f : expf(ml - Ml), fh = mh == -INFINITY ? 0.0f : expf(mh - Mh);
+        s_lo = fl / (l_run[h_lo] * fl + expf(sink_lo - Ml));
+        s_hi = fh / (l_run[h_hi] * fh + expf(sink_hi - Mh));
+        m_lo = 0.f; m_hi = 0.f;
+    }
+    (void) m_lo; (void) m_hi;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+        const int d = warp * 64 + j * 8 + (lane % 4) * 2;
+        *reinterpret_cast<float2*>(ot + h_lo * kMD + d) = make_float2(oacc[j][0] * s_lo, oacc[j][1] * s_lo);
+        *reinterpret_cast<float2*>(ot + h_hi * kMD + d) = make_float2(oacc[j][2] * s_hi, oacc[j][3] * s_hi);
+    }
+#endif
+}
+#endif  // STRATA_DS41_WMMA (mma kernel)
 
 // an FP16 cache value (IEEE half bits) as float
 __device__ inline float h2f(uint16_t h) {
@@ -2308,6 +2494,25 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
                 q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, comp_rows, sinks, scale, out,
                 wmma12_optimized, bounds_error);
         check("attention wmma gfx12");
+        return;
+    }
+#endif
+#ifdef STRATA_DS41_WMMA
+    static const bool mma = std::getenv("STRATA_DS41_ATTN_MMA") && std::string(std::getenv("STRATA_DS41_ATTN_MMA")) == "1";
+    if (mma && !v1 && dim == kMD && heads % kMG == 0) {
+        static bool configured = false;
+        if (!configured) {
+            cudaFuncSetAttribute(attn_mma_kernel<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(kMmaShared));
+            cudaFuncSetAttribute(attn_mma_kernel<uint16_t>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(kMmaShared));
+            configured = true;
+        }
+        if (comp_half)
+            attn_mma_kernel<uint16_t><<<dim3(unsigned(tokens), unsigned(heads / kMG)), 256, kMmaShared, (cudaStream_t)stream>>>(
+                q, heads, window, ring, reinterpret_cast<const int4*>(info), reinterpret_cast<const uint16_t*>(comp), comp_stride, sel, sel_stride, sinks, scale, out);
+        else
+            attn_mma_kernel<float><<<dim3(unsigned(tokens), unsigned(heads / kMG)), 256, kMmaShared, (cudaStream_t)stream>>>(
+                q, heads, window, ring, reinterpret_cast<const int4*>(info), comp, comp_stride, sel, sel_stride, sinks, scale, out);
+        check("attention mma");
         return;
     }
 #endif

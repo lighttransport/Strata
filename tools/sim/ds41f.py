@@ -1756,6 +1756,89 @@ def two_node_prefill_levers(base=None):
     return [(label, two_node_prefill(p if p else base, single=p is None)) for label, p in rows]
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Prefill on the reversed layout: the decoder on the B550 (RTX 5060 Ti), a CPU-only worker on the TR16 owning every expert the B550 does not keep.
+# The experts the B550 does not hold must cross the IB link once per PASS (a pass touches every expert), so a pass of N tokens costs
+# max(IB bytes / link rate, PCIe bytes / H2D rate, N x GPU ms per token) and a prompt of P tokens takes ceil(P / N) of them. Nothing here is measured on
+# this pair yet (docs/DS41F_PLAN.md 8n): the constants are the 2026-10-29 link and PCIe measurements and the 9070 XT single-node anchor (12.7 s per 8192 tokens).
+PREFILL_CPUWORKER = dict(
+    total_gb=116.1,            # bytes streamed per pass at 8K on the single node (all experts, 256-byte padded items); 108 GB of experts + padding
+    experts_gb=108.0,          # the node-independent expert bytes the keep size is measured against
+    pcie_gbps=14.38,           # B550 host to its 5060 Ti (sustained, 2026-10-29)
+    ib_gbps=3.94,              # MEASURED 2026-10-30, ib_write_bw 4 MiB messages B550 <-> TR16 port 1: 31.5 Gb/s each way (port 2 is not connected between the nodes)
+    ib_efficiency=0.62,        # ucomm's 2.44 GB/s (the figure of the 2026-10-29 sessions) over the raw 3.94; a pipelined whole-expert stream may reach more (Stage 0(b))
+    gpu_ms_per_token=(1.97, 1.53),   # MEASURED 2026-10-30 on the B550's 5060 Ti (12,000-token pass, PREFILL_HALVES) with STRATA_DS41_ATTN_MMA=1: 1.97 ms/token, split below; before the tensor-core attention: 2.71 (attn 0.997)
+    gpu_split_ms=dict(attn=0.250, experts=0.850, kv_index=0.314, out=0.358, q=0.111, pre=0.040, router=0.017, tail=0.029),   # per token at 12K; kv_index grows with the context (INDEX_GEMM + KV=f16 halves it)
+    startup_s=0.3,             # first layer's fetch, last layer's compute, head
+    vram_gb=15.9, trunk_gb=6.3, reserve_gb=0.6, slots_gb=1.1, per_token_kb=500.0,   # pass-size limit with PREFILL_HALVES (tile 2048): 12,000 tokens ran, 16,384 and 20,480 failed on VRAM (alloc probe: h_ + h2_ 160 KB, rope tables 72, 560 + 520 MiB tables, ...)
+)
+
+
+@dataclasses.dataclass
+class CpuWorkerPrefillPlan:
+    prompt: int = 24576
+    pass_tokens: int = 24576          # tokens per layer-major pass (capped by VRAM below)
+    keep_gb: float = 34.0             # experts resident on the B550 (the feed's KEEP_MIB)
+    links: int = 1                    # IB links the stream is striped over
+    ib_gbps: float = -1.0
+    ib_efficiency: float = -1.0
+    gpu_ms_per_token: float = -1.0    # -1: the 'compute' calibration (0.88 ms)
+    gpu_speed: float = 1.0            # everything on the GPU faster by this factor
+    attn_speed: float = 1.0           # the prefill attention kernel (tensor cores)
+    expert_speed: float = 1.0         # the expert MMQ products
+    index_speed: float = 1.0          # the indexer scoring
+    other_speed: float = 1.0          # q / out / mixers / tail
+    pcie_gbps: float = -1.0
+    max_pass: int = 0                 # what-if: the VRAM-limited pass size (0 = the measured layout's limit)
+
+    to_dict = lambda self: dataclasses.asdict(self)
+
+
+def cpuworker_prefill_max_pass():
+    c = PREFILL_CPUWORKER
+    return int((c["vram_gb"] - c["trunk_gb"] - c["reserve_gb"] - c["slots_gb"]) * 1e6 / c["per_token_kb"])
+
+
+def cpuworker_prefill(plan):
+    c = PREFILL_CPUWORKER
+    ib = (plan.ib_gbps if plan.ib_gbps > 0 else c["ib_gbps"]) * (plan.ib_efficiency if plan.ib_efficiency > 0 else c["ib_efficiency"]) * plan.links
+    pcie = plan.pcie_gbps if plan.pcie_gbps > 0 else c["pcie_gbps"]
+    sp = c["gpu_split_ms"]
+    if plan.gpu_ms_per_token > 0:
+        ms = plan.gpu_ms_per_token / plan.gpu_speed
+    else:
+        ms = (sp["attn"] / plan.attn_speed + sp["experts"] / plan.expert_speed + sp["kv_index"] / plan.index_speed +
+              (sp["out"] + sp["q"] + sp["pre"] + sp["router"] + sp["tail"]) / plan.other_speed) / plan.gpu_speed
+    n = max(1, min(plan.pass_tokens, plan.prompt, plan.max_pass if plan.max_pass > 0 else cpuworker_prefill_max_pass()))
+    owned_gb = c["total_gb"] * max(0.0, 1.0 - plan.keep_gb / c["experts_gb"])
+    ib_s, pcie_s = owned_gb / ib, c["total_gb"] / pcie
+    total, left, bound = 0.0, plan.prompt, ""
+    while left > 0:
+        tok = min(n, left)
+        gpu_s = tok * ms * 1e-3
+        t = max(ib_s, pcie_s, gpu_s) + c["startup_s"]
+        if not bound:
+            bound = max((ib_s, "IB link"), (pcie_s, "PCIe"), (gpu_s, "GPU compute"))[1]
+        total += t
+        left -= tok
+    return dict(tok_s=plan.prompt / total, seconds=total, bound=bound, passes=-(-plan.prompt // n), pass_tokens=n, ib_s=ib_s, pcie_s=pcie_s,
+                gpu_s=n * ms * 1e-3, owned_gb=owned_gb, meets_700=plan.prompt / total >= 700)
+
+
+def cpuworker_prefill_table(prompts=None, **kw):
+    cap = cpuworker_prefill_max_pass()
+    prompts = prompts or (8192, 12000, cap, 2 * cap)
+    rows = []
+    more = dict(index_speed=2.0, other_speed=1.5, expert_speed=1.3)
+    for label, over in (("measured GPU (1.97 ms/token, mma attention), ucomm IB, keep 34 GB", {}),
+                        ("+ raw IB rate (3.94 GB/s), keep 46 GB", dict(ib_efficiency=1.0, keep_gb=46.0)),
+                        ("indexer 2x, q/out/mixers 1.5x, expert MMQ 1.3x (ucomm IB, keep 34)", more),
+                        ("... + raw IB rate, keep 46 GB", dict(more, ib_efficiency=1.0, keep_gb=46.0)),
+                        ("... + pass limit raised to 24K tokens", dict(more, ib_efficiency=1.0, keep_gb=46.0, max_pass=24576))):
+        rows.append((label, [(p, cpuworker_prefill(CpuWorkerPrefillPlan(prompt=p, pass_tokens=p, **dict(kw, **over)))) for p in prompts]))
+    return rows
+
+
 def load_records(path=None):
     import json
     return json.loads(pathlib.Path(path or DATA / "measured_ds41f.json").read_text())

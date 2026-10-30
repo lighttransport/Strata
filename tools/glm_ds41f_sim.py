@@ -296,6 +296,19 @@ def cmd_rev_sessions(args):
           "so batching does not amortize the expert pass; it is the lever to cut.")
 
 
+def cmd_prefill_cpuworker(args):
+    c = ds41f.PREFILL_CPUWORKER
+    print("Reversed layout prefill (B550 5060 Ti decoder, TR16 CPU worker), tok/s for a prompt of P tokens in layer-major passes. GPU split measured on the 5060 Ti "
+          f"2026-10-30 ({c['gpu_ms_per_token'][0]} ms/token at 12K with the tensor-core attention); IB: raw {c['ib_gbps']} GB/s, ucomm {c['ib_gbps'] * c['ib_efficiency']:.2f}; PCIe {c['pcie_gbps']} GB/s; "
+          f"largest pass that fits 16 GB: {ds41f.cpuworker_prefill_max_pass()} tokens (PREFILL_HALVES). The speed-ups are hypotheses.")
+    cap = ds41f.cpuworker_prefill_max_pass()
+    prompts = (8192, 12000, cap, 2 * cap)
+    print("  " + " " * 56 + "".join(f"{p:>8d}" for p in prompts))
+    for label, cells in ds41f.cpuworker_prefill_table(prompts):
+        print(f"  {label:<56}" + "".join(f"{r['tok_s']:>8.0f}{'*' if r['meets_700'] else ' '}" for _, r in cells) + "  bound: " + cells[-1][1]["bound"])
+    print("  (* = at least 700 tok/s)")
+
+
 def cmd_two_node_prefill(args):
     base = ds41f.TwoNodePrefillPlan(prompt=args.prompt, calibration=args.calibration)
     print(f"TR16 (RX 9070 XT) + B550 (RTX 5060 Ti) whole-expert prefill, {args.prompt} tokens, calibration '{args.calibration}'. UNCALIBRATED for two nodes: "
@@ -364,6 +377,8 @@ def main(argv=None):
     p = sub.add_parser("rev-sessions", help="reversed layout: plain batched decode of S sessions, aggregate tok/s and what-if scales")
     p.add_argument("--nt-marginal", type=float, default=0.5)
     p.set_defaults(func=cmd_rev_sessions)
+    p = sub.add_parser("prefill-cpuworker", help="reversed layout prefill: IB-bound model of the B550 + TR16 CPU worker")
+    p.set_defaults(func=cmd_prefill_cpuworker)
     p = sub.add_parser("two-node-prefill", help="two-node whole-expert prefill estimate and levers (uncalibrated for two nodes)")
     p.add_argument("--prompt", type=int, default=8192)
     p.add_argument("--calibration", choices=("compute", "overlap"), default="compute")

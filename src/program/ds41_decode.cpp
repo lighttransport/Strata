@@ -2620,6 +2620,13 @@ public:
         return static_cast<float*>(h);
     }
     ~Decoder() {
+        if (ost_comm_) {
+            const int32_t end[4] = {-1, 0, 0, 0};
+            (void)ucomm_send(ost_comm_, 1, 60, end, sizeof end);
+            for (auto* mr : ost_mrs_) ucomm_mr_dereg(mr);
+            ucomm_finalize(ost_comm_);
+            ost_comm_ = nullptr;
+        }
         adapt_stop();
         promote_stop();
         // the promotions' uploader first: its queued copies read the mapped experts unmapped below
@@ -5074,7 +5081,7 @@ private:
         const auto& c = cfg_;
         namespace net = strata::net;
         if (!remote_addr_.empty() || peer_ || ram_copy_ || stage_cpu_expert_ || fl_ != c.ff || !ram_pos_.empty() || !packed_.empty() ||
-            chunk_ >= stream_min_ || c.top_k < 1 || c.top_k > 16)
+            (chunk_ >= stream_min_ && !(std::getenv("STRATA_DS41_OWN_STREAM") && *std::getenv("STRATA_DS41_OWN_STREAM"))) || c.top_k < 1 || c.top_k > 16)
             throw std::invalid_argument("ds41: STRATA_DS41_REMOTE_OWN needs plain CPU routing with lane prompt passes (no remote TP, peer, "
                                         "RAM copy, staging, packed copy or streamed prompt chunks)");
         const char* profile = std::getenv("STRATA_DS41_REMOTE_OWN_PROFILE");
@@ -5263,6 +5270,18 @@ private:
             promote_start(std::atoi(v), addr);
         }
         if (const char* v = std::getenv("STRATA_DS41_CANON_ADAPT"); v && std::atoi(v) > 0) adapt_start(std::atoi(v), std::getenv("STRATA_DS41_OWN_FETCH"));
+        // STRATA_DS41_OWN_STREAM=HOST:PORT (the worker's --stream-port): a streamed prompt pass receives the worker-owned experts of each item over this link,
+        // straight into the pinned host slots (the kept ones are copied from the local shards as before)
+        if (const char* v = std::getenv("STRATA_DS41_OWN_STREAM"); v && *v) {
+            ucomm_config scfg;
+            ucomm_config_default(&scfg);
+            scfg.rank = 0;
+            scfg.world = 2;
+            scfg.root_addr = v;
+            if (!std::getenv("UCOMM_TIMEOUT_MS")) scfg.timeout_ms = 0;
+            Remote::ok(ucomm_init(&scfg, &ost_comm_), "stream connect");
+            std::cerr << "DS41 own_stream connected " << v << "\n";
+        }
     }
     void canon_enqueue(int l, int T, int K, const std::vector<int32_t>& entries, const std::vector<int>& gstart,
                        const std::vector<std::pair<int, int>>& groups) {
@@ -5422,6 +5441,11 @@ private:
     std::vector<int32_t> canon_ids_now_;
     // STRATA_DS41_REMOTE_OWN: whole experts owned by a remote worker (STD2), per layer x expert
     std::unique_ptr<Remote> own_remote_;
+    ucomm_t* ost_comm_ = nullptr;            // STRATA_DS41_OWN_STREAM: the worker's owned experts for streamed prompt passes
+    std::vector<ucomm_mr_t*> ost_mrs_;       // the pinned host slots registered on it
+    std::thread own_fetcher_;
+    int own_staged_ = 0;                     // streamed items whose worker-owned experts have arrived (like staged_ for the kept ones)
+    double own_fetch_s_ = 0, own_fetch_gb_ = 0, own_slot_wait_s_ = 0, own_post_s_ = 0, own_first_s_ = 0;
     std::vector<uint8_t> own_;
     // STRATA_DS41_OWN_PROMOTE=N (with STRATA_DS41_OWN_FETCH=HOST:PORT, a strata-ds41-cpu-worker --fetch-port): up to N experts the worker owns
     // that the routes keep asking for are fetched over ucomm into this node's mapped model files (the hole of an expert the model
@@ -6101,6 +6125,7 @@ private:
         produced_ = 0;
         consumed_ = 0;
         staged_ = 0;
+        own_staged_ = 0;
         dma_issued_ = 0;
         fetched_ = 0;
         rdma_issued_ = 0;
@@ -6110,6 +6135,12 @@ private:
         for (int idx = 0; idx < int(items_.size()); ++idx)
             if (!pinned_layer_[size_t(items_[size_t(idx)].layer)]) unpinned_.push_back(idx);
         if (!unpinned_.empty() && hring_.empty()) alloc_hring();
+        if (ost_comm_ && ost_mrs_.empty())
+            for (uint8_t* h : hring_) {
+                ucomm_mr_t* mr = nullptr;
+                if (ucomm_mr_reg(ost_comm_, h, slot_bytes_, &mr) == UCOMM_OK) ost_mrs_.push_back(mr);
+            }
+        if (ost_comm_ && !hring_.empty() && ost_mrs_.size() != hring_.size()) std::cerr << "DS41 own_stream: only " << ost_mrs_.size() << " of " << hring_.size() << " host slots registered\n";
         if (std::getenv("STRATA_DS41_COPY_PROBE")) {   // the staging copy alone, before the pass: GB/s
             for (int l = 0; l < c.layers; ++l) {
                 if (pinned_layer_[size_t(l)]) continue;
@@ -6133,6 +6164,7 @@ private:
         if (peer_frac_ > 0) peer_->stream_begin();
         producer_ = std::thread([this] { unpin_helper(); produce(); });
         stager_ = std::thread([this] { unpin_helper(); stage(); });
+        if (ost_comm_ && !unpinned_.empty()) own_fetcher_ = std::thread([this] { unpin_helper(); own_fetch(); });
         if (remote_ && !remote_gpu_) fetcher_ = std::thread([this] { unpin_helper(); fetch(); });
     }
     void stream_end() {
@@ -6143,6 +6175,77 @@ private:
         producer_.join();
         if (stager_.joinable()) stager_.join();
         if (fetcher_.joinable()) fetcher_.join();
+        if (own_fetcher_.joinable()) {
+            own_fetcher_.join();
+            std::cerr << "DS41 own_fetch GB=" << own_fetch_gb_ << " fetch_s=" << own_fetch_s_ << " GB/s=" << (own_fetch_s_ > 0 ? own_fetch_gb_ / own_fetch_s_ : 0.0)
+                      << " slot_wait_s=" << own_slot_wait_s_ << " post_s=" << own_post_s_ << " first_msg_wait_s=" << own_first_s_ << "\n";
+            own_fetch_gb_ = own_fetch_s_ = own_slot_wait_s_ = own_post_s_ = own_first_s_ = 0;
+        }
+    }
+    // The worker-owned experts of each unpinned item, in the order of the items: one request (layer, ids) on the stream link, one message per expert received
+    // straight into its position of the item's pinned host slot.
+    void own_fetch() {
+        const auto& c = cfg_;
+        const int N = int(unpinned_.size());
+        // STRATA_DS41_OWN_STREAM_DEPTH (2): items whose requests are out at once (the worker answers them in order, so the link never waits for a request)
+        static const int depth = std::getenv("STRATA_DS41_OWN_STREAM_DEPTH") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_OWN_STREAM_DEPTH"))) : 2;
+        struct Flight { int u; std::vector<ucomm_req_t*> rx; double bytes; std::chrono::steady_clock::time_point t0; };
+        std::deque<Flight> flying;
+        int posted = 0, done = 0;
+        auto slot_free = [&](int u) {   // the host slot's previous item (u - hslots_) has been DMAed
+            if (u < hslots_) return true;
+            std::lock_guard<std::mutex> lock(sm_);
+            return stop_stream_ || dma_issued_ >= u - hslots_ + 1;
+        };
+        auto post = [&](int u) {
+            const StreamItem& it = items_[size_t(unpinned_[size_t(u)])];
+            const int hs = u % hslots_;
+            if (u >= hslots_) cudaEventSynchronize(ev_dma_[size_t(hs)]);
+            const size_t eb = expert_bytes(it.layer);
+            std::vector<int32_t> want;
+            std::vector<int> pos;
+            for (int j = 0; j < it.n; ++j) {
+                const int e = order_[size_t(it.layer)][size_t(it.first + j)];
+                if (!own_.empty() && own_[size_t(it.layer) * c.experts + size_t(e)]) { want.push_back(e); pos.push_back(j); }
+            }
+            Flight f{u, {}, double(want.size()) * double(eb) / 1e9, std::chrono::steady_clock::now()};
+            if (!want.empty()) {
+                for (size_t i = 0; i < want.size(); ++i) {
+                    ucomm_req_t* r = nullptr;
+                    Remote::ok(ucomm_irecv(ost_comm_, 1, 62, hring_[size_t(hs)] + size_t(pos[i]) * it.stride, eb, &r), "stream receive");
+                    f.rx.push_back(r);
+                }
+                const int32_t hdr[4] = {it.layer, int32_t(want.size()), 0, 0};
+                Remote::ok(ucomm_send(ost_comm_, 1, 60, hdr, sizeof hdr), "stream request");
+                Remote::ok(ucomm_send(ost_comm_, 1, 61, want.data(), want.size() * 4), "stream ids");
+            }
+            flying.push_back(std::move(f));
+        };
+        while (done < N) {
+            while (posted < N && int(flying.size()) < depth && slot_free(posted)) post(posted++);
+            if (flying.empty()) {   // nothing out: wait for the slot of the next item
+                std::unique_lock<std::mutex> lock(sm_);
+                scv_.wait(lock, [&] { return stop_stream_ || posted < hslots_ || dma_issued_ >= posted - hslots_ + 1; });
+                if (stop_stream_) return;
+                continue;
+            }
+            Flight f = std::move(flying.front());
+            flying.pop_front();
+            const auto w0 = std::chrono::steady_clock::now();
+            for (size_t i = 0; i < f.rx.size(); ++i) {
+                Remote::ok(ucomm_wait(f.rx[i], nullptr), "stream wait");
+                if (i == 0) own_first_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - w0).count();
+            }
+            own_fetch_gb_ += f.bytes;
+            own_fetch_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - f.t0).count();
+            {
+                std::lock_guard<std::mutex> lock(sm_);
+                own_staged_ = f.u + 1;
+                if (stop_stream_) return;
+            }
+            scv_.notify_all();
+            ++done;
+        }
     }
     // STRATA_DS41_PIN_GB (60): register this many GiB of the shared mapping's experts for DMA, whole layers spread
     // evenly over the depth (0: none; STRATA_DS41_PIN_EXPERTS=1: all). Read-only, ~0.06 s per GiB, once, at the first
@@ -6279,8 +6382,12 @@ private:
                     unpin_helper();
                     const size_t gl = L.f.gu_row * size_t(fl_);   // this node's gate/up rows (all of them alone)
                     const bool gu = !gu_pin_[size_t(it.layer)], dn = !down_pin_[size_t(it.layer)];   // the parts not DMAed from the mapping
-                    for (int j = t; j < it.n; j += nt) {
+                    // STRATA_DS41_STAGE_SKIP=1 (a timing probe): the host slots are not filled, so a node whose shards hold holes (the reversed layout)
+                    // never reads them (a shared mapping materializes a hole's pages: tmpfs fills up); the DMAs and the MMQ still run on whatever the slots hold
+                    static const bool skip = strata_env_is_one("STRATA_DS41_STAGE_SKIP");
+                    for (int j = t; j < it.n && !skip; j += nt) {
                         const int e = order_[size_t(it.layer)][size_t(it.first + j)];
+                        if (ost_comm_ && !own_.empty() && own_[size_t(it.layer) * c.experts + size_t(e)]) continue;   // arrives from the worker (own_fetch)
                         if (gu) {
                             copy_nt(host + size_t(j) * it.stride, src.gate + size_t(e) * g, gl);
                             copy_nt(host + size_t(j) * it.stride + g, src.up + size_t(e) * g, gl);
@@ -6309,7 +6416,7 @@ private:
             {
                 std::unique_lock<std::mutex> lock(sm_);
                 scv_.wait(lock, [&] {   // staged (unpinned), and the VRAM slot's previous item's compute enqueued
-                    return stop_stream_ || ((pinned || staged_ >= u + 1) && (idx < dslots_ || consumed_ >= idx - dslots_ + 1));
+                    return stop_stream_ || ((pinned || (staged_ >= u + 1 && (!ost_comm_ || own_staged_ >= u + 1))) && (idx < dslots_ || consumed_ >= idx - dslots_ + 1));
                 });
                 if (stop_stream_) return;
             }

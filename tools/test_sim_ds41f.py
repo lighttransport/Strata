@@ -211,6 +211,34 @@ class RevSessionsTest(unittest.TestCase):
         self.assertLess(base, 4 * 16.6)
 
 
+class CpuWorkerPrefillTest(unittest.TestCase):
+    def test_ib_bound_formula(self):
+        n = ds41f.cpuworker_prefill_max_pass()
+        r = ds41f.cpuworker_prefill(ds41f.CpuWorkerPrefillPlan(prompt=n, pass_tokens=n, attn_speed=5.0, index_speed=2.0, other_speed=2.0, expert_speed=1.5, gpu_speed=4.0))
+        owned = ds41f.PREFILL_CPUWORKER["total_gb"] * (1 - 34 / ds41f.PREFILL_CPUWORKER["experts_gb"])
+        self.assertEqual(r["bound"], "IB link")
+        c = ds41f.PREFILL_CPUWORKER
+        self.assertAlmostEqual(r["seconds"], owned / (c["ib_gbps"] * c["ib_efficiency"]) + c["startup_s"], places=6)
+
+    def test_measured_gpu_anchor(self):
+        # 12,000 tokens in one pass on the 5060 Ti with the experts' bytes at PCIe speed (no IB): measured 497.6 tok/s with the tensor-core attention (363.7 before)
+        r = ds41f.cpuworker_prefill(ds41f.CpuWorkerPrefillPlan(prompt=12000, pass_tokens=12000, keep_gb=108.0))
+        self.assertAlmostEqual(r["tok_s"] / 497.6, 1.0, delta=0.05)
+        self.assertEqual(r["bound"], "GPU compute")
+
+    def test_bigger_passes_and_links_help(self):
+        t = lambda **kw: ds41f.cpuworker_prefill(ds41f.CpuWorkerPrefillPlan(**kw))["tok_s"]
+        self.assertGreater(t(prompt=16384, pass_tokens=16384), t(prompt=16384, pass_tokens=4096))
+        self.assertGreater(t(links=2), t())
+        self.assertGreater(t(keep_gb=46.0), t())
+        self.assertLessEqual(t(prompt=65536, pass_tokens=65536), t(prompt=65536, pass_tokens=ds41f.cpuworker_prefill_max_pass()) + 1e-9)
+
+    def test_pass_limited_by_vram(self):
+        r = ds41f.cpuworker_prefill(ds41f.CpuWorkerPrefillPlan(prompt=1 << 20, pass_tokens=1 << 20))
+        self.assertEqual(r["pass_tokens"], ds41f.cpuworker_prefill_max_pass())
+        self.assertGreater(r["passes"], 1)
+
+
 class TwoNodePrefillTest(unittest.TestCase):
     def test_anchor_reproduces_single_node(self):
         for cal in ("compute", "overlap"):
