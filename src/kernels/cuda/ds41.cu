@@ -2496,12 +2496,20 @@ void ds41_attention_batched(const float* q, int tokens, int heads, int dim, cons
 #ifdef STRATA_DS41_WMMA
     static const bool mma = std::getenv("STRATA_DS41_ATTN_MMA") && std::string(std::getenv("STRATA_DS41_ATTN_MMA")) == "1";
     if (mma && !v1 && dim == kMD && heads % kMG == 0) {
-        static bool configured = false;
-        if (!configured) {
-            cudaFuncSetAttribute(attn_mma_kernel<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(kMmaShared));
-            cudaFuncSetAttribute(attn_mma_kernel<uint16_t>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(kMmaShared));
-            configured = true;
-        }
+        int device = 0, major = 0, binary = 0;
+        cudaFuncAttributes attr{};
+        if (cudaGetDevice(&device) != cudaSuccess ||
+            cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
+            cudaFuncGetAttributes(&attr, attn_mma_kernel<float>) != cudaSuccess)
+            throw std::runtime_error("ds41: cannot query MMA attention capability");
+        binary = attr.binaryVersion;
+        // sm_75 code can be JIT-loaded on a newer GPU, but its MMA body is empty.
+        // Check the compiled image as well as the device before touching the output.
+        if (major < 8 || binary < 80 || (attr.ptxVersion > 0 && attr.ptxVersion < 80))
+            throw std::runtime_error("ds41: STRATA_DS41_ATTN_MMA requires an sm_80+ GPU and kernel image");
+        if (cudaFuncSetAttribute(attn_mma_kernel<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(kMmaShared)) != cudaSuccess ||
+            cudaFuncSetAttribute(attn_mma_kernel<uint16_t>, cudaFuncAttributeMaxDynamicSharedMemorySize, int(kMmaShared)) != cudaSuccess)
+            throw std::runtime_error("ds41: cannot configure MMA attention shared memory");
         if (comp_half)
             attn_mma_kernel<uint16_t><<<dim3(unsigned(tokens), unsigned(heads / kMG)), 256, kMmaShared, (cudaStream_t)stream>>>(
                 q, heads, window, ring, reinterpret_cast<const int4*>(info), reinterpret_cast<const uint16_t*>(comp), comp_stride, sel, sel_stride, sinks, scale, out);

@@ -9,6 +9,9 @@ Everything described here is opt-in (environment variables / worker options); th
 
 ## Setup
 
+Copy `experiment/ds41f_tr16_decode/connection.env.example` to `priv/ds41f_connection.env` at the repository root and set the SSH alias, decoder address and remote binary directory there.
+The runners read this ignored file, or the file named by `DS41_CONNECTION_CONFIG`. The same settings can be exported in the environment.
+
 ```
 # TR16:  cmake --build build-glm --target strata-ds41-cpu-worker strata-ds41-feed
 # B550:  make -C <build> strata-glm-decode
@@ -48,16 +51,19 @@ the worker's experts come from `--stream-port`:
 
 ```
 worker:  strata-ds41-cpu-worker ... --stream-port=29574 [--stream-cpu=N]      STRATA_DS41_STREAM_RING (24), STRATA_DS41_STREAM_COPIERS (4), STRATA_DS41_WORKER_THP=1
-decoder: STRATA_DS41_OWN_STREAM=HOST:29574  STRATA_DS41_PROMPT_BATCH=12288 STRATA_DS41_PREFILL_HALVES=1 STRATA_DS41_PREFILL_TILE=2048 STRATA_DS41_ATTN_MMA=1
+decoder: STRATA_DS41_POPULATE=0 STRATA_DS41_PIN_GB=0 STRATA_DS41_PIN_EXPERTS=0 STRATA_DS41_RAM_COPY=0
+         STRATA_DS41_REMOTE_OWN=HOST:29571 STRATA_DS41_OWN_STREAM=HOST:29574  STRATA_DS41_PROMPT_BATCH=12288 STRATA_DS41_PREFILL_HALVES=1 STRATA_DS41_PREFILL_TILE=2048 STRATA_DS41_ATTN_MMA=1
          STRATA_DS41_STAGE_HOST_SLOTS=24 [STRATA_DS41_OWN_STREAM_DEPTH=2] [STRATA_DS41_KV=f16 STRATA_DS41_INDEX_GEMM=1 STRATA_DS41_INDEX_GEMM_MIN=64]
 ```
 
+The decoder rejects streamed ownership before populating or pinning expert pages unless the sparse-shard settings above are in place. The other ownership settings (route profile, kept size and worker budget) are supplied by the runner.
+
 `experiment/ds41f_tr16_decode/pf1.sh NAME ENV=VAL...` runs it end to end (a fresh worker; `STREAM=0` gives the CPU-lane prefill as the reference); `pf0.sh` times the GPU / PCIe ceiling without
-the worker. Measured: 37 tok/s with the CPU lanes, 151 (4000-token prompt) and 317-344 (12,000-token prompt, one layer-major pass) with the stream; the generated tokens match the CPU-lane prefill.
+the worker. Measured: 37 tok/s with the CPU lanes, 151 (4000-token prompt) and 317-344 (12,000-token prompt, one layer-major pass) with the stream. The 4000-token run with FP32 attention matched the CPU-lane reference for 16 generated tokens; the 12,000-token MMA runs were repeatable, but have no recorded CPU-lane comparison.
 The 700 tok/s goal is not met: GPU work is ~1.7-2.0 ms/token (expert MMQ, output projection, indexer, attention) and the 79.6 GB of owned experts per pass arrive at ~3.2 of the link's 3.94 GB/s.
 
 * `STRATA_DS41_ATTN_MMA=1` is a FlashAttention-style prefill attention on tensor cores (FP16 Q / K / V / P, FP32 accumulation; relative error 3e-4 against the tiled FP32 kernel), 4.5-4.9x faster. It rounds the
-  attention inputs to FP16; the KL of the next-token logits against the FP32 path has not been measured on real routing.
+  attention inputs to FP16; it requires an sm_80+ GPU and kernel image (unsupported images are rejected before launch). The KL of the next-token logits against the FP32 path has not been measured on real routing.
 * A pass is limited to ~15.5K tokens by VRAM (`PREFILL_HALVES` keeps the attention-local buffers at the tile size).
 * The worker sends each expert from a small registered staging ring: reading scattered experts out of the registered 74 GB of rows runs the HCA's translation cache dry (1.19 GB/s for 30 GB; 3.8 GB/s from a small region).
 
@@ -65,6 +71,7 @@ The 700 tok/s goal is not met: GPU work is ~1.7-2.0 ms/token (expert MMQ, output
 
 | | |
 |---|---|
+| `python3 tools/test_ds41_stream.py --ggml-include <llama.cpp>/ggml/include [--cuda-object <build>/CMakeFiles/strata_kernels.dir/src/kernels/cuda/ds41.cu.o]` | CPU-only sparse-shard settings and ordered ring/failure tests; optional CUDA dispatch test uses a mocked runtime |
 | `python3 -m unittest test_sim_ds41f` (in `tools/`) | simulator tests, including the plain-sessions and CPU-worker prefill models (`glm_ds41f_sim.py rev-sessions`, `prefill-cpuworker`) |
 | `iq_avx2_parity` (`build-glm`) | the IQ row kernels (incl. `STRATA_IQ1S_VIDX=1 STRATA_IQ1S_GRID8=1`) against the reference: 0 failures expected |
 | `iq1s_w1a8_bench --bench` | row-kernel throughput; checks the vector-index kernel bit for bit against the baseline decode |

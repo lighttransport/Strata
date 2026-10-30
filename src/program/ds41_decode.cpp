@@ -17,6 +17,7 @@
 #include "strata/ds41/decode.hpp"
 #include "strata/ds41/engram_wire.hpp"
 #include "strata/ds41/expert_lane.hpp"
+#include "strata/ds41/stream_config.hpp"
 #include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
@@ -1247,6 +1248,7 @@ public:
         if (chunk > 0) chunk_ = chunk;
         const auto& c = cfg_;
         if (context_ < 1) throw std::invalid_argument("ds41: context must be positive");
+        strata::ds41::validate_owned_stream_settings();
         // STRATA_DS41_PREFILL_CHUNK: tokens per forward pass of the prompt (default 256)
         if (const char* v = std::getenv("STRATA_DS41_PREFILL_CHUNK"); v && chunk <= 0) chunk_ = std::max(1, std::atoi(v));
         ring_ = c.window + chunk_;

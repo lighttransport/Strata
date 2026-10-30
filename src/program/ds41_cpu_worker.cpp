@@ -220,11 +220,15 @@ class StreamServer {
             {
                 std::unique_lock<std::mutex> lock(mu_);
                 cv_.wait(lock, [&] { return stop_ || !tasks_.empty(); });
-                if (tasks_.empty()) return;
+                if (stop_ || tasks_.empty()) return;
                 t = tasks_.front();
                 tasks_.pop_front();
             }
-            while (t.idx - sent_.load(std::memory_order_acquire) >= n_) std::this_thread::yield();   // the slot's previous blob has been sent
+            while (t.idx - sent_.load(std::memory_order_acquire) >= n_) {
+                if (stop_.load(std::memory_order_acquire)) return;
+                std::this_thread::yield();   // the slot's previous blob has been sent
+            }
+            if (stop_.load(std::memory_order_acquire)) return;
             std::memcpy(static_cast<uint8_t*>(mem_) + (t.idx % n_) * slot_, t.src, t.len);
             ready_[t.idx % n_].store(t.idx + 1, std::memory_order_release);
         }
@@ -232,6 +236,7 @@ class StreamServer {
     void serve() {
         pin_service_thread();
         double experts = 0, bytes = 0, send_ms = 0, request_wait_ms = 0;
+        bool failed = false;
         try {
             std::vector<int32_t> want;
             for (;;) {
@@ -267,15 +272,23 @@ class StreamServer {
             }
         } catch (const std::exception& e) {
             std::fprintf(stderr, "DS41_CPU_WORKER stream error: %s\n", e.what());
+            failed = true;
         }
         std::fprintf(stderr, "DS41_CPU_WORKER stream experts=%.0f GB=%.2f send_s=%.2f GB/s=%.2f request_wait_s=%.2f\n", experts, bytes / 1e9, send_ms / 1e3,
                      send_ms > 0 ? bytes / 1e6 / send_ms : 0.0, request_wait_ms / 1e3);
         {
             std::lock_guard<std::mutex> lock(mu_);
             stop_ = true;
+            tasks_.clear();
         }
         cv_.notify_all();
         for (auto& th : copiers_) th.join();
+        // finalize drains pending messages and waits for the peer; neither is safe
+        // after a failed transport. Let the OS reclaim this worker's resources.
+        if (failed) {
+            std::fflush(stderr);
+            std::_Exit(1);
+        }
         ucomm_mr_dereg(mr_);
         ucomm_finalize(c_);
         c_ = nullptr;
@@ -291,7 +304,7 @@ class StreamServer {
     std::mutex mu_;
     std::condition_variable cv_;
     std::deque<Task> tasks_;
-    bool stop_ = false;
+    std::atomic<bool> stop_{false};
     std::unique_ptr<std::atomic<uint64_t>[]> ready_;   // per ring slot: 1 + the sequence number of the blob copied into it
     std::atomic<uint64_t> sent_{0};                     // blobs sent so far
     uint64_t next_ = 0;                                 // sequence number of the next blob (service thread)
