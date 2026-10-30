@@ -18,7 +18,7 @@ feed)
   scp -q "$PROFILE" "eval/${PROMPT:-c_osd}.txt" b550:$AUX/
   ssh -n -f -o BatchMode=yes b550 "XDG_RUNTIME_DIR=/run/user/\$(id -u) setsid nohup systemd-run --user --scope -q -u ds41feed-$name -p MemoryMax=52G -p MemorySwapMax=0 $BBIN/strata-ds41-feed recv --listen $B:$PORT_FEED --dir $DIR --backend=ib < /dev/null > /tmp/ds41feed-$name.log 2>&1 &"
   sleep 3
-  extra=(); [ -n "$DSPARK" ] && extra=(--extra "$DSPARK")
+  extra=(); [ -n "$DSPARK" ] && [ -z "${NO_DSPARK:-}" ] && extra=(--extra "$DSPARK")
   "$TBIN/strata-ds41-feed" serve --root $B:$PORT_FEED --model "$M" --profile "$PROFILE" --keep-mib $KEEP_MIB "${extra[@]}" --backend=ib 2>&1 | sed 's#/[^ ]*/##g'
   sleep 2; ssh -o BatchMode=yes b550 "tail -3 /tmp/ds41feed-$name.log; du -sh $DIR | tail -1; free -g | sed -n 2p"
   ;;

@@ -193,6 +193,24 @@ class TwoNodeTest(unittest.TestCase):
         self.assertFalse(ds41f.two_node_decode(ds41f.TwoNodePlan(canon_mib=3600.0))["vram_ok"])
 
 
+class RevSessionsTest(unittest.TestCase):
+    def test_fit_and_monotone(self):
+        f = ds41f.rev_sessions_fit()
+        for w, y in zip((1, 2, 3, 4), ds41f.REV_BEST["verify_ms"]):
+            pred = f["fixed_ms"] + f["per_token_ms"] * w + f["per_expert_ms"] * 6 * ds41f.routing.union_ratio(w, 384, 6)
+            self.assertLess(abs(pred / y - 1), 0.06)
+        rows = ds41f.rev_sessions_table()
+        agg = [o["aggregate_tok_s"] for o in rows]
+        self.assertEqual(agg, sorted(agg))
+        self.assertGreater(agg[0], 10.0)
+
+    def test_expert_cost_is_the_lever(self):
+        base = ds41f.rev_sessions(16)["aggregate_tok_s"]
+        self.assertGreater(ds41f.rev_sessions(16, expert_scale=0.5)["aggregate_tok_s"], base * 1.3)
+        self.assertLess(ds41f.rev_sessions(16, gpu_token_scale=0.5)["aggregate_tok_s"], base * 1.3)
+        self.assertLess(base, 4 * 16.6)
+
+
 class TwoNodePrefillTest(unittest.TestCase):
     def test_anchor_reproduces_single_node(self):
         for cal in ("compute", "overlap"):

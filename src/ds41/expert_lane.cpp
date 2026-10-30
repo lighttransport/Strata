@@ -316,7 +316,9 @@ ExpertLane::ExpertLane(int hidden, int ff, int threads, bool pin_threads)
         for (int c : cores)
             for (int sib : siblings(c))
                 if (std::find(cpus.begin(), cpus.end(), sib) == cpus.end()) cpus.push_back(sib);
-        for (int t = 0; t < threads_ && !cpus.empty(); ++t) cpu_of_[size_t(t)] = cpus[size_t(t) % cpus.size()];
+        // STRATA_DS41_LANE_CPU_OFFSET=k: skip the first k cores (a second lane in the process, STRATA_DS41_DUAL)
+        const size_t off = std::getenv("STRATA_DS41_LANE_CPU_OFFSET") ? size_t(std::max(0, std::atoi(std::getenv("STRATA_DS41_LANE_CPU_OFFSET")))) : 0;
+        for (int t = 0; t < threads_ && !cpus.empty(); ++t) cpu_of_[size_t(t)] = cpus[(size_t(t) + off) % cpus.size()];
     }
     // STRATA_DS41_LANE_NUMA=1 (pinned threads): each socket's threads take the experts whose rows sit in its memory
     numa_ = pin_threads && std::getenv("STRATA_DS41_LANE_NUMA") && std::string(std::getenv("STRATA_DS41_LANE_NUMA")) == "1";
@@ -342,6 +344,15 @@ ExpertLane::ExpertLane(int hidden, int ff, int threads, bool pin_threads)
 }
 
 ExpertLane::~ExpertLane() {
+    if (strata_env_is_one("STRATA_DS41_LANE_STATS") && stat_calls_ > 0) {
+        for (int t = 0; t < threads_ && t < 64; ++t)
+            std::fprintf(stderr, "DS41_LANE_STATS thread %2d per call ms work %.3f %.3f %.3f wait %.3f %.3f %.3f\n", t,
+                         stat_work_[t][0] / stat_calls_ * 1e-6, stat_work_[t][1] / stat_calls_ * 1e-6, stat_work_[t][2] / stat_calls_ * 1e-6,
+                         stat_wait_[t][0] / stat_calls_ * 1e-6, stat_wait_[t][1] / stat_calls_ * 1e-6, stat_wait_[t][2] / stat_calls_ * 1e-6);
+    }
+    if (strata_env_is_one("STRATA_DS41_LANE_STATS") && merge_calls_ > 0)
+        std::fprintf(stderr, "DS41_LANE_STATS merge per call ms: check %.3f lane wait %.3f merge %.3f (calls %ld)\n", merge_check_ns_ / merge_calls_ * 1e-6,
+                     merge_wait_ns_ / merge_calls_ * 1e-6, merge_work_ns_ / merge_calls_ * 1e-6, merge_calls_);
     stop_.store(true);
     start_.fetch_add(1, std::memory_order_acq_rel);   // wake sleepers; they see stop_
     start_.notify_all();
@@ -392,6 +403,11 @@ void ExpertLane::worker(int thread) {
 
 // The three phases of one layer for one thread; each ends at a barrier every thread reaches.
 void ExpertLane::phase_work(int t) {
+    if (job_fn_) {   // parallel_for(): this thread's part, then the barrier the caller waits at
+        job_fn_(job_ctx_, t, threads_);
+        barrier();
+        return;
+    }
     const int T = async_ ? threads_ - 1 : threads_;   // begin(): threads 1.. only
     if (async_) --t;
     const cpu::NativeFmt& f = layer_->f;
@@ -458,6 +474,18 @@ void ExpertLane::phase_work(int t) {
         return;
     }
     // with teams (LANE_NUMA): this thread's share of its team's groups only
+    static const bool stats = strata_env_is_one("STRATA_DS41_LANE_STATS");
+    auto now_ns = [] { return double(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
+    double t_prev = stats ? now_ns() : 0.0;
+    auto sync = [&](int ph) {   // barrier (per thread: work since the last one, then the wait)
+        if (!stats) { barrier(); return; }
+        const double a = now_ns();
+        barrier();
+        const double b = now_ns();
+        stat_work_[abs_t & 63][ph] += a - t_prev;
+        stat_wait_[abs_t & 63][ph] += b - a;
+        t_prev = b;
+    };
     const int team = numa_ ? pkg_of_[size_t(abs_t)] : -1;
     const int tn = numa_ ? team_size_[size_t(team)] : T, ti = numa_ ? team_index_[size_t(abs_t)] : t;
     // 1. gate/up: this thread's rows of every selected expert (all of its tokens at once)
@@ -481,7 +509,7 @@ void ExpertLane::phase_work(int t) {
             }
         }
     }
-    barrier();
+    sync(0);
     // 2. the hidden of every entry, quantized for the down rows
     {
         const int entries = nt_ * top_k_;
@@ -489,7 +517,7 @@ void ExpertLane::phase_work(int t) {
             if (!skip_unused || ids_[e] >= 0)
                 cpu::native_quant_h(f, hidden_buf_.data() + size_t(e) * size_t(ff_), hq_.data() + size_t(e) * h_bytes);
     }
-    barrier();
+    sync(1);
     // 3. down: this thread's hidden rows of every selected expert
     {
         const int r0 = int(int64_t(hidden_) * ti / tn), r1 = int(int64_t(hidden_) * (ti + 1) / tn);
@@ -510,7 +538,8 @@ void ExpertLane::phase_work(int t) {
             }
         }
     }
-    barrier();
+    sync(2);
+    if (stats && abs_t == (async_ ? 1 : 0)) ++stat_calls_;
 }
 
 void ExpertLane::prepare(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k) {
@@ -583,6 +612,17 @@ void ExpertLane::assign_teams(const LaneLayer& layer) {
         load[size_t(hi)] -= c;
         load[size_t(lo)] += c;
     }
+}
+
+void ExpertLane::parallel_for(void (*fn)(void*, int, int), void* ctx) {
+    if (threads_ < 2 || async_) { fn(ctx, 0, 1); return; }
+    job_fn_ = fn;
+    job_ctx_ = ctx;
+    start_.fetch_add(1, std::memory_order_acq_rel);
+    start_.notify_all();
+    fn(ctx, 0, threads_);
+    barrier();
+    job_fn_ = nullptr;
 }
 
 void ExpertLane::collect(const int32_t* ids, const float* w, float* y) {
@@ -665,6 +705,9 @@ void ExpertLane::finish_with_external2(const int32_t* original_ids, const int32_
     if (!original_ids || !entries || !values || !entries2 || !values2 || !ids_ || !w_ || !y_ || nt_ < 1 || nt_ > 4096 ||
         top_k < 1 || top_k > 16 || count + count2 > nt_ * top_k || hidden_ < 1 || hidden_ > 5120)
         throw std::invalid_argument("ds41 expert lane: invalid external route geometry");
+    static const bool mstats = strata_env_is_one("STRATA_DS41_LANE_STATS");
+    auto ns = [] { return double(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
+    const double m0 = mstats ? ns() : 0.0;
     const int total = nt_ * top_k;
     std::vector<uint8_t> external(size_t(total), 0);
     for (int i = 0; i < count + count2; ++i) {
@@ -678,6 +721,7 @@ void ExpertLane::finish_with_external2(const int32_t* original_ids, const int32_
             throw std::invalid_argument("ds41 expert lane: inconsistent external routes");
     // Opt-in: consume each source in place, preserving collect()'s route and float order.
     if (strata_env_is_one("STRATA_DS41_MERGE_DIRECT")) {
+        const double m1 = mstats ? ns() : 0.0;
         if (!idle_ && async_) {
             while (done_.load(std::memory_order_acquire) < threads_ - 1) pause();
             async_ = false;
@@ -688,21 +732,33 @@ void ExpertLane::finish_with_external2(const int32_t* original_ids, const int32_
         }
         if (!idle_ && (top_k_ != top_k || out_.size() < size_t(total) * size_t(hidden_)))
             throw std::logic_error("ds41 expert lane: external output capacity mismatch");
+        const double m2 = mstats ? ns() : 0.0;
         std::vector<const float*> sources(size_t(total), nullptr);
         for (int i = 0; i < count; ++i) sources[size_t(entries[i])] = values + size_t(i) * hidden_;
         for (int i = 0; i < count2; ++i) sources[size_t(entries2[i])] = values2 + size_t(i) * hidden_;
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
         if (strata_env_is_one("STRATA_DS41_MERGE_VECTOR")) {
-            for (int t = 0; t < nt_; ++t) {
-                const float* p[16]; float weights[16]; int n = 0;
-                for (int k = 0; k < top_k; ++k) {
-                    const int route = t * top_k + k;
-                    if (original_ids[route] < 0) continue;
-                    p[n] = sources[size_t(route)] ? sources[size_t(route)] : out_.data() + size_t(route) * hidden_;
-                    weights[n++] = w_[route];
+            // each token is summed in its own route order whichever thread does it: STRATA_DS41_MERGE_PAR (default on) spreads
+            // the tokens of a wide pass (batched sessions) over the lane threads, the same bits
+            auto body = [&](int part, int parts) {
+                for (int t = part; t < nt_; t += parts) {
+                    const float* p[16]; float weights[16]; int n = 0;
+                    for (int k = 0; k < top_k; ++k) {
+                        const int route = t * top_k + k;
+                        if (original_ids[route] < 0) continue;
+                        p[n] = sources[size_t(route)] ? sources[size_t(route)] : out_.data() + size_t(route) * hidden_;
+                        weights[n++] = w_[route];
+                    }
+                    collect_vectors(y_ + size_t(t) * hidden_, p, weights, n, hidden_);
                 }
-                collect_vectors(y_ + size_t(t) * hidden_, p, weights, n, hidden_);
+            };
+            static const bool par = !(std::getenv("STRATA_DS41_MERGE_PAR") && std::getenv("STRATA_DS41_MERGE_PAR")[0] == '0');
+            if (par && nt_ >= 16 && threads_ > 1 && !async_) {
+                parallel_for([](void* c, int part, int parts) { (*static_cast<decltype(body)*>(c))(part, parts); }, &body);
+            } else {
+                body(0, 1);
             }
+            if (mstats) { const double m3 = ns(); merge_check_ns_ += m1 - m0; merge_wait_ns_ += m2 - m1; merge_work_ns_ += m3 - m2; ++merge_calls_; }
             return;
         }
 #endif

@@ -1638,3 +1638,123 @@ Exact flag screen on top of the best settings (2026-10-30, c_osd, one run each, 
 Second flag screen on top of FUSE=1 (c_osd, 1 run each): `MULTI_ROWS=2` 16.54 (ids same, neutral), `MULTI_ROWS=4` 15.70 (ids same, slower), `ATTN_WMMA=1` (gfx12 WMMA, needs the FP16 KV cache; AMD path) and `DSPARK_GPU_ROUTE=1` ("streamed DSpark experts require host routing") are refused at startup on this layout, so they gave no result. No further exact gain.
 
 Worker-side ceiling (2026-10-30): the TR16 reads 71-92 GB/s (tools/membw) while the worker's IQ1_S kernel moves 18 GB/s (92.7 GMAC/s at width 1, iq1s_w1a8_bench), so the lane is compute-bound and a hand-tuned AVX2 rewrite has headroom. It cannot reach the target alone: per layer call the GPU chain costs 0.9 ms (sync) + 0.26 ms (merge) and the worker wait 0.75 ms, so an infinitely fast worker saves at most 40 x 0.75 = 30 ms of the 123 ms verify pass, i.e. about 20.4 tok/s lossless. 25 lossless additionally needs the GPU chain (about 37 small dependent kernels per layer, 0.71 ms) roughly 25 % shorter; CUDA graphs, the dp4a hoist, entry staging and the exact flag screens moved it by 0-3 %.
+
+## 8m. Batched sessions on the reversed layout (B550 5060 Ti decoder + TR16 CPU worker), 2026-10-30
+
+`STRATA_DS41_SESSIONS=S` plain batched decode (no DSpark), `experiment/ds41f_tr16_decode/{sess.sh,cfg16.sh,sweep.sh}`, 120-token prompts from c_osd, 24 steps, aggregate tok/s
+(single-stream exact reference 16.6 with DSpark, 11.7 plain; goal 4x = 66 aggregate).
+
+| config | S=2 | 4 | 8 | 16 | 32 |
+|---|---:|---:|---:|---:|---:|
+| as is (no ADAPT) | 15.6 | 18.2 | 20.6 | 21.2 | - |
+| + ADAPT 3000 (canon hit 0.26 -> 0.51 at S=8) | | | 23.9 | 20.5 | |
+| + dense MMQ (`STRATA_DS41_DENSE_MMQ=1 STRATA_MMQ_KQ=1`, q 77->10 ms, out 86->16 ms at S=16) | | | | 27.2 | |
+| + canonical tier past 8 tokens (`STRATA_DS41_CANON_TOKENS=S`, hit 0 -> 0.50) | | | | 38.4 | 44.7 |
+| + worker threads 28 | | | | | 45.7 |
+
+Fixes needed on the way: the sessions attention call passed `comp_stride` for layers without a compressed cache (rejected by the newer bounds check); `ATTN_MULTI=0`
+and `VERIFY_FAST_TRUNK=0` are required for sessions; a reused persistent worker runs ~30x slower from its second connection (fresh worker per run in `sess.sh`);
+a worker started with `--fetch-port` hangs a decoder that has no ADAPT. MMQ needs the runtime switch `STRATA_MMQ_KQ=1` (not `STRATA_MMQ_KQUANTS`).
+
+Accuracy (teacher-forced, `STRATA_DS41_SESSION_CHECK=n STRATA_DS41_SESSION_TF=1`: the alone run is fed the batched run's tokens): without dense MMQ 4/4 sessions are
+token-identical to alone decoding; with it, 624 positions at S=16: top-1 agreement 97.6 %, mean KL 0.0074 (max 0.64).
+
+S=32 pass (716 ms): GPU canonical experts 212, CPU-lane wait 409, attention 30, everything else < 50. The GPU idles ~400 ms per pass: sessions share almost no experts
+(1.06 routes per distinct expert at S=8), so the expert pass is linear in S and the CPU lanes are the limit. Streaming cold experts to the GPU is slower
+(`CANON_STREAM=6/16`: 35.4 / 31.7 tok/s; PCIe-bound), 28 worker threads gain 2 %.
+
+Later the same day (8m continued): the B550's tmpfs held an 8 GB drafter that plain decoding never loads. Re-feeding without it and with `KEEP_MIB=34000`
+(`NO_DSPARK=1 KEEP_MIB=34000 ./rev_node.sh feed`, 40 GB in 50 s over IB) moved routes per layer at S=32 from worker 41 / B550 lane 41 to worker 33 / lane 49 (192 total,
+110 on the GPU tier at `CANON_MIB=7000`). With `STRATA_DS41_MERGE_DIRECT=1 STRATA_DS41_MERGE_VECTOR=1` (merge 2.05 -> 1.65 ms per layer call):
+
+| S | tier MiB | pass ms | aggregate tok/s | per session | vs plain single 11.7 | vs best single 16.6 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 32 | 7000 | 629 | 50.9 | 1.59 | 4.3x | 3.1x |
+| 48 | 6000 | 847 | 56.7 | 1.18 | 4.8x | 3.4x |
+| 64 | 6000 | 1141 | 56.1 | 0.88 | 4.8x | 3.4x |
+
+The tier cannot grow with S (VRAM: 8000 MiB fails at S=32, 7000 fails at S=48). Teacher-forced gate at S=48, 624 positions: top-1 97.4 %, mean KL 0.0081.
+Per layer at S=32 the three consumers are the GPU tier (5.7 ms for 110 routes, idle ~half the pass), the B550 lane (9.5 ms for 49 routes) and the TR16 worker (11.2 ms
+request to reply for 33 routes, 0.31 ms per route against 0.19 on the B550's 3950X). Both CPU kernels are decode-bound (iq1s_w1a8_bench: 17.8 GB/s at 14 threads, 19.3 at 28):
+~45 uops per 32 weights, 21 of them scalar index arithmetic; a vectorized index path would save at most ~30 % of them. Remaining levers: a stagger pipeline over two
+session halves (GPU attention of one half under the other's experts; ideal -150 ms of 630), the IQ1_S/IQ2_XXS decode, more VRAM for the tier.
+
+### 8m, last part: CPU lane profile and the final batched preset (2026-10-30)
+
+- **Final S=48 runs** with `experiment/ds41f_tr16_decode/rev_sessions_best.env` (two runs): 55.9 and 53.4 tok/s (pass 859 / 899 ms), canon hit 0.55. Run to run spread is about +-3 %.
+- **IQ1_S vector index kernel** (`STRATA_IQ1S_VIDX=1`, needs `STRATA_IQ1S_GRID8=1`; `row_dot_iq1s_vidx` in `iq_avx2_rows.inl`): the 32 grid indices of a block are built in two
+  registers (qs widened to 16 bits, qh fields spread by mullo/mulhi) instead of four scalar shift/and/or chains per half; delta sign and scale from 16-entry tables.
+  Bit-identical to the grid8 path (`iq_avx2_parity` 0 failures; `iq1s_w1a8_bench`: 1024/1024 results equal). Single-thread-team bench on the 1950X at width 1 / 2 / 4:
+  16.5 / 15.2 / 10.1 GB/s (Fmt32<19>) -> 22.3 / 16.9 / 10.3. In the lane the gain is smaller (many groups carry 2-4 tokens): gate/up work 8.79 -> 8.45 ms per layer call,
+  S=48 45.4 -> 48.3 tok/s in an identical A/B (short prompts, tier hit 0.43).
+- **Gate/up pair kernel with grid8**: `gu_rows` only paired gate/up when the type was 19, but `STRATA_IQ1S_GRID8=1` dispatches type 119, so the rev preset never used the pair; it now can
+  (`row_dot_iq1s_pair<TY, NT>`). No measurable end-to-end change.
+- **Worker thread profile** (`STRATA_DS41_LANE_STATS=1`, per layer call at S=48): 14 compute threads, gate/up work 8.5 ms, down work 4.2 ms, barrier waits 0.6 + 0.35 ms (7 %),
+  so the lane is compute-saturated inside a request and the team split (`assign_teams`) is balanced; `LANE_NUMA=0` is worse (52.1 vs 54.4). The worker is idle ~4 ms per layer
+  between requests (the decoder's attention, router and merge), the decoder GPU idles during the worker's ~14 ms: a stagger pipeline over two session halves would fill both,
+  but needs the expert phase's state (activation buffers, the in-flight worker request, the lane) duplicated; not built.
+- `perf` on the worker: 60 % in the kernels, 29 % kernel mode (sched_yield of idle lane threads, `LANE_SLEEP=0`), 9 % vdso (ucomm clock reads).
+- Adapt gap 5 ms: 49.2 tok/s; 100 ms: 55.5; 30 ms: 54.9-56.7 (no sensitivity above 30).
+- Not reached: 4x of the best single-stream decode (16.6 tok/s = 66 aggregate). Reached: 4.6x of plain single-stream decode (11.7), 3.3x of the best (DSpark) single-stream decode.
+- **Parallel merge** (`STRATA_DS41_MERGE_PAR`, default on with `MERGE_DIRECT`+`MERGE_VECTOR`, `ExpertLane::parallel_for`): the tokens of a wide pass are summed on the lane threads, same bits
+  (teacher-forced KL unchanged). `STRATA_DS41_LANE_STATS=1` splits the 1.6 ms "merge+lane" per layer call at S=48: 0.2 ms merge, 1.4 ms waiting for the B550 lane threads
+  (79 routes against the worker's 51, 0.19 ms each), i.e. the B550 lane finishes ~1.4 ms after the TR16 reply. D_THREADS 14 vs 16: no change (53.3 vs 53.3-55.9).
+  What is left of the 4x gap (53-57 of 66 tok/s) is the serial chain per layer: decoder attention/router ~2.6 ms + request/reply over IB ~0.8 ms + the slower CPU lane ~17 ms,
+  with the GPU tier idle for half of it. Candidates, none built: a host-pinned second expert level streamed by the idle GPU to relieve the B550 lane (~4-6 %),
+  re-balancing keep size (~2 %), and the two-half stagger pipeline (~15 %, needs duplicated expert-phase state).
+
+### 8m, pinned second expert level (2026-10-30, last)
+
+`STRATA_DS41_CANON_PIN_MIB=a STRATA_DS41_CANON_PIN_OWNED_MIB=b STRATA_DS41_CANON_STREAM=q STRATA_DS41_REMOTE_OWN_SKIP_MIB=KEEP` (opt-in): after the GPU tier, the next-hottest `a` MiB of kept
+experts are copied into host-pinned memory at load, and the hottest `b` MiB of worker-owned experts are fetched once over the fetch service (556-764 experts in 3-4 s). Each pass the
+`q` widest (worker-owned first) of them stream over PCIe through the canonical ring and run on the GPU with the canonical arithmetic (bit-identical), instead of on a CPU lane.
+S=48, tier 6000 MiB, keep 34 GB:
+
+| pin kept / pin owned / q | GPU routes / layer | worker | B550 lane | tok/s |
+|---|---:|---:|---:|---:|
+| none (final preset) | 158 | 51 | 79 | 53.4-55.9 |
+| 5000 / 0 / 12 | 173 | 51 | 64 | 53.5 |
+| 3000 / 4000 / 12 | 171 | 47 | 70 | 54.8 |
+| 1500 / 5500 / 16 | 170 | 44 | 74 | 57.1 |
+
+The gain is small because the ring (<= 16 slots, 0.5 ms of PCIe each) caps how many CPU routes the GPU can take; whichever CPU lane has more routes is again the critical one (worker request to reply
+15.2 ms, B550 lane wait 1.8 ms). The three consumers are now close to balanced at ~17 ms per layer, so the remaining lever is the pipeline over two session halves.
+- Tuning around the pinned level at S=48 (single runs; the same configuration has spread 53.4-55.9, so differences under ~5 % are not resolved): worker with 16 compute threads and helpers on
+  30,31 only: 52.0 (request to reply 17.3 ms, worse than 14 threads); keep 30 GB instead of 34: 51.9 (worker 50 routes, request to reply 18.2 ms). The preset stays at 14 worker threads, keep 34 GB.
+
+### 8m, dual decoder experiment (2026-10-30, unfinished)
+
+To hide the decoder's serial GPU work (2.6 ms per layer up to the router, plus merge, while the worker idles ~5 of 21 ms per layer) a second `Decoder` runs in the same process on its own
+host thread, CUDA stream, ExpertLane (`STRATA_DS41_LANE_CPU_OFFSET`) and worker connection (every port +10), half the sessions each:
+`STRATA_DS41_DUAL=1 STRATA_DS41_SESSIONS=S` (`experiment/ds41f_tr16_decode/dual.sh`). The second decoder views the first one's GPU weights and canonical-tier arena (`Dev::view`,
+`Decoder(..., borrow)`; no second copy of the 6 GB trunk), both start the timed decode together (`std::barrier`). The worker serves two connections (`--root2= --engram-port2=`),
+one lane, requests serialized by a mutex (`ds41_cpu_worker.cpp`). It runs end to end.
+
+First measurement (48 sessions as 24 + 24, static tier 4500 MiB, no ADAPT): decoder 1 16.8 tok/s (1426 ms per pass), decoder 2 3.4 tok/s (7131 ms), canon hit 0.24 for both. Two reasons it is not a valid
+test of the pipeline yet: (1) the tier cannot adapt (ADAPT swaps slots of the shared arena and edits one decoder's `canon_off_` while the other's queued kernels may still read them), so the hit is 0.24 instead
+of 0.55 and the CPU lanes are saturated by twice the routes; (2) the worker's `std::mutex` is not fair, so decoder 1's requests keep winning (needs a ticket lock). Needed before judging: a traffic-profile
+static tier (kept + fetched worker-owned experts, as in the pinned level), the ticket lock, and B550 lane threads split without stalls.
+
+### 8m, dual decoder result (2026-10-30): no gain, the worker is the bottleneck
+
+Fixed along the way: the second lane enumerated cores from the main thread's affinity, which the first lane had pinned to CPU 0, so its 8 threads sat on CPUs 16 and 0 (merge+lane 111 ms per layer call);
+the dual driver now resets the thread's affinity before constructing the second decoder. A fair ticket lock serializes the worker's lane. `STRATA_DS41_CANON_TRAFFIC=trace` ranks the tier by a
+route trace among the node's kept experts; `STRATA_DS41_CANON_SETTLE=trace` seeds the adaptive tier from the trace, lets it fetch and swap once (247 swaps, 5 s) and freezes it (a static, workload-fitted
+tier both decoders and a single-decoder baseline can use); the second decoder shares the first one's weights, tier arena, tier map and pinned expert level.
+
+Same tier (4500 MiB), 48 sessions, aggregate tok/s, one run each:
+
+| tier | single decoder | two decoders, 24 + 24 |
+|---|---:|---:|
+| traffic-ranked, kept experts only (hit 0.45) | 41.4 | 42.3 |
+| settled from the trace, worker's experts included (hit 0.49) | 50.5 | 50.1 |
+| settled + pinned level (hit 0.54 / 0.50-0.53) | 52.4 | 50.6 |
+
+Two decoders do not beat one. The pass takes ~950 ms either way: per layer the worker gets 2 x ~35 routes at ~0.33 ms = ~23 ms against a layer period of 23.6 ms, i.e. it is saturated, and
+the decoders' serial GPU gaps are not what limits the period at this tier hit. Pipelining can only pay where the worker has idle time (the best single-decoder run, hit 0.59-0.60 with 6000 MiB, had the
+worker at 14 of 21 ms per layer), but a second decoder costs ~1 GB of VRAM, the tier shrinks and the hit drops below that point. So for batched decode on this pair of machines the throughput is set by the
+worker's CPU work: aggregate ~ 1 / (worker routes per layer x ~0.3 ms x 40). 66 tok/s at 48 sessions needs a pass of 727 ms, i.e. ~45 worker routes per layer *and* the serial gap hidden, or about
+30 % less worker work at the current ~58 tok/s configuration.
+- Larger pinned level (3000 MiB kept + 10.5 GB worker-owned, 1045 experts fetched in 6 s, 32-slot ring, tier 6000 MiB, ADAPT, SYNC_SPIN), S=48: 57.9 tok/s, hit 0.61, worker 42 routes (was 44-46), B550 lane 70.
+  The pinned experts cover a shrinking share of the cold routes (the tail is flat), so both CPU lanes stay at ~15 ms per layer: the same plateau.
+- B550 lane with SMT siblings (28 threads, helpers on CPUs 30,31): 56.2 tok/s, lane busy 505 ms per pass (unchanged), as for the worker (28 threads +2 %): the IQ1_S/IQ2_XXS row kernels are port/uop-bound per core, SMT adds nothing on either CPU.

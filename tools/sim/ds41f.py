@@ -1518,6 +1518,42 @@ def rev_best_decode(width_mix=None, draft_ms=None, verify_scale=1.0, tokens_per_
     return dict(tok_s=tokens / round_ms * 1e3, round_ms=round_ms, verify_ms=verify, draft_ms=draft, tokens_per_round=tokens)
 
 
+def rev_sessions_fit(per_expert_ms=None):
+    """verify(w) = fixed + per_token * w + per_expert * 6 * union(w) over the four measured reversed-layout pass widths (consecutive-token union).
+    The four points are almost collinear in w and the union, so per_expert is not fitted: it is taken from the TWO_NODE worker fit
+    (cpu_ms_per_union 37.3 ms for 6 expert-layers x the 0.675 tier miss share: 4.2 ms per distinct expert per layer over the 40 layers) and only
+    fixed and per_token are least squares."""
+    t = TWO_NODE
+    pe = per_expert_ms if per_expert_ms is not None else t["cpu_ms_per_union"] / 6.0 * (1 - two_node_hit(t["canon_loaded_mib_default"]))
+    ws = (1, 2, 3, 4)
+    ys = [y - pe * 6.0 * routing.union_ratio(w, 384, 6) for w, y in zip(ws, REV_BEST["verify_ms"])]
+    n, sw, sww = len(ws), sum(ws), sum(w * w for w in ws)
+    sy, swy = sum(ys), sum(w * y for w, y in zip(ws, ys))
+    tok = (n * swy - sw * sy) / (n * sww - sw * sw)
+    fixed = (sy - tok * sw) / n
+    return dict(fixed_ms=fixed, per_token_ms=tok, per_expert_ms=pe)
+
+
+def rev_sessions(sessions, nt_marginal=1.0, gpu_token_scale=1.0, expert_scale=1.0, fixed_scale=1.0):
+    """Plain batched decode of S independent sessions on the reversed layout (one token each per pass; no drafter).
+    Pass = fixed + per_token S + per_expert x (distinct experts) x kernel factor, from rev_sessions_fit(). Sessions route independently, so the
+    union is the independent-token one (consecutive tokens of one sequence overlap more). nt_marginal: cost of each extra token an expert serves,
+    relative to its first (1.0 = linear in routes, the worker's kernel not amortizing; 0 = free); the factor is normalised to 1 at the fit's tokens per expert."""
+    f = rev_sessions_fit()
+    u = 6.0 * routing.union_ratio(sessions, 384, 6, consecutive=False)
+    per = lambda t: 1.0 + nt_marginal * (t - 1.0)
+    t_fit = 4 / routing.union_ratio(4, 384, 6)            # tokens per expert at the widest fitted pass
+    tpe = 6.0 * sessions / u                              # routes per distinct expert
+    kernel = per(tpe) / per(t_fit)
+    pass_ms = f["fixed_ms"] * fixed_scale + f["per_token_ms"] * gpu_token_scale * sessions + f["per_expert_ms"] * expert_scale * u * kernel
+    return dict(sessions=sessions, pass_ms=pass_ms, aggregate_tok_s=sessions / pass_ms * 1e3, per_session_tok_s=1e3 / pass_ms,
+                experts_per_layer=u, tokens_per_expert=tpe, kernel_factor=kernel, **f)
+
+
+def rev_sessions_table(counts=(1, 2, 4, 8, 16, 32), **kw):
+    return [rev_sessions(s, **kw) for s in counts]
+
+
 def rev_best_targets():
     """What the measured best layout would need for 25 tok/s: the round has to shrink to tokens_per_round / 25."""
     base = rev_best_decode()

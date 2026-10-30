@@ -186,16 +186,67 @@ inline void row_dot_iq1s(const uint8_t* row, int nblocks, const block_q8_K* cons
 }
 
 
+// STRATA_IQ1S_VIDX=1: IQ1_S with the block's 32 grid indices built in two registers (the qs bytes widened to 16 bits, or-ed with the
+// qh fields spread by mullo/mulhi shifts: k = 0..2 shift left by 8, 5, 2, k = 3 right by 1) and stored once; a half then reads its
+// four indices as 16-bit loads from the iq1s_grid8 table. The delta sign and the scale come from 16-entry tables on the top nibble of qh.
+// Fmt32<119>'s values, accumulated in its order: bit-identical results (iq1s_w1a8_bench checks it).
+template <int NT> STRATA_ROWS_FN
+inline void row_dot_iq1s_vidx(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
+    const int pf = prefetch_distance();
+    const __m256i c0 = _mm256_setr_epi8(0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3, 4, 5, 4, 5, 4, 5, 4, 5, 6, 7, 6, 7, 6, 7, 6, 7);
+    const __m256i c1 = _mm256_setr_epi8(8, 9, 8, 9, 8, 9, 8, 9, 10, 11, 10, 11, 10, 11, 10, 11, 12, 13, 12, 13, 12, 13, 12, 13, 14, 15, 14, 15, 14, 15, 14, 15);
+    const __m256i mul = _mm256_setr_epi16(256, 32, 4, 0, 256, 32, 4, 0, 256, 32, 4, 0, 256, 32, 4, 0);
+    const __m256i mulh = _mm256_setr_epi16(0, 0, 0, 32768, 0, 0, 0, 32768, 0, 0, 0, 32768, 0, 0, 0, 32768);
+    const __m256i m700 = _mm256_set1_epi16(0x700);
+    __m256 accf[NT];
+    for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
+    for (int i = 0; i < nblocks; ++i) {
+        const uint8_t* blk = row + (size_t) i * 50;
+        rows_ahead(blk, pf);
+        alignas(32) uint16_t idx[32];
+        {
+            const __m256i qs = _mm256_loadu_si256((const __m256i*) (blk + 2));
+            const __m256i hb = _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*) (blk + 34)));
+            const __m256i h0 = _mm256_shuffle_epi8(hb, c0), h1 = _mm256_shuffle_epi8(hb, c1);
+            const __m256i hi0 = _mm256_and_si256(_mm256_or_si256(_mm256_mullo_epi16(h0, mul), _mm256_mulhi_epu16(h0, mulh)), m700);
+            const __m256i hi1 = _mm256_and_si256(_mm256_or_si256(_mm256_mullo_epi16(h1, mul), _mm256_mulhi_epu16(h1, mulh)), m700);
+            _mm256_store_si256((__m256i*) idx, _mm256_or_si256(_mm256_cvtepu8_epi16(_mm256_castsi256_si128(qs)), hi0));
+            _mm256_store_si256((__m256i*) (idx + 16), _mm256_or_si256(_mm256_cvtepu8_epi16(_mm256_extracti128_si256(qs, 1)), hi1));
+        }
+        __m256i acci[NT];
+        for (int t = 0; t < NT; ++t) acci[t] = _mm256_setzero_si256();
+        for (int ib = 0; ib < 8; ++ib) {
+            const uint16_t* ix = idx + 4 * ib;
+            const __m128i lo = _mm_castpd_si128(_mm_loadh_pd(_mm_castsi128_pd(_mm_loadl_epi64((const __m128i*) &iq1s_grid8[ix[0]])), (const double*) &iq1s_grid8[ix[1]]));
+            const __m128i hi = _mm_castpd_si128(_mm_loadh_pd(_mm_castsi128_pd(_mm_loadl_epi64((const __m128i*) &iq1s_grid8[ix[2]])), (const double*) &iq1s_grid8[ix[3]]));
+            const __m256i v = _mm256_inserti128_si256(_mm256_castsi128_si256(lo), hi, 1);
+            const int key = u16(blk + 34 + 2 * ib) >> 12;
+            const __m256i w = _mm256_add_epi8(v, _mm256_load_si256((const __m256i*) iq1s_delta_tab[key]));
+            const __m256i g = _mm256_abs_epi8(w);
+            const __m256i sc = _mm256_load_si256((const __m256i*) iq1s_scale_tab[key]);
+            for (int t = 0; t < NT; ++t) {
+                const __m256i yv = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + 32 * ib));
+                acci[t] = madd_add(acci[t], _mm256_maddubs_epi16(g, _mm256_sign_epi8(yv, w)), sc);
+            }
+        }
+        const float dx = h2f(u16(blk)) * 0.125f;
+        for (int t = 0; t < NT; ++t)
+            accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * y[t][i].d), _mm256_cvtepi32_ps(acci[t]), accf[t]);
+    }
+    for (int t = 0; t < NT; ++t) res[t] = hsum8(accf[t]);
+}
+
 template <int TY, int NT> STRATA_ROWS_FN
 inline void row_dot_any(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
     if constexpr (TY == 17) row_dot_iq2xs<NT>(row, nblocks, y, res);
     else if constexpr (TY == 19) { if (iq1s_fast()) row_dot_iq1s<NT>(row, nblocks, y, res); else row_dot<TY, NT>(row, nblocks, y, res); }
+    else if constexpr (TY == 219) row_dot_iq1s_vidx<NT>(row, nblocks, y, res);
     else                    row_dot<TY, NT>(row, nblocks, y, res);
 }
 
 // IQ1_S gate/up share activations; each accumulator keeps the original
 // block and lane order so the resulting dot products can remain bit-identical.
-template <int NT> STRATA_ROWS_FN
+template <int TY, int NT> STRATA_ROWS_FN
 inline void row_dot_iq1s_pair(const uint8_t* gate, const uint8_t* up, int nblocks,
                               const block_q8_K* const* y, float* rg, float* ru) {
     const int pf = prefetch_distance();
@@ -209,8 +260,8 @@ inline void row_dot_iq1s_pair(const uint8_t* gate, const uint8_t* up, int nblock
         for (int t = 0; t < NT; ++t) ig[t] = iu[t] = _mm256_setzero_si256();
         for (int j = 0; j < 4; ++j) for (int half = 0; half < 2; ++half) {
             __m256i gg, gs, gc, ug, us, uc;
-            Fmt32<19>::decode(bg, j, half, gg, gs, gc);
-            Fmt32<19>::decode(bu, j, half, ug, us, uc);
+            Fmt32<TY>::decode(bg, j, half, gg, gs, gc);   // TY 19: iq1s_grid; 119: the pre-multiplied iq1s_grid8 (STRATA_IQ1S_GRID8)
+            Fmt32<TY>::decode(bu, j, half, ug, us, uc);
             for (int t = 0; t < NT; ++t) {
                 const __m256i v = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + 64*j + 32*half));
                 ig[t] = madd_add(ig[t], _mm256_maddubs_epi16(gg, _mm256_sign_epi8(v, gs)), gc);
@@ -238,10 +289,10 @@ void gu_rows(const uint8_t* blob, size_t gu_row, size_t up_off, int n, const voi
     float g[NT], u[NT];
     // The paired loop wins for one token on the measured Zen 1 core, but
     // slows wider groups. Keep their original dispatch.
-    const bool pair_iq1s = TY == 19 && NT == 1 && iq1s_pair() && !iq1s_fast();
+    const bool pair_iq1s = (TY == 19 || TY == 119) && NT == 1 && iq1s_pair() && !iq1s_fast();
     for (int r = r0; r < r1; ++r) {
-        if constexpr (TY == 19) {
-            if (pair_iq1s) row_dot_iq1s_pair<NT>(blob + size_t(r) * gu_row, up + size_t(r) * gu_row, nb, y, g, u);
+        if constexpr (TY == 19 || TY == 119) {
+            if (pair_iq1s) row_dot_iq1s_pair<TY, NT>(blob + size_t(r) * gu_row, up + size_t(r) * gu_row, nb, y, g, u);
             else { row_dot_any<TY, NT>(blob + size_t(r) * gu_row, nb, y, g); row_dot_any<TY, NT>(up + size_t(r) * gu_row, nb, y, u); }
         } else {
             row_dot_any<TY, NT>(blob + size_t(r) * gu_row, nb, y, g);
@@ -302,7 +353,8 @@ void gu_type(int type, int nt, const uint8_t* blob, size_t gu_row, size_t up_off
     switch (type) {
         case 16: gu_rows_nt<16>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 19:
-            if (iq1s_grid8_on()) { prepare_iq1s_grid8(); gu_rows_nt<119>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); }
+            if (iq1s_vidx_on()) { prepare_iq1s_grid8(); gu_rows_nt<219>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); }
+            else if (iq1s_grid8_on()) { prepare_iq1s_grid8(); gu_rows_nt<119>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); }
             else gu_rows_nt<19>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up);
             break;
         case 17: gu_rows_nt<17>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
@@ -320,7 +372,8 @@ void dot_type(int type, int nt, const uint8_t* w, size_t row_bytes, int n, const
     switch (type) {
         case 16: dot_rows_nt<16>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 19:
-            if (iq1s_grid8_on()) { prepare_iq1s_grid8(); dot_rows_nt<119>(nt, w, row_bytes, n, act, out, r0, r1); }
+            if (iq1s_vidx_on()) { prepare_iq1s_grid8(); dot_rows_nt<219>(nt, w, row_bytes, n, act, out, r0, r1); }
+            else if (iq1s_grid8_on()) { prepare_iq1s_grid8(); dot_rows_nt<119>(nt, w, row_bytes, n, act, out, r0, r1); }
             else dot_rows_nt<19>(nt, w, row_bytes, n, act, out, r0, r1);
             break;
         case 17: dot_rows_nt<17>(nt, w, row_bytes, n, act, out, r0, r1); break;

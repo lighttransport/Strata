@@ -42,6 +42,7 @@
 #include <condition_variable>
 #include <deque>
 #include <initializer_list>
+#include <barrier>
 #include <mutex>
 #include <cmath>
 #include <cstdio>
@@ -209,7 +210,9 @@ private:
 struct Dev {
     void* p = nullptr;
     size_t bytes = 0;
+    bool borrowed = false;   // a view of another Dev's memory (a second decoder in the process shares the first one's weights and tier): never freed here
     Dev() = default;
+    static Dev view(const Dev& o) { Dev d; d.p = o.p; d.bytes = o.bytes; d.borrowed = true; return d; }
     explicit Dev(size_t n) : bytes(n) {
         const size_t allocation = std::max<size_t>(n, 16);
         static const bool probe = std::getenv("STRATA_DS41_ALLOC_PROBE") != nullptr;
@@ -239,9 +242,9 @@ struct Dev {
     }
     Dev(const Dev&) = delete;
     Dev& operator=(const Dev&) = delete;
-    Dev(Dev&& o) noexcept : p(o.p), bytes(o.bytes) { o.p = nullptr; }
-    Dev& operator=(Dev&& o) noexcept { std::swap(p, o.p); std::swap(bytes, o.bytes); return *this; }
-    ~Dev() { if (p) cudaFree(p); }
+    Dev(Dev&& o) noexcept : p(o.p), bytes(o.bytes), borrowed(o.borrowed) { o.p = nullptr; o.borrowed = false; }
+    Dev& operator=(Dev&& o) noexcept { std::swap(p, o.p); std::swap(bytes, o.bytes); std::swap(borrowed, o.borrowed); return *this; }
+    ~Dev() { if (p && !borrowed) cudaFree(p); }
     float* f(size_t at = 0) const { return static_cast<float*>(p) + at; }
     int* i() const { return static_cast<int*>(p); }
     uint16_t* h() const { return static_cast<uint16_t*>(p); }
@@ -1237,8 +1240,8 @@ int engram_profile_run(const std::string& model, const std::string& streams, con
 class Decoder {
 public:
     friend int engram_profile_run(const std::string& model, const std::string& streams, const std::string& out);
-    Decoder(const std::string& path, int context, int threads, int chunk = 0)
-        : art_(path), cfg_(Config::read(*art_.metadata(), art_.descriptor(), [this](const std::string& n) {
+    Decoder(const std::string& path, int context, int threads, int chunk = 0, const Decoder* borrow = nullptr)
+        : borrow_(borrow), art_(path), cfg_(Config::read(*art_.metadata(), art_.descriptor(), [this](const std::string& n) {
               try { art_.at(n); return true; } catch (...) { return false; }
           }, [this](const std::string& n) { return tensor_ints(art_.at(n)); })), context_(context) {
         if (chunk > 0) chunk_ = chunk;
@@ -1675,6 +1678,39 @@ public:
                 if (count[size_t(l) * c.experts + e] > 0)
                     order.emplace_back(count[size_t(l) * c.experts + e] / double(expert_bytes(l)), l, e);
         std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return std::get<0>(a) > std::get<0>(b); });
+        // STRATA_DS41_CANON_TRAFFIC=path (a STRATA_DS41_ROUTES trace of the workload; needs STRATA_DS41_REMOTE_OWN_SKIP_MIB = the node's kept MiB): the tier
+        // is ranked by that trace instead, among the experts this node holds (the first 90 % of the kept MiB in the profile's order)
+        if (const char* tp = std::getenv("STRATA_DS41_CANON_TRAFFIC"); tp && *tp) {
+            const char* skip = std::getenv("STRATA_DS41_REMOTE_OWN_SKIP_MIB");
+            if (!skip || std::atol(skip) <= 0) throw std::invalid_argument("ds41: STRATA_DS41_CANON_TRAFFIC needs STRATA_DS41_REMOTE_OWN_SKIP_MIB");
+            std::vector<double> tcount(size_t(c.layers) * c.experts, 0);
+            std::ifstream g(tp, std::ios::binary);
+            if (!g) throw std::runtime_error("ds41: cannot read the traffic trace " + std::string(tp));
+            std::vector<int32_t> v(size_t(c.layers) * c.top_k);
+            while (g.read(reinterpret_cast<char*>(v.data()), std::streamsize(v.size() * 4)))
+                for (int l = 0; l < c.layers; ++l)
+                    for (int k = 0; k < c.top_k; ++k) {
+                        const int e = v[size_t(l) * c.top_k + k];
+                        if (e >= 0 && e < c.experts) tcount[size_t(l) * c.experts + e] += 1;
+                    }
+            std::vector<char> kept(size_t(c.layers) * c.experts, 0);
+            const double limit = 0.9 * double(std::atol(skip)) * 1048576.0;
+            double acc = 0;
+            for (const auto& [score, l, e] : order) {
+                (void)score;
+                acc += double(expert_bytes(l));
+                if (acc > limit) break;
+                kept[size_t(l) * c.experts + e] = 1;
+            }
+            std::vector<std::tuple<double, int, int>> torder;
+            for (int l = 0; l < c.layers; ++l)
+                for (int e = 0; e < c.experts; ++e)
+                    if (kept[size_t(l) * c.experts + e] && tcount[size_t(l) * c.experts + e] > 0)
+                        torder.emplace_back(tcount[size_t(l) * c.experts + e] / double(expert_bytes(l)), l, e);
+            std::stable_sort(torder.begin(), torder.end(), [](const auto& a, const auto& b) { return std::get<0>(a) > std::get<0>(b); });
+            std::cerr << "DS41 canon_traffic ranked=" << torder.size() << " of " << order.size() << " profile experts\n";
+            order = std::move(torder);
+        }
         // the budget: the request, less a 512 MiB margin above the physical floor for later scratch
         size_t budget = size_t(mib) << 20;
 #if defined(__HIP_PLATFORM_AMD__)
@@ -1693,21 +1729,29 @@ public:
             used += b;
         }
         if (picks.empty()) throw std::runtime_error("ds41: no VRAM left for the canonical tier");
+        if (borrow_) {
+            if (borrow_->canon_arena_.bytes != used)
+                throw std::runtime_error("ds41: the borrowed canonical tier has another size than this decoder's (same STRATA_DS41_CANON_MIB / profile needed)");
+            canon_off_ = borrow_->canon_off_;   // (the first decoder may have settled its tier since: adapt_settle)
+            canon_arena_ = Dev::view(borrow_->canon_arena_);
+        } else
         canon_arena_ = Dev(used);
         size_t max_b = 0;
         for (int l = 0; l < c.layers; ++l) max_b = std::max(max_b, expert_bytes(l));
         uint8_t* host = reinterpret_cast<uint8_t*>(pinned_keep(max_b));
         const auto t0 = std::chrono::steady_clock::now();
         for (const auto& [l, e] : picks) {
+            if (borrow_) break;   // the first decoder's arena is already filled
             slice_to_host(l, e, host);
             ck(cudaMemcpyAsync(canon_arena_.b(size_t(canon_off_[size_t(l) * c.experts + e])), host, expert_bytes(l),
                                cudaMemcpyHostToDevice, stream_), "canonical tier upload");
             ck(cudaStreamSynchronize(stream_), "canonical tier upload sync");
         }
-        // scratch for 8 positions x top_k entries
-        const int E = 8 * c.top_k;
+        // scratch for canon_tmax_ (8; STRATA_DS41_CANON_TOKENS, batched sessions) positions x top_k entries
+        if (const char* v = std::getenv("STRATA_DS41_CANON_TOKENS")) canon_tmax_ = std::clamp(std::atoi(v), 8, 64);
+        const int E = canon_tmax_ * c.top_k;
         const size_t q8k = 292;
-        canon_xq_ = Dev(size_t(8) * (c.hidden / 256) * q8k);
+        canon_xq_ = Dev(size_t(canon_tmax_) * (c.hidden / 256) * q8k);
         canon_gu_ = Dev(size_t(2) * E * c.ff * sizeof(float));
         canon_h_ = Dev(size_t(E) * c.ff * sizeof(float));
         canon_hq_ = Dev(size_t(E) * (c.ff / 256) * q8k);
@@ -1719,7 +1763,7 @@ public:
         if (const char* q = std::getenv("STRATA_DS41_CANON_STREAM"); q && *q) {
             char* qe = nullptr;
             const long v = std::strtol(q, &qe, 10);
-            if (*qe || v < 0 || v > 16) throw std::invalid_argument("ds41: STRATA_DS41_CANON_STREAM must be 0 through 16");
+            if (*qe || v < 0 || v > 32) throw std::invalid_argument("ds41: STRATA_DS41_CANON_STREAM must be 0 through 32");
             canon_stream_ = int(v);
             if (canon_stream_) {
                 canon_ring_slot_ = (max_b + 255) / 256 * 256;
@@ -1732,6 +1776,39 @@ public:
                 }
                 if (canon_stage_threads_)
                     canon_pinned_ = reinterpret_cast<uint8_t*>(pinned_keep(canon_ring_slot_ * size_t(canon_stream_)));
+            }
+        }
+        if (const char* pv = std::getenv("STRATA_DS41_CANON_PIN_MIB"); pv && *pv && std::atol(pv) > 0) {
+            // the experts after the tier in profile order: all are kept on this node when tier + pin <= STRATA_DS41_REMOTE_OWN_SKIP_MIB
+            const long pin_mib = std::atol(pv);
+            const char* skip = std::getenv("STRATA_DS41_REMOTE_OWN_SKIP_MIB");
+            if (!canon_stream_ || !skip || std::atol(skip) < mib + pin_mib)
+                throw std::invalid_argument("ds41: STRATA_DS41_CANON_PIN_MIB needs STRATA_DS41_CANON_STREAM and STRATA_DS41_REMOTE_OWN_SKIP_MIB >= canon MiB + pin MiB");
+            if (borrow_) {   // a second decoder in the process reads the first one's pinned level (host memory, read-only)
+                canon_pin_ = borrow_->canon_pin_;
+                canon_pin_off_ = borrow_->canon_pin_off_;
+                canon_pin_used_ = borrow_->canon_pin_used_;
+                canon_pin_cap_ = borrow_->canon_pin_cap_;
+            } else {
+            canon_pin_off_.assign(size_t(c.layers) * c.experts, -1);
+            size_t pused = 0;
+            std::vector<std::pair<int, int>> ppicks;
+            for (const auto& [score, l, e] : order) {
+                (void)score;
+                if (canon_off_[size_t(l) * c.experts + e] >= 0) continue;
+                const size_t b = (expert_bytes(l) + 255) / 256 * 256;
+                if (pused + b > (size_t(pin_mib) << 20)) continue;
+                canon_pin_off_[size_t(l) * c.experts + e] = int64_t(pused);
+                ppicks.emplace_back(l, e);
+                pused += b;
+            }
+            const long owned_mib = std::getenv("STRATA_DS41_CANON_PIN_OWNED_MIB") ? std::atol(std::getenv("STRATA_DS41_CANON_PIN_OWNED_MIB")) : 0;
+            canon_pin_cap_ = pused + (size_t(std::max(0L, owned_mib)) << 20);
+            canon_pin_ = reinterpret_cast<uint8_t*>(pinned_keep(canon_pin_cap_));
+            canon_pin_used_ = pused;
+            for (const auto& [score, l, e] : order) { (void)score; canon_order_.emplace_back(l, e); }
+            for (const auto& [l, e] : ppicks) slice_to_host(l, e, canon_pin_ + canon_pin_off_[size_t(l) * c.experts + e]);
+            std::cerr << "DS41 canon_pin experts=" << ppicks.size() << " MiB=" << (pused >> 20) << "\n";
             }
         }
         std::cerr << "DS41 canon_tier experts=" << picks.size() << " MiB=" << (used >> 20) << " of_requested=" << mib
@@ -3486,7 +3563,22 @@ private:
     }
 
     // a host-made F32 matrix [out][in] as weight `name`
+    bool borrow_weight(const std::string& key, size_t* bytes) {
+        if (!borrow_) return false;
+        const auto it = borrow_->weights_.find(key);
+        if (it == borrow_->weights_.end()) return false;
+        Weight W;
+        W.type = it->second.type;
+        W.in = it->second.in;
+        W.out = it->second.out;
+        W.row_bytes = it->second.row_bytes;
+        W.data = Dev::view(it->second.data);
+        *bytes = W.data.bytes;
+        weights_.emplace(key, std::move(W));
+        return true;
+    }
     size_t upload_f32(const std::string& name, const std::vector<float>& v, int in, int out) {
+        if (size_t b; borrow_weight(name, &b)) return b;
         Weight W;
         W.type = GGML_TYPE_F32;
         W.in = in;
@@ -3498,6 +3590,7 @@ private:
         return v.size() * 4;
     }
     size_t upload(const std::string& name, const std::string& as = {}) {
+        if (size_t b; borrow_weight(as.empty() ? name : as, &b)) return b;
         const auto& t = art_.at(name);
         Weight W;
         W.type = int(t.tensor->type);
@@ -4221,7 +4314,7 @@ private:
                 css = size_t(c.index_top_k) * rw;
             }
             k::ds41_attention_multi(q_.f(), T, c.heads, c.head_dim, bwin_[size_t(l)].f(), ring_b_, attn_info_dev_.i(), bound, comp_rows,
-                                    row_width(), sel, sel_stride, ratio ? sel_cnt_[size_t(ts)].i() : nullptr, sinks, scale, attn_scores_.f(),
+                                    comp_rows ? row_width() : 0, sel, sel_stride, ratio ? sel_cnt_[size_t(ts)].i() : nullptr, sinks, scale, attn_scores_.f(),
                                     att_.f(), stream_, attn_scores_.bytes, size_t(ring_b_) * c.head_dim, css);
         } else if (T >= 16) {   // one launch for the pass: per-token {first slot, window rows, selected rows}
             if (ring_ <= 0 || c.window <= 0 || c.window > ring_ || c.index_top_k < 1 || c.index_top_k > 4096 || sel_base_ < 0)
@@ -5175,10 +5268,10 @@ private:
                        const std::vector<std::pair<int, int>>& groups) {
         const auto& c = cfg_;
         const auto& f = experts_[size_t(l)].f;
-        const int n = int(entries.size()), G = int(gstart.size()) - 1, E = 8 * c.top_k;
+        const int n = int(entries.size()), G = int(gstart.size()) - 1, E = canon_tmax_ * c.top_k;
         const size_t g = slice_gate(l);
         const size_t xq_bytes = size_t(c.hidden / 256) * 292, hq_bytes = size_t(c.ff / 256) * 292;
-        if (T < 1 || T > 8 || n < 1 || n > E || G < 1 || G > n || gstart.front() != 0 || gstart.back() != n || groups.size() != size_t(G) ||
+        if (T < 1 || T > canon_tmax_ || n < 1 || n > E || G < 1 || G > n || gstart.front() != 0 || gstart.back() != n || groups.size() != size_t(G) ||
             canon_xq_.bytes < size_t(T) * xq_bytes || canon_hq_.bytes < size_t(n) * hq_bytes ||
             canon_gu_.bytes < size_t(2) * n * c.ff * sizeof(float) || canon_out_.bytes < size_t(n) * c.hidden * sizeof(float))
             throw std::runtime_error("ds41: canonical tier pass geometry out of bounds");
@@ -5242,7 +5335,15 @@ private:
             }
             const auto& LE = experts_[size_t(l)];
             const size_t dn = LE.f.d_row * size_t(c.hidden);
-            if (canon_stage_threads_ > 0) {
+            if (canon_pin_) {   // pinned level: one copy of the whole blob per expert
+                for (size_t j = 0; j < copies.size(); ++j) {
+                    const auto& [dst, e] = copies[j];
+                    const int64_t po = canon_pin_off_[size_t(l) * c.experts + e];
+                    if (po < 0) throw std::runtime_error("ds41: streamed expert is not in the pinned level");
+                    cudaStream_t cs = canon_copy_s2_ && (j & 1) ? canon_copy_s2_ : canon_copy_s_;
+                    ck(cudaMemcpyAsync(dst, canon_pin_ + po, eb, cudaMemcpyHostToDevice, cs), "canonical pinned stream");
+                }
+            } else if (canon_stage_threads_ > 0) {
                 if (!canon_stager_) canon_stager_ = std::make_unique<CanonStager>(canon_stage_threads_, canon_copy_s_);
                 canon_jobs_.clear();
                 for (const auto& [dst, e] : copies) {
@@ -5494,6 +5595,35 @@ private:
             cfg.root_addr = fetch_addr;
             if (!std::getenv("UCOMM_TIMEOUT_MS")) cfg.timeout_ms = 0;
             Remote::ok(ucomm_init(&cfg, &ad_comm_), "adapt connect");
+            // STRATA_DS41_CANON_PIN_OWNED_MIB: the hottest experts the worker owns (profile order, not in the tier) are fetched once into the pinned
+            // level; from then on the GPU streams and runs them instead of the worker's lane
+            if (canon_pin_ && canon_pin_cap_ > canon_pin_used_) {
+                const auto f0 = std::chrono::steady_clock::now();
+                uint8_t* tmp = reinterpret_cast<uint8_t*>(pinned_keep(max_b));
+                ucomm_mr_t* mr = nullptr;
+                (void)ucomm_mr_reg(ad_comm_, tmp, max_b, &mr);
+                int got_n = 0;
+                for (const auto& [l, e] : canon_order_) {
+                    const size_t idx = size_t(l) * c.experts + e;
+                    const size_t b = (expert_bytes(l) + 255) / 256 * 256;
+                    if (!ad_owned_[idx] || canon_off_[idx] >= 0 || canon_pin_off_[idx] >= 0) continue;
+                    if (canon_pin_used_ + b > canon_pin_cap_) break;
+                    const int32_t req[3] = {l, e, 0};
+                    ucomm_req_t* r = nullptr;
+                    Remote::ok(ucomm_irecv(ad_comm_, 1, 51, tmp, expert_bytes(l), &r), "pin receive");
+                    Remote::ok(ucomm_send(ad_comm_, 1, 50, req, sizeof req), "pin request");
+                    size_t got = 0;
+                    Remote::ok(ucomm_wait(r, &got), "pin wait");
+                    if (got != expert_bytes(l)) throw std::runtime_error("ds41 pin: short blob");
+                    std::memcpy(canon_pin_ + canon_pin_used_, tmp, got);
+                    canon_pin_off_[idx] = int64_t(canon_pin_used_);
+                    canon_pin_used_ += b;
+                    ++got_n;
+                }
+                if (mr) ucomm_mr_dereg(mr);
+                std::cerr << "DS41 canon_pin_owned experts=" << got_n << " MiB=" << (canon_pin_used_ >> 20) << " s="
+                          << std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count() << "\n";
+            }
         }
         if (const char* v = std::getenv("STRATA_DS41_ADAPT_CHUNK_KIB")) ad_chunk_ = size_t(std::max(0, std::atoi(v))) << 10;
         if (const char* v = std::getenv("STRATA_DS41_ADAPT_GAP_MS")) ad_gap_ms_ = std::max(0, std::atoi(v));
@@ -5613,6 +5743,37 @@ private:
         for (size_t i = 0; i < n; ++i)
             if (ids[i] >= 0 && ids[i] < cfg_.experts) ad_score_[size_t(l) * cfg_.experts + size_t(ids[i])].fetch_add(1, std::memory_order_relaxed);
     }
+public:
+    /// Dual decoders (STRATA_DS41_DUAL) share one static tier: seed the adaptive tier's scores from a route trace (STRATA_DS41_ROUTES format, STRATA_DS41_CANON_TRAFFIC),
+    /// let the running adaptation fetch and swap in the hottest experts (the worker's included) until nothing more is worth a slot or max_swaps, then stop it for good.
+    void adapt_settle(const char* traffic_path, int max_swaps) {
+        const auto& c = cfg_;
+        if (!ad_thread_.joinable() || !ad_score_) throw std::invalid_argument("ds41: adapt_settle needs STRATA_DS41_CANON_ADAPT and STRATA_DS41_OWN_FETCH");
+        {
+            std::ifstream g(traffic_path, std::ios::binary);
+            if (!g) throw std::runtime_error("ds41: cannot read the traffic trace " + std::string(traffic_path));
+            std::vector<int32_t> v(size_t(c.layers) * c.top_k);
+            while (g.read(reinterpret_cast<char*>(v.data()), std::streamsize(v.size() * 4)))
+                for (int l = 0; l < c.layers; ++l)
+                    for (int k = 0; k < c.top_k; ++k) {
+                        const int e = v[size_t(l) * c.top_k + k];
+                        if (e >= 0 && e < c.experts) ad_score_[size_t(l) * c.experts + size_t(e)].fetch_add(1, std::memory_order_relaxed);
+                    }
+        }
+        const auto t0 = std::chrono::steady_clock::now();
+        int quiet = 0, last = ad_swaps_;
+        while (ad_swaps_ < max_swaps && quiet < 400) {   // 400 x 5 ms without a swap: settled
+            adapt_apply(true);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            if (ad_swaps_ != last) { last = ad_swaps_; quiet = 0; } else ++quiet;
+        }
+        for (int i = 0; i < 100; ++i) { adapt_apply(false); std::this_thread::sleep_for(std::chrono::milliseconds(2)); }   // the last uploads
+        ck(cudaStreamSynchronize(stream_), "tier settle");
+        adapt_stop();
+        std::cerr << "DS41 canon_settle swaps=" << ad_swaps_ << " fetched=" << ad_fetched_.load() << " s="
+                  << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
+    }
+private:
     void adapt_stop() {
         ad_stop_ = true;
         if (ad_thread_.joinable()) ad_thread_.join();
@@ -5632,7 +5793,9 @@ private:
 public:
     // STRATA_DS41_REMOTE_OWN, decode / verify passes: ms of canonical GPU sync, worker reply wait, lane finish + merge;
     // [3] the layer calls counted
-    double own_ms_[4] = {0, 0, 0, 0}, own_latency_ms_ = 0;   // own_latency_: from sending a layer's request to its reply in hand
+    double own_ms_[4] = {0, 0, 0, 0}, own_latency_ms_ = 0;
+    double own_prep_ms_ = 0, own_send_ms_ = 0;
+    long own_starts_ = 0;   // own_latency_: from sending a layer's request to its reply in hand
     std::chrono::steady_clock::time_point own_start_t_;
     std::string promote_summary() const {
         if (ad_budget_ > 0) return "DS41 canon_adapt swaps=" + std::to_string(ad_swaps_) + " fetched=" + std::to_string(ad_fetched_.load()) + "\n";
@@ -5649,6 +5812,12 @@ private:
     cudaEvent_t canon_copy_ev2_ = nullptr;
     int canon_stage_threads_ = 0;   // STRATA_DS41_CANON_STREAM_THREADS (0: pageable copies)
     uint8_t* canon_pinned_ = nullptr;
+    // STRATA_DS41_CANON_PIN_MIB: the next-hottest experts after the tier, resident in host-pinned memory (same blob layout as the arena);
+    // the streamed experts of a pass come from here by one async copy each
+    uint8_t* canon_pin_ = nullptr;
+    std::vector<int64_t> canon_pin_off_;   // [layer][expert] byte offset into canon_pin_, -1: not pinned
+    std::vector<std::pair<int, int>> canon_order_;   // (layer, expert) by profile score per byte, hottest first
+    size_t canon_pin_used_ = 0, canon_pin_cap_ = 0;   // pinned level: bytes filled / allocated (STRATA_DS41_CANON_PIN_MIB + _OWNED_MIB)
     std::vector<CanonStager::Job> canon_jobs_;
     std::unique_ptr<CanonStager> canon_stager_;
     size_t canon_ring_slot_ = 0;
@@ -5811,6 +5980,7 @@ private:
     Dev canon_arena_, canon_xq_, canon_gu_, canon_h_, canon_hq_, canon_out_, canon_meta_;
     uint8_t* canon_meta_host_ = nullptr;
     float* canon_res_ = nullptr;
+    int canon_tmax_ = 8;   // widest pass the canonical tier takes (scratch sized for it)
     std::vector<uint8_t> canon_checked_;
     std::vector<float> stage_cpu_diag_out_;
     Dev stage_cpu_xq_, stage_cpu_hq_;
@@ -7383,14 +7553,15 @@ private:
         std::vector<std::pair<int, int>> canon_groups;   // (expert, ring slot or -1 for the static arena)
         if (prom_thread_.joinable()) promote_apply();
         if (ad_thread_.joinable()) { adapt_apply(false); adapt_count(l, cpu_ids.data(), cpu_ids.size()); }
-        if (!canon_off_.empty() && T <= 8 && size_t(T) * size_t(K) == cpu_ids.size()) {
+        if (!canon_off_.empty() && T <= canon_tmax_ && size_t(T) * size_t(K) == cpu_ids.size()) {
             std::map<int, std::vector<int>> held, rest;
             for (int i = 0; i < T * K; ++i) {
                 const int e = cpu_ids[size_t(i)];
                 if (e < 0) continue;
                 if (e >= c.experts) throw std::runtime_error("ds41: canonical tier route out of bounds");
                 ++canon_cpu_routes_;
-                if (!own_.empty() && own_[size_t(l) * c.experts + e] && canon_off_[size_t(l) * c.experts + e] < 0) continue;   // the remote owner's (STRATA_DS41_REMOTE_OWN)
+                if (!own_.empty() && own_[size_t(l) * c.experts + e] && canon_off_[size_t(l) * c.experts + e] < 0 &&
+                    (canon_pin_off_.empty() || canon_pin_off_[size_t(l) * c.experts + e] < 0)) continue;   // the remote owner's (STRATA_DS41_REMOTE_OWN), unless pinned here
                 (canon_off_[size_t(l) * c.experts + e] >= 0 ? held : rest)[e].push_back(i);
             }
             // STRATA_DS41_CANON_CAP=n: at most n resident experts run on the GPU in a pass (worker-owned ones first, then the widest);
@@ -7409,8 +7580,18 @@ private:
             // to the GPU this pass and run there with the same arithmetic
             std::vector<std::pair<int, std::vector<int>>> streamed;
             if (canon_stream_ > 0 && !rest.empty()) {
-                std::vector<std::pair<int, std::vector<int>>> r(rest.begin(), rest.end());
-                std::stable_sort(r.begin(), r.end(), [](const auto& a, const auto& b) { return a.second.size() > b.second.size(); });
+                std::vector<std::pair<int, std::vector<int>>> r;
+                for (const auto& kv : rest)
+                    if (canon_pin_off_.empty() || canon_pin_off_[size_t(l) * c.experts + kv.first] >= 0) r.push_back(kv);   // pinned level: only its experts stream
+                // the worker's experts first (the worker's lane is the slower path), then the widest
+                const bool own_first = !own_.empty() && !canon_pin_off_.empty();
+                std::stable_sort(r.begin(), r.end(), [&](const auto& a, const auto& b) {
+                    if (own_first) {
+                        const bool oa = own_[size_t(l) * c.experts + a.first], ob = own_[size_t(l) * c.experts + b.first];
+                        if (oa != ob) return oa;
+                    }
+                    return a.second.size() > b.second.size();
+                });
                 if (r.size() > size_t(canon_stream_)) r.resize(size_t(canon_stream_));
                 streamed = std::move(r);
             }
@@ -7449,7 +7630,10 @@ private:
                 if (canon_original.empty()) canon_original = cpu_ids;
                 for (size_t i = 0; i < cpu_ids.size(); ++i) if (own_ids[i] >= 0) cpu_ids[i] = -1;
                 own_start_t_ = std::chrono::steady_clock::now();
+                own_prep_ms_ += std::chrono::duration<double, std::milli>(own_start_t_ - e0).count();   // router result in hand -> the worker's request goes out
                 own_remote_->start(l, T, K, own_ids.data(), wts.data(), pinned_[0], own_n);
+                own_send_ms_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - own_start_t_).count();
+                ++own_starts_;
                 own_routes_ += size_t(own_n);
             }
         }
@@ -7703,7 +7887,7 @@ private:
             const auto o1 = std::chrono::steady_clock::now();
             own_remote_->finish_raw(T);
             const auto o2 = std::chrono::steady_clock::now();
-            if (T <= 8) {   // decode / verify passes: GPU sync, the worker's reply, then the merge (below)
+            if (T <= 8 || sess_) {   // decode / verify passes (and session passes): GPU sync, the worker's reply, then the merge (below)
                 own_ms_[0] += std::chrono::duration<double, std::milli>(o1 - o0).count();
                 own_ms_[1] += std::chrono::duration<double, std::milli>(o2 - o1).count();
                 own_latency_ms_ += std::chrono::duration<double, std::milli>(o2 - own_start_t_).count();
@@ -7822,8 +8006,20 @@ public:
     double prof_[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     double tier_hits_ = 0, tier_all_ = 0, promotions_ = 0;
     uint64_t canon_routes_ = 0, canon_cpu_routes_ = 0, canon_streamed_ = 0;   // STRATA_DS41_CANON_MIB: routes on the GPU / CPU routes seen / streamed
+    uint64_t own_routes() const { return own_routes_; }
+    void reset_own_routes() { own_routes_ = 0; }
+    void reset_lane_stats() { if (lane_) lane_->async_reset(); }
+    // the calling host thread onto this decoder's lane core 0 (two decoders in a process: each host thread is its lane's thread 0)
+    void pin_host_thread() {
+        if (!lane_ || lane_->caller_cpu() < 0) return;
+        cpu_set_t one;
+        CPU_ZERO(&one);
+        CPU_SET(lane_->caller_cpu(), &one);
+        pthread_setaffinity_np(pthread_self(), sizeof one, &one);
+    }
 
 private:
+    const Decoder* borrow_ = nullptr;   // STRATA_DS41_DUAL: the first decoder, whose GPU weights and canonical tier this one views
     core::ModelArtifact art_;
     std::map<const GgufFile*, std::pair<void*, size_t>> shared_maps_;
     std::vector<std::pair<void*, size_t>> populate_;
@@ -9573,6 +9769,7 @@ bool is_ds41(const std::string& path) {
 // STRATA_DS41_SESSIONS: every session's prompt, then `steps` greedy tokens for all of them in passes of one token per
 // session. STRATA_DS41_SESSION_CHECK=n: afterwards the first n sessions again, alone (prompt, then plain decoding), and
 // their tokens against the batched ones.
+std::unique_ptr<std::barrier<>> g_decode_barrier;
 int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int steps) {
     const size_t V = size_t(d.config().vocab);
     auto argmax = [](const float* v, size_t n) { return int(std::max_element(v, v + n) - v); };
@@ -9587,6 +9784,7 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
         }
         return argmax(last.data(), V);
     };
+    if (g_decode_barrier) d.pin_host_thread();
     d.sessions_init(S);
     const auto p0 = std::chrono::steady_clock::now();
     std::vector<int> next(size_t(S), 0);
@@ -9598,17 +9796,27 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
     std::fill(std::begin(d.prof_), std::end(d.prof_), 0.0);
     d.tier_hits_ = d.tier_all_ = 0;
     d.canon_routes_ = d.canon_cpu_routes_ = d.canon_streamed_ = 0;
+    d.reset_own_routes();
+    d.reset_lane_stats();
+    d.attn_host_s_ = d.ffn_host_s_ = 0;
+    d.own_prep_ms_ = d.own_send_ms_ = 0; d.own_starts_ = 0;
     d.prefill_done();
     std::fill(std::begin(d.xt_), std::end(d.xt_), 0.0);
     std::fill(std::begin(d.dtime_), std::end(d.dtime_), 0.0);
     d.dtokens_ = 0;
     const double peer_gpu0 = d.peer_gpu_ms(), peer_late0 = d.peer_late_ms();
+    if (g_decode_barrier) g_decode_barrier->arrive_and_wait();   // dual: both halves start the timed decode together
     const auto t2 = std::chrono::steady_clock::now();
     std::vector<std::vector<int>> out(static_cast<size_t>(S));
+    // STRATA_DS41_SESSION_TF=1 (with SESSION_CHECK=n): keep the first n sessions' logits for the teacher-forced check below
+    const bool tf = strata_env_is_one("STRATA_DS41_SESSION_TF");
+    const int tf_n = !tf || !std::getenv("STRATA_DS41_SESSION_CHECK") ? 0 : std::min(S, std::atoi(std::getenv("STRATA_DS41_SESSION_CHECK")));
+    std::vector<std::vector<std::vector<float>>> blog(static_cast<size_t>(tf_n));
     for (int k = 0; k < steps; ++k) {
         for (int s = 0; s < S; ++s) out[size_t(s)].push_back(next[size_t(s)]);
         if (k + 1 == steps) break;
         const auto& lg = d.forward_sessions(next.data(), S);
+        for (int s = 0; s < tf_n; ++s) blog[size_t(s)].emplace_back(lg.begin() + std::ptrdiff_t(size_t(s) * V), lg.begin() + std::ptrdiff_t(size_t(s + 1) * V));
         for (int s = 0; s < S; ++s) next[size_t(s)] = argmax(lg.data() + size_t(s) * V, V);
     }
     const auto t3 = std::chrono::steady_clock::now();
@@ -9620,6 +9828,17 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
         std::cerr << " passes=" << d.dtokens_ << " peer_gpu=" << (d.peer_gpu_ms() - peer_gpu0) / d.dtokens_
                   << " peer_late=" << (d.peer_late_ms() - peer_late0) / d.dtokens_ << "\n";
     }
+    d.miss_line(double(std::max(1, steps - 1)));   // lane_async busy ms per pass
+    if (d.own_starts_ > 0) std::cerr << "DS41 worker_request per layer call ms: prep " << d.own_prep_ms_ / d.own_starts_ << " send " << d.own_send_ms_ / d.own_starts_ << "\n";
+    std::cerr << "DS41 host_ms_per_pass attention=" << d.attn_host_s_ * 1e3 / std::max(1, steps - 1) << " ffn=" << d.ffn_host_s_ * 1e3 / std::max(1, steps - 1) << "\n";
+    if (steps > 1) {   // routes per layer per pass: seen by the CPU path / on the GPU tier / sent to the worker (the rest: the B550 lane)
+        const double lp = double(steps - 1) * d.config().layers;
+        std::cerr << "DS41 routes_per_layer total=" << double(d.canon_cpu_routes_) / lp << " canon_gpu=" << double(d.canon_routes_) / lp
+                  << " worker=" << double(d.own_routes()) / lp << " b550_lane=" << (double(d.canon_cpu_routes_) - double(d.canon_routes_) - double(d.own_routes())) / lp << "\n";
+    }
+    if (d.own_ms_[3] > 0)
+        std::cerr << "DS41 remote_own_decode layer_calls=" << d.own_ms_[3] << " (per layer call ms gpu_sync " << d.own_ms_[0] / d.own_ms_[3] << " / worker_wait "
+                  << d.own_ms_[1] / d.own_ms_[3] << " / merge+lane " << d.own_ms_[2] / d.own_ms_[3] << ") request_to_reply_ms=" << d.own_latency_ms_ / d.own_ms_[3] << "\n";
     std::cerr << "DS41 profile_s step=" << d.prof_[0] << " gpu_to_router=" << d.prof_[1] << " cpu_experts=" << d.prof_[2]
               << " gpu_tier_hit=" << (d.tier_all_ > 0 ? d.tier_hits_ / d.tier_all_ : 0) << " engram=" << d.prof_[4] << " index_host=" << d.prof_[5]
               << " head=" << d.prof_[6] << " (ffn: enqueue " << d.xt_[0] << " lane " << d.xt_[1] << " peer " << d.xt_[2] << ")\n";
@@ -9631,8 +9850,31 @@ int run_sessions(Decoder& d, const std::vector<int>& prompt, int S, int L, int s
     const double passes = std::max(1, steps - 1);
     std::cerr << "DS41 sessions=" << S << " prompt=" << L << " prefill_s=" << prefill_s << " generated=" << steps << " pass_ms="
               << decode_s * 1e3 / passes << " decode_tok_s=" << S * passes / std::max(decode_s, 1e-9)
-              << " per_session_tok_s=" << passes / std::max(decode_s, 1e-9) << "\n";
+              << " per_session_tok_s=" << passes / std::max(decode_s, 1e-9)
+              << " canon_hit=" << (d.canon_cpu_routes_ ? double(d.canon_routes_) / double(d.canon_cpu_routes_) : 0.0) << "\n";
     const int check = std::getenv("STRATA_DS41_SESSION_CHECK") ? std::min(S, std::atoi(std::getenv("STRATA_DS41_SESSION_CHECK"))) : 0;
+    if (tf_n > 0) {   // the alone run is fed the batched run's tokens: top-1 agreement and KL(alone || batched) of the same positions
+        auto lse = [&](const float* v) { double m = *std::max_element(v, v + V), a = 0; for (size_t i = 0; i < V; ++i) a += std::exp(double(v[i]) - m); return m + std::log(a); };
+        double kl_sum = 0, kl_max = 0; long agree = 0, total = 0;
+        for (int s = 0; s < tf_n; ++s) {
+            d.reset_sequence();
+            int tok = prefill(s);
+            for (int k = 0; k + 1 < steps; ++k) {
+                const auto& lg = d.step(out[size_t(s)][size_t(k)], L + k);
+                const auto& bl = blog[size_t(s)][size_t(k)];
+                const double la = lse(lg.data()), lb = lse(bl.data());
+                double kl = 0;
+                for (size_t i = 0; i < V; ++i) { const double pa = std::exp(double(lg[i]) - la); if (pa > 1e-12) kl += pa * ((double(lg[i]) - la) - (double(bl[i]) - lb)); }
+                kl_sum += kl; kl_max = std::max(kl_max, kl);
+                agree += argmax(lg.data(), V) == argmax(bl.data(), V);
+                ++total;
+            }
+            (void)tok;
+        }
+        std::cerr << "DS41 session_tf positions=" << total << " top1_agree=" << double(agree) / std::max<long>(total, 1) << " kl_mean=" << kl_sum / std::max<long>(total, 1)
+                  << " kl_max=" << kl_max << "\n";
+        return 0;
+    }
     for (int s = 0; s < check; ++s) {
         d.reset_sequence();
         int tok = prefill(s), same = 0, prefix = -1;
@@ -9836,8 +10078,52 @@ int run(int argc, char** argv) {
         ck(cudaSetDeviceFlags(cudaDeviceScheduleSpin), "spin sync");
     Decoder d(argv[1], context, threads, chunk);
     if (const char* r = std::getenv("STRATA_DS41_ROUTES")) d.log_routes(r);
+    // STRATA_DS41_DUAL=1 (with STRATA_DS41_SESSIONS=S): a second decoder in this process views the first one's GPU weights and canonical tier
+    // and runs S/2 of the sessions on its own host thread, CUDA stream, lane and worker connection (every port +10): while one half waits
+    // for the worker, the other half's trunk runs on the GPU, and the worker serves both. Needs a static tier (no CANON_ADAPT) and the worker
+    // started with --root2/--engram-port2.
+    // STRATA_DS41_CANON_SETTLE=trace (with CANON_ADAPT + OWN_FETCH): the adaptive tier is filled once from that route trace and then frozen (a static, workload-fitted
+    // tier: what two decoders can share, and the same tier for a single decoder to compare with)
+    if (const char* tr = std::getenv("STRATA_DS41_CANON_SETTLE"); tr && *tr) {
+        d.adapt_settle(tr, 3000);
+        unsetenv("STRATA_DS41_CANON_ADAPT");
+    }
+    std::unique_ptr<Decoder> d2;
+    if (strata_env_is_one("STRATA_DS41_DUAL") && std::getenv("STRATA_DS41_SESSIONS")) {
+        auto bump = [](const char* name) {   // HOST:PORT -> HOST:PORT+10
+            if (const char* v = std::getenv(name); v && *v) {
+                std::string a = v;
+                const auto colon = a.rfind(':');
+                if (colon != std::string::npos) setenv(name, (a.substr(0, colon + 1) + std::to_string(std::atoi(a.c_str() + colon + 1) + 10)).c_str(), 1);
+            }
+        };
+        bump("STRATA_DS41_REMOTE_OWN");
+        bump("STRATA_DS41_ENGRAM_REMOTE");
+        bump("STRATA_DS41_OWN_FETCH");
+        setenv("STRATA_DS41_LANE_CPU_OFFSET", std::to_string(threads).c_str(), 1);   // the second lane on the next cores
+        {   // the first lane pinned this thread to its core 0; the second lane enumerates the cores this thread may use
+            cpu_set_t all;
+            CPU_ZERO(&all);
+            for (long i = 0; i < sysconf(_SC_NPROCESSORS_CONF) && i < CPU_SETSIZE; ++i) CPU_SET(int(i), &all);
+            pthread_setaffinity_np(pthread_self(), sizeof all, &all);
+        }
+        d2 = std::make_unique<Decoder>(argv[1], context, threads, chunk, &d);
+        std::cerr << "DS41 dual: second decoder ready\n";
+    }
     const auto t1 = std::chrono::steady_clock::now();
     std::cerr << "DS41 load_s=" << std::chrono::duration<double>(t1 - t0).count() << " threads=" << threads << "\n";
+    if (sessions && d2) {
+        const int s1 = (sessions + 1) / 2, s2 = sessions - s1;
+        std::vector<int> prompt2(prompt);
+        std::rotate(prompt2.begin(), prompt2.begin() + std::ptrdiff_t(size_t(s1) * size_t(slen) % prompt.size()), prompt2.end());
+        g_decode_barrier = std::make_unique<std::barrier<>>(2);
+        int rc2 = 0;
+        std::thread t2([&] { try { rc2 = run_sessions(*d2, prompt2, s2, slen, steps); } catch (const std::exception& e) { std::cerr << "ds41 (second decoder): " << e.what() << "\n"; rc2 = 1; } });
+        int rc1 = 1;
+        try { rc1 = run_sessions(d, prompt, s1, slen, steps); } catch (const std::exception& e) { std::cerr << "ds41: " << e.what() << "\n"; }
+        t2.join();
+        return rc1 | rc2;
+    }
     if (sessions) return run_sessions(d, prompt, sessions, slen, steps);
     if (std::getenv("STRATA_DS41_GPU_BENCH")) { d.gpu_bench(); return 0; }
     // --check: every observed tensor of every prompt position against the dump's s<pos>/<name>-<layer>.bin

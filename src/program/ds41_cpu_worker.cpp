@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -171,8 +172,8 @@ class EngramServer {
 
 int main(int argc, char** argv) {
     std::string root, backend = "auto", model;
-    int threads = 0, engram_port = 0, engram_threads = 16, fetch_port = 0;
-    std::string helper_cpus;
+    int threads = 0, engram_port = 0, engram_threads = 16, fetch_port = 0, engram_port2 = 0, fetch_port2 = 0;
+    std::string helper_cpus, root2;   // --root2/--engram-port2/--fetch-port2: a second decoder served at the same time (one lane, requests in arrival order)
     bool numa_place = false, persist = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -184,6 +185,9 @@ int main(int argc, char** argv) {
         else if (a.starts_with("--engram-port=")) engram_port = std::stoi(a.substr(14));
         else if (a.starts_with("--engram-threads=")) engram_threads = std::stoi(a.substr(17));
         else if (a.starts_with("--fetch-port=")) fetch_port = std::stoi(a.substr(13));
+        else if (a.starts_with("--root2=")) root2 = a.substr(8);
+        else if (a.starts_with("--engram-port2=")) engram_port2 = std::stoi(a.substr(15));
+        else if (a.starts_with("--fetch-port2=")) fetch_port2 = std::stoi(a.substr(14));
         else if (a == "--numa-place") numa_place = true;
         else if (a.starts_with("--helper-cpus=")) helper_cpus = a.substr(14);   // e.g. 14,15,30,31
         else if (a == "--persist") persist = true;   // serve one decoder session after another with the same rows (the setup must repeat)
@@ -212,7 +216,11 @@ int main(int argc, char** argv) {
         double fill_ms = 0;
         bool loaded = false;
         std::unique_ptr<strata::ds41::ExpertLane> lane;
-        for (int session = 0;; ++session) {
+        std::mutex setup_mu, lane_make_mu;
+        // the lane: a ticket lock, so two decoders' requests take turns in arrival order
+        std::atomic<unsigned> lane_next{0}, lane_serving{0};   // the rows load once; the lane runs one request at a time
+        auto serve_once = [&](const std::string& root, int engram_port, int fetch_port) -> bool {
+        pin_helper();
         // the decoder opens its Engram context before the main one: the same order here
         std::unique_ptr<EngramServer> engram;
         if (engram_port > 0) {
@@ -232,6 +240,7 @@ int main(int argc, char** argv) {
         std::vector<uint8_t> setup_msg(1 << 20);
         size_t n = 0;
         ok(ucomm_recv(c, 0, net::kTagSetup, setup_msg.data(), setup_msg.size(), &n), "setup");
+        std::unique_lock<std::mutex> setup_lock(setup_mu);   // the first connection reads the rows; the second finds them loaded
         std::memcpy(&setup, setup_msg.data(), sizeof setup);
         if (loaded) {
             if (n != loaded_setup.size() || !std::equal(loaded_setup.begin(), loaded_setup.end(), setup_msg.begin()))
@@ -327,6 +336,7 @@ int main(int argc, char** argv) {
         loaded = true;
         loaded_setup.assign(setup_msg.begin(), setup_msg.begin() + std::ptrdiff_t(n));
         }
+        setup_lock.unlock();
         net::TpAccept accept{};
         accept.ok = 1;
         accept.have = 1;   // nothing is sent: the decoder skips the weights
@@ -334,7 +344,10 @@ int main(int argc, char** argv) {
         ok(ucomm_send(c, 0, net::kTagAccept, &accept, sizeof accept), "accept");
 
         const int K_max = 16, maxT = 1024;
+        { std::lock_guard<std::mutex> g(lane_make_mu);
         if (!lane) lane = std::make_unique<strata::ds41::ExpertLane>(H, rows, threads > 0 ? threads : int(std::max(1u, std::thread::hardware_concurrency() / 2)), true);
+        }
+        if (!root2.empty()) pin_helper();   // (the lane's constructor pinned this thread to its core 0: waiting for requests belongs on a helper core)
         const size_t msg_bytes = sizeof(net::TpRequest) + size_t(maxT) * K_max * sizeof(net::TpJob) + size_t(maxT) * H * 4;
         std::vector<uint8_t> msg(msg_bytes);
         std::vector<float> reply(size_t(maxT) * K_max * H), cpu_rows(size_t(maxT) * K_max * H);
@@ -418,7 +431,22 @@ int main(int argc, char** argv) {
             view.down = L.base + L.f.down_off;
             view.gate_stride = view.down_stride = L.slot_bytes;
             const auto c0 = std::chrono::steady_clock::now();
-            lane->run_raw(view, z, nt, ids.data(), K, cpu_rows.data());
+            if (root2.empty()) lane->run_raw(view, z, nt, ids.data(), K, cpu_rows.data());
+            else {   // two decoders share the lane: one request at a time, the caller computing as the lane's thread 0 on that thread's core
+                const unsigned ticket = lane_next.fetch_add(1, std::memory_order_acq_rel);
+                while (lane_serving.load(std::memory_order_acquire) != ticket) std::this_thread::yield();
+                struct Release { std::atomic<unsigned>& s; ~Release() { s.fetch_add(1, std::memory_order_release); } } release{lane_serving};
+                cpu_set_t prev;
+                pthread_getaffinity_np(pthread_self(), sizeof prev, &prev);
+                if (lane->caller_cpu() >= 0) {
+                    cpu_set_t one;
+                    CPU_ZERO(&one);
+                    CPU_SET(lane->caller_cpu(), &one);
+                    pthread_setaffinity_np(pthread_self(), sizeof one, &one);
+                }
+                lane->run_raw(view, z, nt, ids.data(), K, cpu_rows.data());
+                pthread_setaffinity_np(pthread_self(), sizeof prev, &prev);
+            }
             lane_ms += since(c0);
             std::memcpy(reply.data(), cpu_rows.data(), size_t(count) * H * 4);
             busy_ms += since(t0);
@@ -439,9 +467,19 @@ int main(int argc, char** argv) {
         if (fetch_thread.joinable()) fetch_thread.join();
         ucomm_finalize(c);
         if (engram) engram->join();
-        if (!persist) return 0;
+        if (!persist || !root2.empty()) return false;
         lane.reset();   // its threads would yield-spin through the wait for the next decoder
-        }
+        return true;
+        };
+        auto serve_loop = [&](const std::string& r, int ep, int fp) { while (serve_once(r, ep, fp)) {} };
+        if (root2.empty()) { serve_loop(root, engram_port, fetch_port); return 0; }
+        std::thread second([&] {
+            try { serve_loop(root2, engram_port2, fetch_port2); }
+            catch (const std::exception& e) { std::fprintf(stderr, "DS41_CPU_WORKER error (second decoder): %s\n", e.what()); }
+        });
+        serve_loop(root, engram_port, fetch_port);
+        second.join();
+        return 0;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "DS41_CPU_WORKER error: %s\n", e.what());
         return 1;

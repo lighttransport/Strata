@@ -560,6 +560,102 @@
     "kl": 0.622,
     "top1": 72.6
    }
-  ]
+  ],
+  "batched_sessions": {
+   "date": "2026-10-30",
+   "mode": "plain batched decode, reversed layout, 120-token c_osd slices, 24 steps (aggregate tok/s)",
+   "single_stream_refs": {
+    "plain": 11.74,
+    "best_exact_dspark": 16.6
+   },
+   "rows": [
+    {
+     "S": 1,
+     "config": "as is",
+     "tok_s": 11.98
+    },
+    {
+     "S": 2,
+     "config": "as is",
+     "tok_s": 15.63
+    },
+    {
+     "S": 4,
+     "config": "as is",
+     "tok_s": 18.16
+    },
+    {
+     "S": 8,
+     "config": "as is",
+     "tok_s": 20.57
+    },
+    {
+     "S": 16,
+     "config": "as is",
+     "tok_s": 21.22
+    },
+    {
+     "S": 8,
+     "config": "ADAPT 3000",
+     "tok_s": 23.86
+    },
+    {
+     "S": 16,
+     "config": "ADAPT + dense MMQ",
+     "tok_s": 27.17
+    },
+    {
+     "S": 16,
+     "config": "ADAPT + dense MMQ + CANON_TOKENS=16",
+     "tok_s": 38.43
+    },
+    {
+     "S": 32,
+     "config": "ADAPT + dense MMQ + CANON_TOKENS=32",
+     "tok_s": 44.7
+    },
+    {
+     "S": 32,
+     "config": "+ tier 7000 MiB + keep 34 GB + MERGE_DIRECT/VECTOR",
+     "tok_s": 50.86,
+     "hit": 0.576
+    },
+    {
+     "S": 48,
+     "config": "tier 6000 MiB + keep 34 GB + MERGE_DIRECT/VECTOR",
+     "tok_s": 56.65,
+     "hit": 0.549
+    },
+    {
+     "S": 64,
+     "config": "tier 6000 MiB + keep 34 GB + MERGE_DIRECT/VECTOR",
+     "tok_s": 56.07,
+     "hit": 0.549
+    }
+   ],
+   "gate_teacher_forced": {
+    "S16_mmq": {
+     "positions": 624,
+     "top1": 0.976,
+     "kl_mean": 0.0074
+    },
+    "S48": {
+     "positions": 624,
+     "top1": 0.974,
+     "kl_mean": 0.0081
+    }
+   },
+   "routes_per_layer_S32": {
+    "total": 192,
+    "gpu_tier": 110,
+    "worker": 33,
+    "b550_lane": 49
+   },
+   "not_worth_it": [
+    "CANON_STREAM 6/16 (35.4/31.7 vs 44.7: PCIe-bound)",
+    "worker threads 28 (+2 %)",
+    "longer runs (tier hit drops 0.574 -> 0.549 at 96 steps)"
+   ]
+  }
  }
 }

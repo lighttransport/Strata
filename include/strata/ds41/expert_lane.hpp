@@ -60,6 +60,7 @@ public:
     /// (a remote node's whole experts: the caller merges them in its own collect order).
     void run_raw(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k, float* routes);
     int threads() const { return threads_; }
+    int caller_cpu() const { return cpu_of_.empty() ? -1 : cpu_of_[0]; }   // the core the caller (lane thread 0) computes on
 
     /// STRATA_DS41_MISS_READ=N (opt-in): queued parallel reads for experts that may have left the page cache. An
     /// expert not used for STRATA_DS41_MISS_GAP calls (default 1376, about 32 tokens of 43 layers) is "cold": its
@@ -87,6 +88,10 @@ private:
     // entries: t * top_k + k routed to this expert; ready: a cold group's reads (MISS_READ), null when warm
     struct Group { int expert; std::vector<int> entries; int team = 0; std::atomic<int>* ready = nullptr; };
     void phase_work(int thread);
+    // fn(ctx, part, parts) on every lane thread (the caller is part 0) and a barrier: the merge across tokens (needs !async_)
+    void parallel_for(void (*fn)(void*, int, int), void* ctx);
+    void (*job_fn_)(void*, int, int) = nullptr;
+    void* job_ctx_ = nullptr;
     void barrier();
     void worker(int thread);
     void pin(int thread);
@@ -105,6 +110,11 @@ private:
     std::atomic<unsigned> start_{0};
     std::atomic<int> arrived_{0};
     std::atomic<unsigned> sense_{0};
+    // STRATA_DS41_LANE_STATS=1: per thread, ns waiting at each of a layer call's three barriers and ns of work before them
+    double stat_wait_[64][3] = {}, stat_work_[64][3] = {};
+    long stat_calls_ = 0;
+    double merge_wait_ns_ = 0, merge_work_ns_ = 0, merge_check_ns_ = 0;
+    long merge_calls_ = 0;
     std::atomic<bool> stop_{false};
     bool sleep_ = true;
     // begin()/finish(): threads 1.. do the work; the caller collects

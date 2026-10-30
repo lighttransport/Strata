@@ -106,6 +106,73 @@ double timed(int threads, F&& fn) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
 
+// ---- vectorized grid indices (the bench's third kernel): the 32 11-bit indices of a block are built in two registers
+// (qs bytes widened to 16 bits | the qh fields spread by mullo/mulhi shifts) and stored once; each half then reads its
+// four indices as 16-bit loads instead of four scalar shift/and/or chains. grid8 = the pre-multiplied table of Fmt32<119>.
+alignas(64) uint64_t g_grid8[2048];
+alignas(32) int8_t g_delta[16][32];
+alignas(32) int16_t g_scale[16][16];
+void prepare_vidx() {
+    for (int i = 0; i < 2048; ++i) {
+        uint64_t v = 0;
+        for (int j = 0; j < 8; ++j) v |= uint64_t(uint8_t(uint8_t(iq1s_grid[i] >> (8 * j)) * 8)) << (8 * j);
+        g_grid8[i] = v;
+    }
+    for (int key = 0; key < 16; ++key) {
+        for (int l = 0; l < 32; ++l) g_delta[key][l] = (key & 8) ? -1 : 1;
+        for (int l = 0; l < 16; ++l) g_scale[key][l] = int16_t(2 * (key & 7) + 1);
+    }
+}
+template <int NT>
+inline void row_dot_vidx(const uint8_t* row, int nblocks, const k::Act* const* y, float* res) {
+    const __m256i c0 = _mm256_setr_epi8(0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3, 4, 5, 4, 5, 4, 5, 4, 5, 6, 7, 6, 7, 6, 7, 6, 7);
+    const __m256i c1 = _mm256_setr_epi8(8, 9, 8, 9, 8, 9, 8, 9, 10, 11, 10, 11, 10, 11, 10, 11, 12, 13, 12, 13, 12, 13, 12, 13, 14, 15, 14, 15, 14, 15, 14, 15);
+    const __m256i mul = _mm256_setr_epi16(256, 32, 4, 0, 256, 32, 4, 0, 256, 32, 4, 0, 256, 32, 4, 0);
+    const __m256i mulh = _mm256_setr_epi16(0, 0, 0, 32768, 0, 0, 0, 32768, 0, 0, 0, 32768, 0, 0, 0, 32768);
+    const __m256i m700 = _mm256_set1_epi16(0x700);
+    __m256 accf[NT];
+    for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
+    for (int i = 0; i < nblocks; ++i) {
+        const uint8_t* blk = row + (size_t) i * k::kBlockBytes;
+        uint16_t dh; std::memcpy(&dh, blk, 2);
+        alignas(32) uint16_t idx[32];
+        {
+            const __m256i qs = _mm256_loadu_si256((const __m256i*) (blk + 2));
+            const __m256i hb = _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*) (blk + 34)));
+            const __m256i h0 = _mm256_shuffle_epi8(hb, c0), h1 = _mm256_shuffle_epi8(hb, c1);
+            const __m256i hi0 = _mm256_and_si256(_mm256_or_si256(_mm256_mullo_epi16(h0, mul), _mm256_mulhi_epu16(h0, mulh)), m700);
+            const __m256i hi1 = _mm256_and_si256(_mm256_or_si256(_mm256_mullo_epi16(h1, mul), _mm256_mulhi_epu16(h1, mulh)), m700);
+            _mm256_store_si256((__m256i*) idx, _mm256_or_si256(_mm256_cvtepu8_epi16(_mm256_castsi256_si128(qs)), hi0));
+            _mm256_store_si256((__m256i*) (idx + 16), _mm256_or_si256(_mm256_cvtepu8_epi16(_mm256_extracti128_si256(qs, 1)), hi1));
+        }
+        __m256i acci[NT];
+        for (int t = 0; t < NT; ++t) acci[t] = _mm256_setzero_si256();
+        for (int ib = 0; ib < 8; ++ib) {
+            const uint16_t* ix = idx + 4 * ib;
+            const __m128i lo = _mm_castpd_si128(_mm_loadh_pd(_mm_castsi128_pd(_mm_loadl_epi64((const __m128i*) &g_grid8[ix[0]])), (const double*) &g_grid8[ix[1]]));
+            const __m128i hi = _mm_castpd_si128(_mm_loadh_pd(_mm_castsi128_pd(_mm_loadl_epi64((const __m128i*) &g_grid8[ix[2]])), (const double*) &g_grid8[ix[3]]));
+            const __m256i v = _mm256_inserti128_si256(_mm256_castsi128_si256(lo), hi, 1);
+            uint16_t h; std::memcpy(&h, blk + 34 + 2 * ib, 2);
+            const int key = h >> 12;
+            const __m256i w = _mm256_add_epi8(v, _mm256_load_si256((const __m256i*) g_delta[key]));
+            const __m256i g = _mm256_abs_epi8(w);
+            const __m256i scv = _mm256_load_si256((const __m256i*) g_scale[key]);
+            for (int t = 0; t < NT; ++t) {
+                const __m256i xv = _mm256_loadu_si256((const __m256i*) (y[t][i].q + 32 * ib));
+                acci[t] = _mm256_add_epi32(acci[t], _mm256_madd_epi16(_mm256_maddubs_epi16(g, _mm256_sign_epi8(xv, w)), scv));
+            }
+        }
+        const float dw = k::fp16_to_f32(dh) * 0.125f;
+        for (int t = 0; t < NT; ++t) accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dw * y[t][i].d), _mm256_cvtepi32_ps(acci[t]), accf[t]);
+    }
+    for (int t = 0; t < NT; ++t) {
+        __m128 s = _mm_add_ps(_mm256_castps256_ps128(accf[t]), _mm256_extractf128_ps(accf[t], 1));
+        s = _mm_add_ps(s, _mm_movehdup_ps(s));
+        s = _mm_add_ss(s, _mm_movehl_ps(s, s));
+        res[t] = _mm_cvtss_f32(s);
+    }
+}
+
 int bench(int threads, int mb, int reps, int rows, int cols) {
     const k::Table tab(iq1s_grid);
     const int nb = cols / k::kBlock;
@@ -119,8 +186,20 @@ int bench(int threads, int mb, int reps, int rows, int cols) {
     for (int t = 0; t < 4; ++t) a.push_back(acts(cols, 7u + t));
     const k::Act* ap[4] = {a[0].data(), a[1].data(), a[2].data(), a[3].data()};
     std::vector<float> sink(threads);
-    for (int which = 0; which < 2; ++which) {
-        const char* name = which ? "baseline Fmt32<19>" : "W1A8";
+    prepare_vidx();
+    {   // the vector-index kernel against the baseline decode: the integer sums and their order are the same, so the floats must match bit for bit
+        int same = 0, total = 0;
+        for (int r = 0; r < std::min(rows, 256); ++r) {
+            const uint8_t* row = mem[0].data() + (size_t) r * row_bytes;
+            float a[4], b[4];
+            k::row_dot_baseline<4>(iq1s_grid, row, nb, ap, a);
+            row_dot_vidx<4>(row, nb, ap, b);
+            for (int t = 0; t < 4; ++t) { ++total; same += std::memcmp(&a[t], &b[t], 4) == 0; }
+        }
+        std::printf("vector idx vs baseline: %d / %d results bit-identical\n", same, total);
+    }
+    for (int which = 0; which < 3; ++which) {
+        const char* name = which == 2 ? "vector idx" : which ? "baseline Fmt32<19>" : "W1A8";
         for (int nt : {1, 2, 4}) {
             double best = 1e30;
             for (int rep = 0; rep < reps; ++rep) {
@@ -131,6 +210,7 @@ int bench(int threads, int mb, int reps, int rows, int cols) {
                         for (int r = 0; r < rows; ++r) {
                             const uint8_t* row = mat + (size_t) r * row_bytes;
                             if (which == 0) { if (nt == 1) k::row_dot<1>(tab, row, nb, ap, res); else if (nt == 2) k::row_dot<2>(tab, row, nb, ap, res); else k::row_dot<4>(tab, row, nb, ap, res); }
+                            else if (which == 2) { if (nt == 1) row_dot_vidx<1>(row, nb, ap, res); else if (nt == 2) row_dot_vidx<2>(row, nb, ap, res); else row_dot_vidx<4>(row, nb, ap, res); }
                             else { if (nt == 1) k::row_dot_baseline<1>(iq1s_grid, row, nb, ap, res); else if (nt == 2) k::row_dot_baseline<2>(iq1s_grid, row, nb, ap, res); else k::row_dot_baseline<4>(iq1s_grid, row, nb, ap, res); }
                             acc += res[0];
                         }

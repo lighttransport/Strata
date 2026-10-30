@@ -186,6 +186,27 @@ void prepare_iq1s_grid8() {
         }
     });
 }
+
+// STRATA_IQ1S_VIDX=1: IQ1_S rows with the 32 grid indices of a block built in vector registers (row_dot_iq1s_vidx, iq_avx2_rows.inl);
+// needs iq1s_grid8. Same integer sums in the same order as Fmt32<119>, so the same bits.
+alignas(32) int8_t iq1s_delta_tab[16][32];     // (h >> 12): lanes = -1 when the delta bit (8) is set, else +1
+alignas(32) int16_t iq1s_scale_tab[16][16];    // (h >> 12): lanes = 2 * (key & 7) + 1
+std::atomic<int> g_iq1s_vidx{-1};
+inline bool iq1s_vidx_on() {
+    int v = g_iq1s_vidx.load(std::memory_order_relaxed);
+    if (v < 0) {
+        v = strata_env_is_one("STRATA_IQ1S_VIDX");
+        g_iq1s_vidx.store(v, std::memory_order_relaxed);
+    }
+    return v == 1 && iq1s_grid8_on();
+}
+const bool iq1s_vidx_tabs = [] {
+    for (int key = 0; key < 16; ++key) {
+        for (int l = 0; l < 32; ++l) iq1s_delta_tab[key][l] = (key & 8) ? -1 : 1;
+        for (int l = 0; l < 16; ++l) iq1s_scale_tab[key][l] = int16_t(2 * (key & 7) + 1);
+    }
+    return true;
+}();
 static_assert(hi_spread.iq3s[0x81] == 0x0100000000000001ull && hi_spread.iq2s[0xE4] == 0x0000000003020100ull,
               "hi_spread: one high-bit group per index byte");
 

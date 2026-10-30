@@ -284,6 +284,18 @@ def cmd_two_node(args):
           "outside 2302-3458 MiB are extrapolations; what-if rows are not measured.")
 
 
+def cmd_rev_sessions(args):
+    print("Reversed layout (B550 5060 Ti decoder + TR16 worker), plain batched decode of S independent sessions. Fitted to the measured pass widths 1-4 "
+          f"(fixed + per token + per distinct expert, expert cost from the TWO_NODE worker fit: {ds41f.rev_sessions_fit()}); S>4 and the kernel scales are extrapolations.")
+    print(f"  4x single-stream exact (16.6 tok/s) = {4 * 16.6:.0f} tok/s aggregate.")
+    for es, gs in ((1.0, 1.0), (1.0, 0.5), (0.5, 1.0), (0.5, 0.5), (0.25, 1.0), (0.25, 0.5)):
+        rows = ds41f.rev_sessions_table(nt_marginal=args.nt_marginal, expert_scale=es, gpu_token_scale=gs)
+        print(f"  worker expert cost x{es:<4} GPU per-token cost x{gs:<4}: " + "  ".join(f"S={o['sessions']}:{o['aggregate_tok_s']:5.1f}" for o in rows))
+    o = ds41f.rev_sessions(32, nt_marginal=args.nt_marginal)
+    print(f"  independent sessions share few experts (384 routed, top-6): {o['tokens_per_expert']:.2f} routes per distinct expert at S=32, "
+          "so batching does not amortize the expert pass; it is the lever to cut.")
+
+
 def cmd_two_node_prefill(args):
     base = ds41f.TwoNodePrefillPlan(prompt=args.prompt, calibration=args.calibration)
     print(f"TR16 (RX 9070 XT) + B550 (RTX 5060 Ti) whole-expert prefill, {args.prompt} tokens, calibration '{args.calibration}'. UNCALIBRATED for two nodes: "
@@ -349,6 +361,9 @@ def main(argv=None):
     p.add_argument("--trim", type=float, default=0.0)
     p.add_argument("--no-grid8", action="store_true")
     p.set_defaults(func=cmd_two_node)
+    p = sub.add_parser("rev-sessions", help="reversed layout: plain batched decode of S sessions, aggregate tok/s and what-if scales")
+    p.add_argument("--nt-marginal", type=float, default=0.5)
+    p.set_defaults(func=cmd_rev_sessions)
     p = sub.add_parser("two-node-prefill", help="two-node whole-expert prefill estimate and levers (uncalibrated for two nodes)")
     p.add_argument("--prompt", type=int, default=8192)
     p.add_argument("--calibration", choices=("compute", "overlap"), default="compute")
