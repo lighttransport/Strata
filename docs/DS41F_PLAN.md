@@ -1,5 +1,7 @@
 # DeepSeek V4.1 Flash in Strata: quantization per machine, forecasts, and the run plan
 
+> Usage guide for the reversed layout (batched decode, GPU-streamed prefill, flags, tests): `docs/DS41F_REVERSED_LAYOUT.md`. This file is the measurement log.
+
 Written 2026-10-18. Everything not marked "measured" is a simulator output with a stated calibration and a printed
 hypothesis list. Nothing was run on the A64FX cluster or the GPU node, and no weights were downloaded for this document.
 

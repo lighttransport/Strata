@@ -172,6 +172,133 @@ class EngramServer {
 };
 }  // namespace
 
+// --stream-port: serves lists of whole owned experts to the decoder's streamed prompt passes (STRATA_DS41_OWN_STREAM).
+// Protocol on its own ucomm context (the decoder is rank 0): tag 60 a header {layer, n, 0, 0} (layer < 0 ends the service), tag 61 the n expert ids,
+// then n messages on tag 62, one per expert (L.f.bytes), in the order asked. Each expert is copied from the rows into a registered staging ring by
+// STRATA_DS41_STREAM_COPIERS (4) helper threads and sent from there: the HCA's address translation thrashes when it reads scattered experts out of the registered
+// rows (a 30 GB region streams at 1.19 GB/s against 3.8 from a small one, experiment/ds41f_tr16_decode/ucbench/stream_pattern.c), and an unregistered send
+// registers and releases its buffer per message. STRATA_DS41_STREAM_RING (24) is the ring's depth in experts.
+class StreamServer {
+  public:
+    StreamServer(const std::string& addr, ucomm_config cfg, const std::vector<Layer>& layers, int pin_cpu) : layers_(layers), pin_cpu_(pin_cpu) {
+        cfg.root_addr = addr.c_str();
+        ok(ucomm_init(&cfg, &c_), "stream ucomm_init");
+        for (const auto& L : layers_) slot_ = std::max(slot_, L.f.bytes);
+        slot_ = (slot_ + 4095) / 4096 * 4096;
+        const char* ring = std::getenv("STRATA_DS41_STREAM_RING");
+        n_ = ring ? size_t(std::max(2, std::atoi(ring))) : 24;
+        mem_ = mmap(nullptr, slot_ * n_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (mem_ == MAP_FAILED) throw std::runtime_error("cannot map the stream ring");
+        ok(ucomm_mr_reg(c_, mem_, slot_ * n_, &mr_), "stream ring registration");
+        ready_ = std::make_unique<std::atomic<uint64_t>[]>(n_);
+        for (size_t i = 0; i < n_; ++i) ready_[i] = 0;
+        const char* copiers = std::getenv("STRATA_DS41_STREAM_COPIERS");
+        const int ncopy = copiers ? std::max(1, std::atoi(copiers)) : 4;
+        for (int i = 0; i < ncopy; ++i) copiers_.emplace_back([this] { copy_loop(); });
+        std::fprintf(stderr, "DS41_CPU_WORKER stream: %zu x %.2f MB staging ring, %d copier threads\n", n_, slot_ / 1e6, ncopy);
+        thread_ = std::thread([this] { serve(); });
+    }
+    ~StreamServer() { join(); }
+    void join() {
+        if (thread_.joinable()) thread_.join();
+    }
+
+  private:
+    struct Task { const uint8_t* src; size_t len; uint64_t idx; };
+
+    void pin_service_thread() const {
+        if (pin_cpu_ < 0) { pin_helper(); return; }
+        cpu_set_t one;
+        CPU_ZERO(&one);
+        CPU_SET(pin_cpu_, &one);
+        pthread_setaffinity_np(pthread_self(), sizeof one, &one);
+    }
+    void copy_loop() {
+        pin_helper();
+        for (;;) {
+            Task t;
+            {
+                std::unique_lock<std::mutex> lock(mu_);
+                cv_.wait(lock, [&] { return stop_ || !tasks_.empty(); });
+                if (tasks_.empty()) return;
+                t = tasks_.front();
+                tasks_.pop_front();
+            }
+            while (t.idx - sent_.load(std::memory_order_acquire) >= n_) std::this_thread::yield();   // the slot's previous blob has been sent
+            std::memcpy(static_cast<uint8_t*>(mem_) + (t.idx % n_) * slot_, t.src, t.len);
+            ready_[t.idx % n_].store(t.idx + 1, std::memory_order_release);
+        }
+    }
+    void serve() {
+        pin_service_thread();
+        double experts = 0, bytes = 0, send_ms = 0, request_wait_ms = 0;
+        try {
+            std::vector<int32_t> want;
+            for (;;) {
+                int32_t hdr[4] = {0, 0, 0, 0};
+                size_t got = 0;
+                const auto r0 = std::chrono::steady_clock::now();
+                ok(ucomm_recv(c_, 0, 60, hdr, sizeof hdr, &got), "stream request");
+                request_wait_ms += since(r0);
+                if (hdr[0] < 0) break;
+                if (hdr[0] >= int(layers_.size()) || hdr[1] < 0 || hdr[1] > 4096) throw std::runtime_error("stream request out of range");
+                const Layer& L = layers_[size_t(hdr[0])];
+                want.resize(size_t(hdr[1]));
+                if (!want.empty()) ok(ucomm_recv(c_, 0, 61, want.data(), want.size() * 4, &got), "stream ids");
+                const auto t0 = std::chrono::steady_clock::now();
+                const uint64_t first = next_;
+                {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    for (int e : want) {
+                        if (e < 0 || e >= int(L.local.size()) || L.local[size_t(e)] < 0) throw std::runtime_error("stream names an expert this worker does not own");
+                        tasks_.push_back({L.base + size_t(L.local[size_t(e)]) * L.slot_bytes, L.f.bytes, next_++});
+                    }
+                }
+                cv_.notify_all();
+                for (size_t i = 0; i < want.size(); ++i) {
+                    const uint64_t idx = first + i;
+                    while (ready_[idx % n_].load(std::memory_order_acquire) != idx + 1) std::this_thread::yield();
+                    ok(ucomm_send(c_, 0, 62, static_cast<uint8_t*>(mem_) + (idx % n_) * slot_, L.f.bytes), "stream expert");
+                    sent_.store(idx + 1, std::memory_order_release);
+                }
+                send_ms += since(t0);
+                experts += double(want.size());
+                bytes += double(want.size()) * double(L.f.bytes);
+            }
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "DS41_CPU_WORKER stream error: %s\n", e.what());
+        }
+        std::fprintf(stderr, "DS41_CPU_WORKER stream experts=%.0f GB=%.2f send_s=%.2f GB/s=%.2f request_wait_s=%.2f\n", experts, bytes / 1e9, send_ms / 1e3,
+                     send_ms > 0 ? bytes / 1e6 / send_ms : 0.0, request_wait_ms / 1e3);
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            stop_ = true;
+        }
+        cv_.notify_all();
+        for (auto& th : copiers_) th.join();
+        ucomm_mr_dereg(mr_);
+        ucomm_finalize(c_);
+        c_ = nullptr;
+        munmap(mem_, slot_ * n_);
+    }
+
+    const std::vector<Layer>& layers_;
+    int pin_cpu_;
+    ucomm_t* c_ = nullptr;
+    size_t slot_ = 0, n_ = 0;
+    void* mem_ = nullptr;
+    ucomm_mr_t* mr_ = nullptr;
+    std::mutex mu_;
+    std::condition_variable cv_;
+    std::deque<Task> tasks_;
+    bool stop_ = false;
+    std::unique_ptr<std::atomic<uint64_t>[]> ready_;   // per ring slot: 1 + the sequence number of the blob copied into it
+    std::atomic<uint64_t> sent_{0};                     // blobs sent so far
+    uint64_t next_ = 0;                                 // sequence number of the next blob (service thread)
+    std::vector<std::thread> copiers_;
+    std::thread thread_;
+};
+
 int main(int argc, char** argv) {
     std::string root, backend = "auto", model;
     int threads = 0, engram_port = 0, engram_threads = 16, fetch_port = 0, engram_port2 = 0, fetch_port2 = 0, stream_port = 0, stream_cpu = -1;
@@ -400,116 +527,10 @@ int main(int argc, char** argv) {
             });
         }
 
-        // --stream-port: a context that serves lists of whole owned experts (the decoder's streamed prefill: tags 60 header {layer, n}, 61 the n expert ids,
-        // 62 one message of L.f.bytes per expert, in the order asked); layer < 0 ends it
-        ucomm_t* stream_c = nullptr;
-        std::thread stream_thread;
+        std::unique_ptr<StreamServer> stream;   // after the setup (it reads the rows' layout); its context opens after the fetch one, as the decoder's does
         if (stream_port > 0) {
             const std::string host = root.substr(0, root.rfind(':'));
-            const std::string addr = host + ":" + std::to_string(stream_port);
-            ucomm_config scfg = cfg;
-            scfg.root_addr = addr.c_str();
-            ok(ucomm_init(&scfg, &stream_c), "stream ucomm_init");
-            // The experts are copied into a small registered staging ring (STRATA_DS41_STREAM_RING blobs, 24) by a helper thread and sent from there: the HCA's
-            // address translation thrashes when it reads scattered experts out of the registered 74 GB of rows (30 GB region: 1.19 GB/s against 3.8 from a small
-            // one, bench stream_pattern), and an unregistered send registers and releases the buffer per message.
-            struct StreamState {   // owned by both threads (the block ends before they do)
-                struct Task { const uint8_t* src; size_t len; uint64_t idx; };
-                size_t ring_slot = 0, ring_n = 0;
-                void* ring_mem = nullptr;
-                ucomm_mr_t* ring_mr = nullptr;
-                std::mutex tq_mu;
-                std::condition_variable tq_cv;
-                std::deque<Task> tq;
-                std::unique_ptr<std::atomic<uint64_t>[]> ready;   // per ring slot: 1 + the sequence number of the blob copied into it
-                std::atomic<uint64_t> ring_tail{0};                // blobs sent
-                uint64_t next_idx = 0;                             // sequence number of the next task (sender thread)
-                std::atomic<bool> copier_stop{false};
-                std::vector<std::thread> copiers;
-            };
-            auto st = std::make_shared<StreamState>();
-            for (auto& L : layers) st->ring_slot = std::max(st->ring_slot, L.f.bytes);
-            st->ring_slot = (st->ring_slot + 4095) / 4096 * 4096;
-            st->ring_n = std::getenv("STRATA_DS41_STREAM_RING") ? size_t(std::max(2, std::atoi(std::getenv("STRATA_DS41_STREAM_RING")))) : 24;
-            st->ring_mem = mmap(nullptr, st->ring_slot * st->ring_n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-            if (st->ring_mem == MAP_FAILED) throw std::runtime_error("cannot map the stream ring");
-            ok(ucomm_mr_reg(stream_c, st->ring_mem, st->ring_slot * st->ring_n, &st->ring_mr), "stream ring registration");
-            std::fprintf(stderr, "DS41_CPU_WORKER stream: staging ring %zu x %.2f MB registered\n", st->ring_n, st->ring_slot / 1e6);
-            st->ready = std::make_unique<std::atomic<uint64_t>[]>(st->ring_n);
-            for (size_t i = 0; i < st->ring_n; ++i) st->ready[i] = 0;
-            const int ncopy = std::getenv("STRATA_DS41_STREAM_COPIERS") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_STREAM_COPIERS"))) : 4;
-            for (int ci = 0; ci < ncopy; ++ci) st->copiers.emplace_back([st] {
-                pin_helper();
-                for (;;) {
-                    StreamState::Task t;
-                    {
-                        std::unique_lock<std::mutex> lock(st->tq_mu);
-                        st->tq_cv.wait(lock, [&] { return st->copier_stop.load() || !st->tq.empty(); });
-                        if (st->tq.empty()) return;
-                        t = st->tq.front();
-                        st->tq.pop_front();
-                    }
-                    while (t.idx - st->ring_tail.load(std::memory_order_acquire) >= st->ring_n) std::this_thread::yield();   // the slot's previous blob is sent
-                    std::memcpy(static_cast<uint8_t*>(st->ring_mem) + (t.idx % st->ring_n) * st->ring_slot, t.src, t.len);
-                    st->ready[t.idx % st->ring_n].store(t.idx + 1, std::memory_order_release);
-                }
-            });
-            stream_thread = std::thread([&, st] {
-                if (stream_cpu >= 0) {
-                    cpu_set_t one;
-                    CPU_ZERO(&one);
-                    CPU_SET(stream_cpu, &one);
-                    pthread_setaffinity_np(pthread_self(), sizeof one, &one);
-                } else {
-                    pin_helper();
-                }
-                std::vector<int32_t> want;
-                double served = 0, bytes = 0, busy = 0, idle = 0, gap = 0, ids_wait = 0;
-                auto last_end = std::chrono::steady_clock::now();
-                for (;;) {
-                    int32_t hdr[4] = {0, 0, 0, 0};
-                    size_t got = 0;
-                    const auto r0 = std::chrono::steady_clock::now();
-                    ok(ucomm_recv(stream_c, 0, 60, hdr, sizeof hdr, &got), "stream request");
-                    idle += since(r0);
-                    if (hdr[0] < 0) break;
-                    if (hdr[0] >= int(layers.size()) || hdr[1] < 0 || hdr[1] > 4096) throw std::runtime_error("stream request out of range");
-                    const Layer& L = layers[size_t(hdr[0])];
-                    want.resize(size_t(hdr[1]));
-                    const auto i0 = std::chrono::steady_clock::now();
-                    if (!want.empty()) ok(ucomm_recv(stream_c, 0, 61, want.data(), want.size() * 4, &got), "stream ids");
-                    ids_wait += since(i0);
-                    gap += since(r0) - 0.0;
-                    const auto t0 = std::chrono::steady_clock::now();
-                    const uint64_t first_idx = st->next_idx;
-                    {
-                        std::lock_guard<std::mutex> lock(st->tq_mu);
-                        for (int e : want) {
-                            if (e < 0 || e >= int(L.local.size()) || L.local[size_t(e)] < 0) throw std::runtime_error("stream names an expert this worker does not own");
-                            st->tq.push_back({L.base + size_t(L.local[size_t(e)]) * L.slot_bytes, L.f.bytes, st->next_idx++});
-                        }
-                    }
-                    st->tq_cv.notify_all();
-                    for (size_t i = 0; i < want.size(); ++i) {
-                        const uint64_t idx = first_idx + i;
-                        while (st->ready[idx % st->ring_n].load(std::memory_order_acquire) != idx + 1) std::this_thread::yield();
-                        ok(ucomm_send(stream_c, 0, 62, static_cast<uint8_t*>(st->ring_mem) + (idx % st->ring_n) * st->ring_slot, L.f.bytes), "stream expert");
-                        st->ring_tail.store(idx + 1, std::memory_order_release);
-                    }
-                    busy += since(t0);
-                    served += double(want.size());
-                    bytes += double(want.size()) * double(L.f.bytes);
-                }
-                (void) gap; (void) last_end;
-                std::fprintf(stderr, "DS41_CPU_WORKER stream experts=%.0f GB=%.2f send_s=%.2f GB/s=%.2f wait_for_request_s=%.2f ids_wait_s=%.2f\n", served, bytes / 1e9, busy / 1e3, busy > 0 ? bytes / 1e6 / busy : 0.0, idle / 1e3, ids_wait / 1e3);
-                st->copier_stop = true;
-                st->tq_cv.notify_all();
-                for (auto& th : st->copiers) th.join();
-                ucomm_mr_dereg(st->ring_mr);
-                ucomm_finalize(stream_c);
-                stream_c = nullptr;
-                munmap(st->ring_mem, st->ring_slot * st->ring_n);
-            });
+            stream = std::make_unique<StreamServer>(host + ":" + std::to_string(stream_port), cfg, layers, stream_cpu);
         }
         std::vector<int32_t> ids;
         int64_t requests = 0;
@@ -584,7 +605,7 @@ int main(int argc, char** argv) {
             if (bins[i].n) std::fprintf(stderr, "DS41_CPU_WORKER nt<=8 routes %d-%d: n=%.0f lane_ms=%.3f request_to_reply_ms=%.3f\n", i * 4, i * 4 + 3, bins[i].n, bins[i].lane / bins[i].n, bins[i].total / bins[i].n);
         for (auto* r : regions) ucomm_mr_dereg(r);
         if (fetch_thread.joinable()) fetch_thread.join();
-        if (stream_thread.joinable()) stream_thread.join();
+        if (stream) stream->join();
         ucomm_finalize(c);
         if (engram) engram->join();
         if (!persist || !root2.empty()) return false;

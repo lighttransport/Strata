@@ -1110,19 +1110,15 @@ __global__ void __launch_bounds__(256) attn_mma_kernel(const float* q, int heads
         }
         __syncthreads();
     }
+    // out = O f / (l f + exp(sink - M)) per head row, M = max(m, sink): the accumulator rows of this lane are heads lane / 4 and lane / 4 + 8
     float* ot = out + (size_t(t) * heads + h0) * kMD;
     const int h_lo = lane / 4, h_hi = lane / 4 + 8;
-    float s_lo, s_hi, m_lo, m_hi;
-    {
-        const float sink_lo = sinks[h0 + h_lo], sink_hi = sinks[h0 + h_hi];
-        const float ml = m_run[h_lo], mh = m_run[h_hi];
-        const float Ml = fmaxf(ml, sink_lo), Mh = fmaxf(mh, sink_hi);
-        const float fl = ml == -INFINITY ? 0.0f : expf(ml - Ml), fh = mh == -INFINITY ? 0.0f : expf(mh - Mh);
-        s_lo = fl / (l_run[h_lo] * fl + expf(sink_lo - Ml));
-        s_hi = fh / (l_run[h_hi] * fh + expf(sink_hi - Mh));
-        m_lo = 0.f; m_hi = 0.f;
-    }
-    (void) m_lo; (void) m_hi;
+    auto norm = [&](int h) {
+        const float sink = sinks[h0 + h], m = m_run[h], M = fmaxf(m, sink);
+        const float f = m == -INFINITY ? 0.0f : expf(m - M);
+        return f / (l_run[h] * f + expf(sink - M));
+    };
+    const float s_lo = norm(h_lo), s_hi = norm(h_hi);
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
         const int d = warp * 64 + j * 8 + (lane % 4) * 2;

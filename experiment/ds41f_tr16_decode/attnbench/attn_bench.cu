@@ -1,6 +1,8 @@
-// attn_bench: the batched prefill attention of the decoder (tiled FP32 kernel) against the tensor-core kernel (attn_mma_kernel), error and time.
+// attn_bench: the batched prefill attention of the decoder (tiled FP32 kernel) against the tensor-core kernel (attn_mma_kernel): error and time, FP32 and FP16
+// compressed caches. Exits 1 when the relative L2 error exceeds 2e-3 (FP16 rounding of Q, K/V and P gives ~3e-4) or the output is not finite.
 // Built by including the kernel file, so the anonymous-namespace kernels are in this translation unit:
-//   nvcc -O3 -std=c++20 -arch=sm_120 -I<src>/include -I<src>/third_party/ggml attn_bench.cu -o attn_bench
+//   nvcc -O3 -std=c++20 -arch=sm_80 (or sm_120) -I<src>/include -I<src>/third_party/ggml attn_bench.cu -o attn_bench
+//   ./attn_bench [TOKENS (256)] [SELECTED_ROWS (512)]
 #include "../../../src/kernels/cuda/ds41.cu"
 #include <cstdio>
 #include <random>
@@ -69,6 +71,7 @@ int main(int argc, char** argv) {
         cudaEventElapsedTime(&ms, e0, e1);
         return ms / reps;
     };
+    int failed = 0;
     for (int half = 0; half < 2; ++half) {
         auto tiled = [&] {
             if (half) attn_tiled_kernel<uint16_t><<<dim3(T, heads / kTG), 256, tiled_shared>>>(dq, heads, dwin, ring, dinfo, dcomp16, dim, dsel, 512, dsinks, scale, dout);
@@ -85,8 +88,11 @@ int main(int argc, char** argv) {
         cudaMemcpy(o2.data(), dout2, o2.size() * 4, cudaMemcpyDeviceToHost);
         double num = 0, den = 0, mx = 0;
         for (size_t i = 0; i < o1.size(); ++i) { const double d = o1[i] - o2[i]; num += d * d; den += double(o1[i]) * o1[i]; mx = std::max(mx, std::fabs(d)); }
-        std::printf("comp=%s T=%d nsel=%d: tiled %.3f ms (%.1f us/token)  mma %.3f ms (%.1f us/token)  speedup %.2fx   rel L2 err %.3e  max abs err %.3e\n", half ? "fp16" : "fp32", T, nsel,
-                    a, a * 1e3 / T, b, b * 1e3 / T, a / b, std::sqrt(num / den), mx);
+        const double rel = std::sqrt(num / den);
+        const bool ok_run = std::isfinite(rel) && rel < 2e-3;
+        failed += !ok_run;
+        std::printf("comp=%s T=%d nsel=%d: tiled %.3f ms (%.1f us/token)  mma %.3f ms (%.1f us/token)  speedup %.2fx   rel L2 err %.3e  max abs err %.3e  %s\n", half ? "fp16" : "fp32", T, nsel,
+                    a, a * 1e3 / T, b, b * 1e3 / T, a / b, rel, mx, ok_run ? "PASS" : "FAIL");
     }
-    return 0;
+    return failed ? 1 : 0;
 }

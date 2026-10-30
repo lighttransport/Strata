@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# pf0.sh NAME BATCH [ENV=VAL ...]: Stage 0(a) of the prefill plan: the B550 decoder alone (no worker, no remote experts: the owned experts are zero holes in the
-# sparse tmpfs shards, so the results are garbage but the GPU / PCIe / copy timing of a streamed prefill is real). PROMPT_FILE (text) is copied to the B550.
+# pf0.sh NAME BATCH [ENV=VAL ...]: the GPU / PCIe ceiling of a streamed prefill on the reversed layout: the B550 decoder alone (no worker, no remote experts). The experts
+# the worker owns are zero holes in the sparse tmpfs shards and are never read (STRATA_DS41_STAGE_SKIP=1: the host slots keep whatever they held), so the generated
+# tokens are garbage but the trunk / MMQ / PCIe timing is real. A mapped hole read would materialize its pages and fill /dev/shm, hence the watchdog below.
+#   PROMPT_FILE  a token-id list, whitespace separated (default: the repository's eval id lists, ~12K tokens)   CTX  context (18000)   STEPS  tokens to generate (1)   D_MAX  memory cap of the scope (20G)
+#   e.g. ./pf0.sh h12k 12288 STRATA_DS41_PREFILL_HALVES=1 STRATA_DS41_PREFILL_TILE=2048 STRATA_DS41_ATTN_MMA=1
 cd "$(dirname "$0")"
 source ./connection.sh
 name=$1 batch=$2; shift 2
-P=${PROMPT_FILE:-/mnt/nvme01/tmp/claude-1000/-mnt-nvme02-work-Strata/808a845c-499a-49b7-86f6-4b9195dd0fa8/scratchpad/long_prompt.txt}
+if [ -n "${PROMPT_FILE:-}" ]; then P=$PROMPT_FILE; else P=$(mktemp "${TMPDIR:-/tmp}/ds41_pf_prompt.XXXXXX"); trap 'rm -f "$P"' EXIT; for f in c_osd c_ff c_imgui c_llama t_doc2 t_mujoco c_osd c_ff c_imgui c_llama t_doc2 t_mujoco; do cat eval/$f.txt; echo; done > "$P"; fi
 D=/dev/shm/ds41rev; AUX=/dev/shm/ds41rev-aux
 scp -q "$P" "$GPU_HOST":$AUX/pf_prompt.txt
 first=$(basename "$(cat logs/model.local)")

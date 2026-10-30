@@ -5445,7 +5445,7 @@ private:
     std::vector<ucomm_mr_t*> ost_mrs_;       // the pinned host slots registered on it
     std::thread own_fetcher_;
     int own_staged_ = 0;                     // streamed items whose worker-owned experts have arrived (like staged_ for the kept ones)
-    double own_fetch_s_ = 0, own_fetch_gb_ = 0, own_slot_wait_s_ = 0, own_post_s_ = 0, own_first_s_ = 0;
+    double own_fetch_s_ = 0, own_fetch_gb_ = 0;   // the stream's bytes and wall time per streamed pass
     std::vector<uint8_t> own_;
     // STRATA_DS41_OWN_PROMOTE=N (with STRATA_DS41_OWN_FETCH=HOST:PORT, a strata-ds41-cpu-worker --fetch-port): up to N experts the worker owns
     // that the routes keep asking for are fetched over ucomm into this node's mapped model files (the hole of an expert the model
@@ -6164,7 +6164,16 @@ private:
         if (peer_frac_ > 0) peer_->stream_begin();
         producer_ = std::thread([this] { unpin_helper(); produce(); });
         stager_ = std::thread([this] { unpin_helper(); stage(); });
-        if (ost_comm_ && !unpinned_.empty()) own_fetcher_ = std::thread([this] { unpin_helper(); own_fetch(); });
+        if (ost_comm_ && !unpinned_.empty())
+            own_fetcher_ = std::thread([this] {
+                unpin_helper();
+                try {
+                    own_fetch();
+                } catch (const std::exception& e) {   // a failed transfer cannot be repaired mid-pass; the other stream threads would wait for it forever
+                    std::cerr << "ds41: the worker's expert stream failed: " << e.what() << "\n";
+                    std::_Exit(1);
+                }
+            });
         if (remote_ && !remote_gpu_) fetcher_ = std::thread([this] { unpin_helper(); fetch(); });
     }
     void stream_end() {
@@ -6177,9 +6186,8 @@ private:
         if (fetcher_.joinable()) fetcher_.join();
         if (own_fetcher_.joinable()) {
             own_fetcher_.join();
-            std::cerr << "DS41 own_fetch GB=" << own_fetch_gb_ << " fetch_s=" << own_fetch_s_ << " GB/s=" << (own_fetch_s_ > 0 ? own_fetch_gb_ / own_fetch_s_ : 0.0)
-                      << " slot_wait_s=" << own_slot_wait_s_ << " post_s=" << own_post_s_ << " first_msg_wait_s=" << own_first_s_ << "\n";
-            own_fetch_gb_ = own_fetch_s_ = own_slot_wait_s_ = own_post_s_ = own_first_s_ = 0;
+            std::cerr << "DS41 own_fetch GB=" << own_fetch_gb_ << " s=" << own_fetch_s_ << " GB/s=" << (own_fetch_s_ > 0 ? own_fetch_gb_ / own_fetch_s_ : 0.0) << "\n";
+            own_fetch_gb_ = own_fetch_s_ = 0;
         }
     }
     // The worker-owned experts of each unpinned item, in the order of the items: one request (layer, ids) on the stream link, one message per expert received
@@ -6187,9 +6195,11 @@ private:
     void own_fetch() {
         const auto& c = cfg_;
         const int N = int(unpinned_.size());
+        const auto t_start = std::chrono::steady_clock::now();
+        struct Wall { double& s; std::chrono::steady_clock::time_point t0; ~Wall() { s += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(); } } wall{own_fetch_s_, t_start};
         // STRATA_DS41_OWN_STREAM_DEPTH (2): items whose requests are out at once (the worker answers them in order, so the link never waits for a request)
         static const int depth = std::getenv("STRATA_DS41_OWN_STREAM_DEPTH") ? std::max(1, std::atoi(std::getenv("STRATA_DS41_OWN_STREAM_DEPTH"))) : 2;
-        struct Flight { int u; std::vector<ucomm_req_t*> rx; double bytes; std::chrono::steady_clock::time_point t0; };
+        struct Flight { int u; std::vector<ucomm_req_t*> rx; double bytes; };
         std::deque<Flight> flying;
         int posted = 0, done = 0;
         auto slot_free = [&](int u) {   // the host slot's previous item (u - hslots_) has been DMAed
@@ -6208,7 +6218,7 @@ private:
                 const int e = order_[size_t(it.layer)][size_t(it.first + j)];
                 if (!own_.empty() && own_[size_t(it.layer) * c.experts + size_t(e)]) { want.push_back(e); pos.push_back(j); }
             }
-            Flight f{u, {}, double(want.size()) * double(eb) / 1e9, std::chrono::steady_clock::now()};
+            Flight f{u, {}, double(want.size()) * double(eb) / 1e9};
             if (!want.empty()) {
                 for (size_t i = 0; i < want.size(); ++i) {
                     ucomm_req_t* r = nullptr;
@@ -6231,13 +6241,8 @@ private:
             }
             Flight f = std::move(flying.front());
             flying.pop_front();
-            const auto w0 = std::chrono::steady_clock::now();
-            for (size_t i = 0; i < f.rx.size(); ++i) {
-                Remote::ok(ucomm_wait(f.rx[i], nullptr), "stream wait");
-                if (i == 0) own_first_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - w0).count();
-            }
+            for (auto* r : f.rx) Remote::ok(ucomm_wait(r, nullptr), "stream wait");
             own_fetch_gb_ += f.bytes;
-            own_fetch_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - f.t0).count();
             {
                 std::lock_guard<std::mutex> lock(sm_);
                 own_staged_ = f.u + 1;
