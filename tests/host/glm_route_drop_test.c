@@ -93,6 +93,24 @@ int main(void) {
         strata_glm_route_drop_batch(many_w,many_id,many_e,STRATA_GLM_ROUTE_DROP_BATCH_ROWS+1,0.5,7,0.5,many_m,0);
         for(unsigned r=0;r<=STRATA_GLM_ROUTE_DROP_BATCH_ROWS;++r)assert(many_m[r]==0);
     }
+    /* Duplicate IDs invalidate the entire batch, even in one row or an
+     * ineligible route: otherwise a group can exceed both per-row budgets. */
+    for(unsigned rows=1;rows<=STRATA_GLM_ROUTE_DROP_BATCH_ROWS;++rows) {
+        float weights[STRATA_GLM_ROUTE_DROP_BATCH_ROWS*8];
+        int ids[STRATA_GLM_ROUTE_DROP_BATCH_ROWS*8];
+        uint8_t eligible[STRATA_GLM_ROUTE_DROP_BATCH_ROWS],masks[STRATA_GLM_ROUTE_DROP_BATCH_ROWS];
+        double shares[STRATA_GLM_ROUTE_DROP_BATCH_ROWS];
+        for(unsigned r=0;r<rows;++r) {
+            eligible[r]=3;masks[r]=99;shares[r]=99;
+            for(unsigned i=0;i<8;++i){weights[r*8+i]=1;ids[r*8+i]=(int)i;}
+        }
+        ids[(rows-1)*8+1]=ids[(rows-1)*8];
+        strata_glm_route_drop_batch(weights,ids,eligible,rows,.2,1,.5,masks,shares);
+        for(unsigned r=0;r<rows;++r)assert(masks[r]==0 && shares[r]==0);
+        eligible[rows-1]=1;
+        strata_glm_route_drop_batch(weights,ids,eligible,rows,.2,1,.5,masks,shares);
+        for(unsigned r=0;r<rows;++r)assert(masks[r]==0 && shares[r]==0);
+    }
     for(unsigned trial=0;trial<2000;++trial) {
         enum {ROWS=32};
         float bw[ROWS*8];int bid[ROWS*8];uint8_t be[ROWS],bm[ROWS],again[ROWS];double bs[ROWS];

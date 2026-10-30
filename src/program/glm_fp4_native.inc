@@ -612,11 +612,7 @@ class Fp4NativeExecutor {
             cpu::glm_fp4_weight_table(e->projection[p].global,sm70,e->scales[p].data());
         }
         std::lock_guard lock(cpu_cache_mutex);
-        while(cpu_cache_bytes+e->bytes>cpu_scale_limit && !cpu_cache.empty()) {
-            auto victim=cpu_cache.find(cpu_lru.back());
-            cpu_cache_bytes-=victim->second->bytes;cpu_cache.erase(victim);cpu_lru.pop_back();
-        }
-        cpu_lru.push_front(key);e->order=cpu_lru.begin();cpu_cache_bytes+=e->bytes;cpu_cache.emplace(key,e);return e;
+        return cpu::glm_publish_cpu_expert(cpu_cache,cpu_lru,cpu_cache_bytes,cpu_scale_limit,key,std::move(e));
     }
     void prewarm_cpu_scales() {
         const auto begin=std::chrono::steady_clock::now();

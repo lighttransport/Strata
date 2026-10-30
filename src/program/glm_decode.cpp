@@ -56,6 +56,7 @@
 #include "strata/net/expert_tp.hpp"
 #include "strata/net/glm_fp4_worker.hpp"
 #include "strata/kernels/cpu/glm_fp4_exact.hpp"
+#include "strata/kernels/cpu/glm_expert_cache.hpp"
 #include "ucomm.h"
 #include <algorithm>
 #include <iomanip>

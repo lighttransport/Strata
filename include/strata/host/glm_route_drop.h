@@ -47,7 +47,8 @@ static inline uint8_t strata_glm_route_drop(const float weights[8], uint8_t elig
  * only), but an expert is dropped for all of its rows or for none, since a CPU expert that keeps any row still
  * costs a full weight pass. Experts go in ascending order of their largest share of a user row's budget, then fewer
  * users, then id; one is dropped only if every user row can still afford it. One row gives exactly the capped result.
- * weights and ids are rows x 8; masks (and shares, if given) receive one entry per row. Invalid input drops nothing. */
+ * weights and ids are rows x 8; nonnegative expert IDs must be unique within a row.
+ * masks (and shares, if given) receive one entry per row. Invalid input drops nothing. */
 #define STRATA_GLM_ROUTE_DROP_BATCH_ROWS 64u
 typedef struct { int expert; unsigned route; double share; } strata_glm_route_drop_entry;
 typedef struct { int expert; unsigned first, count; double share; } strata_glm_route_drop_group;
@@ -72,6 +73,8 @@ static inline void strata_glm_route_drop_batch(const float *weights, const int *
     if(!masks)return;
     for(unsigned r=0;r<rows;++r) {masks[r]=0;if(shares)shares[r]=0;}
     if(!weights || !ids || !eligible || !rows || rows>STRATA_GLM_ROUTE_DROP_BATCH_ROWS)return;
+    for(unsigned r=0;r<rows;++r)for(unsigned i=0;i<8;++i)if(ids[r*8+i]>=0)
+        for(unsigned j=0;j<i;++j)if(ids[r*8+i]==ids[r*8+j])return;
     if(rows==1) {masks[0]=strata_glm_route_drop_capped(weights,eligible[0],fraction,max_drop,cap,shares);return;}
     if(!isfinite(cap) || cap<=0 || cap>0.75 || !isfinite(fraction) || fraction<=0 || fraction>cap || !max_drop)return;
     if(max_drop>7)max_drop=7;
