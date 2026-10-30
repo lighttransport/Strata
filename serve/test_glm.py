@@ -144,6 +144,31 @@ class GlmConfigChecks(unittest.TestCase):
         self.assertIsInstance(self.start({**cfg, "gpu_devices": [0], "prefix_cache": True}, native=True), SystemExit)
         self.assertRefused({"fp4_kernel": "sm70"})
 
+    def test_modelopt_batch_slots_are_opt_in(self):
+        cfg = {"fp4_kernel": "sm70", "speculative": "mtp", "draft_depth": 3,
+               "context": 4096, "prefill_batch": 8192, "gpu_devices": [0, 1], "parallel": 16}
+        self.assertIsInstance(self.start(cfg, native=True), SystemExit)   # without the opt-in, as before
+        self.assertIsInstance(self.start({**cfg, "batch_native_fp4": True}, native=True), RuntimeError)
+        args = self.launch_args[1]
+        self.assertEqual(args[args.index("--batch") + 1], "16")
+        self.assertEqual(args[-1], "--fp4-kernel=sm70")
+        self.assertIsInstance(self.start({**cfg, "batch_native_fp4": True, "parallel": 33}, native=True), SystemExit)
+        self.assertIsInstance(self.start({**cfg, "batch_native_fp4": True, "prefix_cache": True}, native=True),
+                              SystemExit)
+        self.assertRefused({"parallel": 4, "batch_native_fp4": True})   # GGUF weights: the opt-in does not apply
+        self.assertRefused({"parallel": 16})
+
+    def test_modelopt_batch_slot_contexts(self):
+        cfg = {"fp4_kernel": "sm70", "context": 65536, "prefill_batch": 8192, "gpu_devices": [0, 1],
+               "parallel": 16, "batch_native_fp4": True, "batch_contexts": "2x65536,14x4096"}
+        self.assertIsInstance(self.start(cfg, native=True), RuntimeError)
+        self.assertIn("--batch-contexts=2x65536,14x4096", self.launch_args[1])
+        for bad in ({"batch_contexts": "2x65536,13x4096"},          # counts differ from parallel
+                    {"batch_contexts": "2x32768,14x4096"},          # largest is not the context
+                    {"batch_contexts": "16"}, {"batch_contexts": 16},
+                    {"batch_native_fp4": False}):
+            self.assertIsInstance(self.start({**cfg, **bad}, native=True), SystemExit, bad)
+
     def assertRefused(self, cfg, extra_files=()):
         self.assertIsInstance(self.start(cfg, extra_files), SystemExit, cfg)
 

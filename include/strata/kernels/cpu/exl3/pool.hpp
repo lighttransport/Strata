@@ -63,6 +63,7 @@ class Pool {
     alignas(64) std::atomic<size_t> spin_epoch{0};
     alignas(64) std::atomic<size_t> spin_pending{0};
     std::atomic<bool> spin_stop{false};
+    std::vector<int> pinned;   // the CPU of each pinned worker
 public:
     explicit Pool(size_t count,bool pin,bool spin=false):spin_mode(spin) {
         if(!count||count>256)throw std::runtime_error("EXL3: invalid worker count");
@@ -77,7 +78,9 @@ public:
         }
 #endif
         std::cerr<<"EXL3 workers="<<count<<" placement="<<(pin?"pinned-first-touch":"first-touch")<<" weight_pages="<<(huge_pages?"THP-advice":"4k")<<" cpus=";
-        if(pin&&!cpus.empty())for(size_t i=0;i<count;++i)std::cerr<<(i?",":"")<<cpus[(i+1)%cpus.size()];
+        if(pin&&!cpus.empty())for(size_t i=0;i<count;++i) {
+            pinned.push_back(cpus[(i+1)%cpus.size()]);std::cerr<<(i?",":"")<<pinned.back();
+        }
         if(spin_mode)std::cerr<<" wait=spin";
         std::cerr<<'\n';
         for(size_t i=0;i<count;++i)workers.emplace_back([&,i,pin,cpus] {
@@ -123,6 +126,21 @@ public:
     ~Pool() {spin_stop.store(true,std::memory_order_release);{std::lock_guard lock(mutex);stop=true;}wake.notify_all();for(auto& w:workers)w.join();}
     Pool(const Pool&)=delete;
     size_t size()const{return workers.size();}
+    // Restricts the calling thread, and the threads it creates afterwards, to the allowed CPUs that no pinned
+    // worker uses, so a spinning worker does not share its CPU with them. Returns how many CPUs remain; with
+    // none (or unpinned workers) the mask is left unchanged and 0 is returned.
+    size_t isolate_caller()const {
+#ifdef __linux__
+        if(pinned.empty())return 0;
+        cpu_set_t allowed;CPU_ZERO(&allowed);if(sched_getaffinity(0,sizeof(allowed),&allowed))throw std::runtime_error("EXL3: cannot read CPU affinity");
+        for(int c:pinned)CPU_CLR(c,&allowed);
+        const size_t left=size_t(CPU_COUNT(&allowed));
+        if(left&&sched_setaffinity(0,sizeof(allowed),&allowed))throw std::runtime_error("EXL3: cannot isolate the caller's CPUs");
+        return left;
+#else
+        return 0;
+#endif
+    }
     void run(std::function<void(size_t)> job) {
         if(spin_mode) {
             std::unique_lock lock(mutex);task=std::move(job);error=nullptr;

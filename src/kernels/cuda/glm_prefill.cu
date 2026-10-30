@@ -1,4 +1,5 @@
 #include "strata/kernels/glm_prefill.hpp"
+#include "strata/kernels/glm_rows.hpp"
 #include "strata/host/glm_env.h"
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -480,11 +481,11 @@ __global__ void decay(const float *x, const float *b, const float *a, float *y, 
 }
 // snapshots (optional): the state after token t < snapshot_tokens also goes to snapshots + t * snapshot_stride,
 // in the state's own layout, so a verify window keeps its rollback history without per-token kernels.
-template<int columns, bool prepared = false>
-__global__ void kda_chunk(float *state, const float *q, const float *k, const float *v, const float *g,
-                          const float *beta, float *out, int heads, int tokens, float *snapshots = nullptr,
-                          long long snapshot_stride = 0, int snapshot_tokens = 0,
-                          const float *prepared_qi = nullptr) {
+template<int columns, bool prepared>
+__device__ __forceinline__ void kda_chunk_body(float *state, const float *q, const float *k, const float *v,
+                                               const float *g, const float *beta, float *out, int heads, int tokens,
+                                               float *snapshots, long long snapshot_stride, int snapshot_tokens,
+                                               const float *prepared_qi) {
     constexpr int dim = 128;
     int h = blockIdx.x, j = blockIdx.y * columns + threadIdx.x;
     state += (size_t)h * dim * dim;
@@ -545,6 +546,23 @@ __global__ void kda_chunk(float *state, const float *q, const float *k, const fl
 #pragma unroll
     for (int i = 0; i < dim; ++i)
         state[i * dim + j] = values[i];
+}
+template<int columns, bool prepared = false>
+__global__ void kda_chunk(float *state, const float *q, const float *k, const float *v, const float *g,
+                          const float *beta, float *out, int heads, int tokens, float *snapshots = nullptr,
+                          long long snapshot_stride = 0, int snapshot_tokens = 0,
+                          const float *prepared_qi = nullptr) {
+    kda_chunk_body<columns, prepared>(state, q, k, v, g, beta, out, heads, tokens, snapshots, snapshot_stride,
+                                      snapshot_tokens, prepared_qi);
+}
+// One token per row (blockIdx.z), each with its own state: kda_chunk's one-token arithmetic.
+template<int columns>
+__global__ void kda_chunk_rows(GlmRowPointers state, const float *q, const float *k, const float *v, const float *g,
+                               const float *beta, float *out, int heads) {
+    const int r = blockIdx.z;
+    const size_t o = (size_t)r * heads * 128;
+    kda_chunk_body<columns, false>(state.p[r], q + o, k + o, v + o, g + o, beta + (size_t)r * heads, out + o, heads,
+                                   1, nullptr, 0, 0, nullptr);
 }
 // Partition state rows across warps to bound per-thread register storage.
 // Partial dots change FP32 addition order; the original path remains default.
@@ -887,10 +905,9 @@ __device__ __forceinline__ void store_pooled(float *out, size_t i, float v) { ou
 // FP16 pooled keys (STRATA_GLM_INDEX_KEYS=f16): the value rounded as half_cast rounds it.
 __device__ __forceinline__ void store_pooled(uint16_t *out, size_t i, float v) { out[i] = __half_as_ushort(__float2half(v)); }
 template <class Out>
-__global__ void pooling(const float *keys, const float *gates, const float *ape, const float *pk,
-                        const float *pg, Out *out, int pos, int tokens, int pool, int dim, const int *device_pos, int offset) {
-    if (device_pos) pos = *device_pos + offset;
-    int d = blockIdx.x * 256 + threadIdx.x, first = pos / pool, last = (pos + tokens) / pool;
+__device__ __forceinline__ void pooling_body(const float *keys, const float *gates, const float *ape, const float *pk,
+                                             const float *pg, Out *out, int pos, int tokens, int pool, int dim, int d) {
+    int first = pos / pool, last = (pos + tokens) / pool;
     if (d >= (last - first) * dim)
         return;
     int p = first + d / dim, c = d % dim;
@@ -910,10 +927,20 @@ __global__ void pooling(const float *keys, const float *gates, const float *ape,
     }
     store_pooled(out, (size_t)p * dim + c, value / sum);
 }
-__global__ void pending(const float *keys, const float *gates, float *pk, float *pg, int pos, int tokens,
-                        int pool, int dim, const int *device_pos, int offset) {
+template <class Out>
+__global__ void pooling(const float *keys, const float *gates, const float *ape, const float *pk,
+                        const float *pg, Out *out, int pos, int tokens, int pool, int dim, const int *device_pos, int offset) {
     if (device_pos) pos = *device_pos + offset;
-    int i = blockIdx.x * 256 + threadIdx.x;
+    pooling_body(keys, gates, ape, pk, pg, out, pos, tokens, pool, dim, int(blockIdx.x * 256 + threadIdx.x));
+}
+__global__ void pooling_rows(const float *keys, const float *gates, const float *ape, GlmRowPointers pk,
+                             GlmRowPointers pg, GlmRowPointers out, GlmRowPositions pos, int pool, int dim) {
+    const int r = blockIdx.y;
+    pooling_body(keys + (size_t)r * dim, gates + (size_t)r * dim, ape, pk.p[r], pg.p[r], out.p[r], pos.p[r], 1, pool,
+                 dim, int(blockIdx.x * 256 + threadIdx.x));
+}
+__device__ __forceinline__ void pending_body(const float *keys, const float *gates, float *pk, float *pg, int pos,
+                                             int tokens, int pool, int dim, int i) {
     if (i >= pool * dim)
         return;
     int j = i / dim, last = pos + tokens - 1;
@@ -922,6 +949,60 @@ __global__ void pending(const float *keys, const float *gates, float *pk, float 
         pk[i] = keys[t * dim + i % dim];
         pg[i] = gates[t * dim + i % dim];
     }
+}
+__global__ void pending(const float *keys, const float *gates, float *pk, float *pg, int pos, int tokens,
+                        int pool, int dim, const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
+    pending_body(keys, gates, pk, pg, pos, tokens, pool, dim, int(blockIdx.x * 256 + threadIdx.x));
+}
+__global__ void pending_rows(const float *keys, const float *gates, GlmRowPointers pk, GlmRowPointers pg,
+                             GlmRowPositions pos, int pool, int dim) {
+    const int r = blockIdx.y;
+    pending_body(keys + (size_t)r * dim, gates + (size_t)r * dim, pk.p[r], pg.p[r], pos.p[r], 1, pool, dim,
+                 int(blockIdx.x * 256 + threadIdx.x));
+}
+// glm_mla_absorb_rows: 16 groups of 16 lanes, one output per group. Lane l sums i = c * 64 + l * 4 + j over chunks
+// c and j = 0..3 in order; the 16 lane sums of a row are then added in lane order.
+__global__ void __launch_bounds__(256) mla_absorb_rows(const float *w, const float *x, float *y, int in, int out,
+                                                       int rows, int ld_x, int ld_y) {
+    constexpr int R = kGlmRowsMax;
+    __shared__ float chunk[R][64];
+    __shared__ float partial[16][16][R + 1];
+    const int h = blockIdx.y, group = threadIdx.x / 16, lane = threadIdx.x % 16;
+    const int o = blockIdx.x * 16 + group;
+    const float *row = w + ((size_t)h * out + o) * in;
+    float acc[R];
+#pragma unroll
+    for (int t = 0; t < R; ++t) acc[t] = 0.f;
+    for (int c = 0; c < in; c += 64) {
+        for (int i = threadIdx.x; i < rows * 64; i += 256)
+            chunk[i / 64][i % 64] = x[(size_t)(i / 64) * ld_x + (size_t)h * in + c + i % 64];
+        __syncthreads();
+        const float4 wv = *reinterpret_cast<const float4 *>(row + c + lane * 4);
+#pragma unroll
+        for (int t = 0; t < R; ++t)
+            if (t < rows) {
+                const float *xc = chunk[t] + lane * 4;
+                acc[t] += wv.x * xc[0];
+                acc[t] += wv.y * xc[1];
+                acc[t] += wv.z * xc[2];
+                acc[t] += wv.w * xc[3];
+            }
+        __syncthreads();
+    }
+#pragma unroll
+    for (int t = 0; t < R; ++t)
+        if (t < rows) partial[group][lane][t] = acc[t];
+    __syncthreads();
+    for (int t = lane; t < rows; t += 16) {
+        float sum = 0.f;
+        for (int l = 0; l < 16; ++l) sum += partial[group][l][t];
+        y[(size_t)t * ld_y + (size_t)h * out + o] = sum;
+    }
+}
+__global__ void cache_rows_each(const float *rows, GlmRowPointers cache, GlmRowPositions pos, int width) {
+    const int r = blockIdx.y, c = blockIdx.x * 256 + threadIdx.x;
+    if (c < width) cache.p[r][(size_t)pos.p[r] * width + c] = rows[(size_t)r * width + c];
 }
 __global__ void index_reduce(const float *dots, const float *w, float *scores, int heads, int pools,
                              int queries, int pos, int pool, int dim, const int *device_pos, int offset) {
@@ -962,13 +1043,10 @@ __device__ unsigned long long score_key(float score, int index) {
              ordered = bits & 0x80000000u ? ~bits : bits ^ 0x80000000u;
     return ((unsigned long long)ordered << 32) | (0xffffffffu - index);
 }
-__global__ void selection(const float *scores, int *ids, int *counts, int pools_total, int pos, int pool,
-                          int top, int stride, const int *device_pos, int offset) {
-    if (device_pos) pos = *device_pos + offset;
-    int q = blockIdx.x, tid = threadIdx.x, tokens = pos + q + 1, pools = tokens / pool,
-        n = min(top / pool, pools);
-    scores += q * pools_total;
-    ids += q * stride;
+// One query that sees `tokens` keys: its scores, its selected ids and its count.
+__device__ __forceinline__ void selection_body(const float *scores, int *ids, int *count, int tokens, int pool,
+                                               int top) {
+    int tid = threadIdx.x, pools = tokens / pool, n = min(top / pool, pools);
     __shared__ unsigned histogram[256], rank;
     __shared__ unsigned long long prefix, mask, keys[512];
     __shared__ int used;
@@ -1033,7 +1111,18 @@ __global__ void selection(const float *scores, int *ids, int *counts, int pools_
     for (int i = tid; i < tokens % pool; i += 256)
         ids[n * pool + i] = tokens - tokens % pool + i;
     if (!tid)
-        counts[q] = n * pool + tokens % pool;
+        *count = n * pool + tokens % pool;
+}
+__global__ void selection(const float *scores, int *ids, int *counts, int pools_total, int pos, int pool,
+                          int top, int stride, const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
+    const int q = blockIdx.x;
+    selection_body(scores + q * pools_total, ids + q * stride, counts + q, pos + q + 1, pool, top);
+}
+__global__ void selection_rows(const float *scores, int *ids, int *counts, int pools_total, GlmRowPositions pos,
+                               int pool, int top, int stride) {
+    const int r = blockIdx.x;
+    selection_body(scores + (size_t)r * pools_total, ids + (size_t)r * stride, counts + r, pos.p[r] + 1, pool, top);
 }
 __global__ void gather(const float *cache, const int *ids, const int *counts, float *out, int queries,
                        int stride, int latent) {
@@ -1589,6 +1678,19 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
     else throw std::invalid_argument("GLM: KDA columns must be 32, 64 or 128");
     check();
 }
+void glm_kda_chunk_rows(GlmRowPointers state, const float *q, const float *k, const float *v, const float *g,
+                        const float *b, float *out, int heads, int dim, int rows, void *s, int columns) {
+    if (dim != 128 || heads < 1 || rows < 1 || rows > kGlmRowsMax)
+        throw std::invalid_argument("GLM: invalid KDA rows");
+    if (columns == 32)
+        kda_chunk_rows<32><<<dim3(heads, 4, rows), 32, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads);
+    else if (columns == 64)
+        kda_chunk_rows<64><<<dim3(heads, 2, rows), 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads);
+    else if (columns == 128)
+        kda_chunk_rows<128><<<dim3(heads, 1, rows), 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads);
+    else throw std::invalid_argument("GLM: KDA columns must be 32, 64 or 128");
+    check();
+}
 // Q2_K / Q3_K expert rows -> Q8_0 (one warp per 32-value output block), for STRATA_PREFILL_Q8_TRANSCODE. Each value
 // is dequantized as ggml's dequantize_row_q2_K / _q3_K, then the 32-value block takes scale amax / 127 and rounded
 // codes, as quantize_row_q8_0_ref does.
@@ -1704,6 +1806,27 @@ static void index_prepare(const float *k, const float *g, const float *a, float 
     pending<<<(pool * dim + 255) / 256, 256, 0, (cudaStream_t)s>>>(k, g, pk, pg, pos, tokens, pool, dim, device_pos, offset);
     check();
 }
+void glm_index_prepare_rows(const float *k, const float *g, const float *a, GlmRowPointers pk, GlmRowPointers pg,
+                            GlmRowPointers out, GlmRowPositions pos, int rows, int pool, int dim, void *s) {
+    if (rows < 1 || rows > kGlmRowsMax || pool < 1 || dim < 1) throw std::invalid_argument("GLM: invalid index rows");
+    // One token per row completes at most one pool.
+    pooling_rows<<<dim3((dim + 255) / 256, rows), 256, 0, (cudaStream_t)s>>>(k, g, a, pk, pg, out, pos, pool, dim);
+    pending_rows<<<dim3((pool * dim + 255) / 256, rows), 256, 0, (cudaStream_t)s>>>(k, g, pk, pg, pos, pool, dim);
+    check();
+}
+void glm_mla_absorb_rows(const float *w, const float *x, float *y, int in, int out, int heads, int rows, int ld_x,
+                         int ld_y, void *s) {
+    if (in < 64 || in % 64 || out < 16 || out % 16 || heads < 1 || rows < 1 || rows > kGlmRowsMax ||
+        reinterpret_cast<uintptr_t>(w) % 16)
+        throw std::invalid_argument("GLM: invalid MLA absorption rows");
+    mla_absorb_rows<<<dim3(out / 16, heads), 256, 0, (cudaStream_t)s>>>(w, x, y, in, out, rows, ld_x, ld_y);
+    check();
+}
+void glm_cache_rows_each(const float *rows, GlmRowPointers cache, GlmRowPositions pos, int width, int count, void *s) {
+    if (count < 1 || count > kGlmRowsMax || width < 1) throw std::invalid_argument("GLM: invalid cache rows");
+    cache_rows_each<<<dim3((width + 255) / 256, count), 256, 0, (cudaStream_t)s>>>(rows, cache, pos, width);
+    check();
+}
 void glm_index_prepare(const float *k, const float *g, const float *a, float *pk, float *pg, float *out,
                        int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
     index_prepare(k, g, a, pk, pg, out, pos, tokens, pool, dim, s, device_pos, offset);
@@ -1735,6 +1858,13 @@ void glm_index_select_batch(const float *scores, int *ids, int *counts, int pool
     if (top / pool > 512)
         throw std::invalid_argument("GLM: selection exceeds 512 pools");
     selection<<<queries, 256, 0, (cudaStream_t)s>>>(scores, ids, counts, pools, pos, pool, top, stride, device_pos, offset);
+    check();
+}
+void glm_index_select_rows(const float *scores, int *ids, int *counts, int pools, GlmRowPositions pos, int rows,
+                           int pool, int top, int stride, void *s) {
+    if (top / pool > 512 || rows < 1 || rows > kGlmRowsMax)
+        throw std::invalid_argument("GLM: invalid selection rows");
+    selection_rows<<<rows, 256, 0, (cudaStream_t)s>>>(scores, ids, counts, pools, pos, pool, top, stride);
     check();
 }
 void glm_mla_gather(const float *c, const int *ids, const int *counts, float *out, int q, int stride,

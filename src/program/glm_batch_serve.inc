@@ -26,7 +26,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
     };
     struct Request { std::string line; std::shared_ptr<std::atomic<bool>> cancel; };
     std::vector<Slot> slots(count);
-    std::array<std::atomic<bool>, 8> stopped{}, yielded{};
+    std::unique_ptr<std::atomic<bool>[]> stopped(new std::atomic<bool>[size_t(count)]{}), yielded(new std::atomic<bool>[size_t(count)]{});
     std::mutex mutex;
     std::condition_variable ready;
     std::deque<Request> requests;
@@ -82,7 +82,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                     decoder.select_sequence(id);
                     // A sequence without a primed draft state (never reached prepare_mtp) verifies only its token.
                     const int k = decoder.draft_ready() ? std::min(depth, slot.limit - slot.generated - 1) : 0;
-                    if (input.size() + k + 1 > 8) break;
+                    if (input.size() + k + 1 > (size_t)decoder.sequence_rows_max()) break;
                     work.push_back({id, (int)input.size(), decoder.token_position(), {slot.token}, {}});
                     // row a of this window draws position token_position() + a + 1 (slot.next before the round)
                     auto &w = work.back();
@@ -134,6 +134,9 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         std::cerr << "BATCH_DECODE active=" << ids.size() << " generated=" << delivered << " ms=" << ms(start) << '\n'
                   << "BATCH_MTP proposed=" << proposed << " accepted=" << accepted_total << " replayed=" << replayed << '\n';
     };
+    // STRATA_GLM_BATCH_CUDA_PROFILE_STEP=N: a CUDA profiler range over full-batch decode steps N..N+2 (for nsys).
+    const long long profile_step = strata_env_value_ll("STRATA_GLM_BATCH_CUDA_PROFILE_STEP", 0);
+    long long full_steps = 0;
     auto pump = [&] {
         std::vector<int> ids, tokens;
         for (int i = 0; i < count; ++i) if (slots[i].active) {
@@ -143,7 +146,13 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         if (ids.empty()) return;
         if (batch_mtp) { speculative_pump(ids); return; }
         const auto start = Clock::now();
+        const long long step = profile_step > 0 && ids.size() == (size_t)count ? ++full_steps : 0;
+        if (step && step == profile_step) check(cudaProfilerStart());
         auto logits = decoder.step_sequences(ids, tokens);
+        if (step && step == profile_step + 2) {
+            check(cudaDeviceSynchronize()); check(cudaProfilerStop());
+            std::cerr << "BATCH_CUDA_PROFILE steps=" << profile_step << ".." << step << '\n';
+        }
         for (size_t row = 0; row < ids.size(); ++row) {
             auto &s = slots[ids[row]];
             s.token = draw(s, logits, row * decoder.vocabulary(), s.next++);
@@ -163,8 +172,12 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
             std::_Exit(1);
         }
     };
-    std::cout << "INFO engine=glm-experimental sampling=greedy batch_slots=" << count
-              << "\nREADY " << context << " stop prefill-includes-reset" << (prefix_entries ? " resume" : "") << '\n'
+    std::cout << "INFO engine=glm-experimental sampling=greedy batch_slots=" << count;
+    if (!decoder.slot_contexts().empty()) {      // --batch-contexts: each slot's context, in slot order
+        std::cout << " batch_contexts=";
+        for (int i = 0; i < count; ++i) std::cout << (i ? "," : "") << decoder.slot_context(i);
+    }
+    std::cout << "\nREADY " << context << " stop prefill-includes-reset" << (prefix_entries ? " resume" : "") << '\n'
               << std::flush;
     for (;;) {
         Request request;
@@ -222,7 +235,8 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
             if (!sampler.greedy())
                 sampler.seed = seed ? seed : std::random_device{}() | (uint64_t(std::random_device{}()) << 32);
             const auto prompt = token_ids(words.back());
-            if (prompt.empty() || prompt.size() + (size_t)limit > (size_t)context ||
+            const size_t room = decoder.slot_contexts().empty() ? (size_t)context : decoder.slot_context(slot);
+            if (prompt.empty() || prompt.size() + (size_t)limit > room ||
                 std::any_of(prompt.begin(), prompt.end(), [&](int t) { return t < 0 || t >= decoder.vocabulary(); }))
                 throw std::invalid_argument("request exceeds context or has invalid token counts");
             decoder.select_sequence(slot);
@@ -286,7 +300,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                     std::cout << "YIELDED " << slot << ' ' << end << '\n'; did_yield = true; break;
                 }
                 // A long admission allows already admitted sequences a decode step per chunk.
-                decoder.set_cancel({}); if (!batch_mtp) safe_pump(); decoder.set_cancel(cancelled);
+                decoder.set_cancel({}); if (!batch_mtp && decoder.admission_interleaves()) safe_pump(); decoder.set_cancel(cancelled);
                 decoder.select_sequence(slot);         // the pump may have selected another slot
             }
             auto prefilled = Clock::now();

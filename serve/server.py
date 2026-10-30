@@ -997,6 +997,10 @@ class StrataEngine:
         # the slot that has its start (the engine checks it again); when the slot was last used
         self.slot_held: list[list[int]] = [[] for _ in range(self.batch)]
         self.slot_used = [0.0] * self.batch
+        # --batch-contexts (INFO batch_contexts=c0,c1,..): each slot's context; a request goes to a free slot it fits
+        ctx = str(self.info.get("batch_contexts") or "")
+        sizes = [int(c) for c in ctx.split(",") if c.isdigit()] if ctx else []
+        self.slot_ctx: list[int] | None = sizes if sizes and len(sizes) == self.batch else None
         # an agent's session (the request's "strata_session", from its session header) -> the slot it last used
         self.slot_session: dict[str, int] = {}
         self.slot_live: list[dict | None] = [None] * self.batch   # /metrics: the request in each slot
@@ -1600,7 +1604,7 @@ class StrataEngine:
                         if (reserved is None and not out and not embeddings and yields < self.YIELDS_MAX and
                                 self._shorter_waiting(len(prompt))):
                             with self.slot_cv:          # the slot the part read will wait in
-                                reserved = self.pick_slot(prompt, session)
+                                reserved = self.pick_slot(prompt, session, len(prompt) + left)
                                 if reserved is not None:
                                     self.slot_busy[reserved] = True
                                     self.slot_claims.add(reserved)
@@ -1648,7 +1652,7 @@ class StrataEngine:
                         # long, short at 0.25 s steps under parallel: 2 (ENGINE_REVIEW finding 1, reproduced in 0.1.41).
                         while True:
                             with self.slot_cv:
-                                slot = self.pick_slot(prompt, session)
+                                slot = self.pick_slot(prompt, session, len(prompt) + left)
                                 if slot is not None:
                                     self.slot_busy[slot] = True
                                     self.slot_claims.add(slot)
@@ -1668,7 +1672,7 @@ class StrataEngine:
                                 self.ctl.release()
                                 holding = False
                             with self.slot_cv:
-                                if self.pick_slot(prompt, session) is None:
+                                if self.pick_slot(prompt, session, len(prompt) + left) is None:
                                     if (ENGINE_STALL_S or 0) > 0 and time.monotonic() - admit_since >= ENGINE_STALL_S:
                                         # the stall check of #1317 only watches a request on the control lines; one
                                         # waiting here is covered by looking for a slot nobody owns, and by saying so
@@ -1679,7 +1683,7 @@ class StrataEngine:
                                                   f"for a free slot (busy: {busy}, in use: {sorted(self.slot_claims)}, "
                                                   f"ending: {sorted(self.slot_releasing)}) (issue #1603)", flush=True)
                                     self._reap_orphan_slots()
-                                if self.pick_slot(prompt, session) is None:
+                                if self.pick_slot(prompt, session, len(prompt) + left) is None:
                                     self.slot_cv.wait(timeout=1.0)
                             if cancel.is_set():
                                 return
@@ -1881,13 +1885,17 @@ class StrataEngine:
     slot_groups = 1         # --batch-groups (set when the engine starts)
     SLOT_PREFIX_MIN = 512   # a held prefix shorter than this is not worth unbalancing the pipeline's groups
 
-    def pick_slot(self, prompt: list[int], session: str | None = None) -> int | None:
+    def pick_slot(self, prompt: list[int], session: str | None = None, need: int | None = None) -> int | None:
         """A free slot for `prompt` (the caller holds slot_cv): the one whose held tokens are the longest start of the
         prompt (the engine then reads only the rest), else the slot the request's agent session used last (its
         conversation changed - compacted, edited - so it replaces its own old turn, not another conversation's), else
         an empty one, else the one used longest ago - so the conversations other slots hold stay for their next
-        turns.  None: every slot is busy."""
+        turns.  None: every slot is busy.  With slot contexts (--batch-contexts) only the slots that hold `need`
+        tokens (prompt plus the tokens to generate) count, the smallest of them first."""
         free = [b for b in self.slot_order if not self.slot_busy[b]]
+        ctx = getattr(self, "slot_ctx", None)
+        if ctx and need:
+            free = [b for b in free if ctx[b] >= need]
         if not free:
             return None
         gs = getattr(self, "slot_gs", 0)
@@ -1917,7 +1925,7 @@ class StrataEngine:
             if self.slot_busy[b]:
                 busy_in[self.slot_group[b]] = busy_in.get(self.slot_group[b], 0) + 1
         return min(free, key=lambda b: (busy_in.get(self.slot_group[b], 0) if self.slot_groups > 1 else 0,
-                                        bool(self.slot_held[b]), self.slot_used[b]))
+                                        ctx[b] if ctx else 0, bool(self.slot_held[b]), self.slot_used[b]))
 
     def slots_view(self) -> list[dict]:
         """/metrics: each batch slot - idle (with the tokens it holds for a next turn), reading or decoding."""
@@ -2779,6 +2787,7 @@ def engine_args(cfg: dict) -> list[str]:
 
 
 PARALLEL_MAX = 8      # the engine's batch window holds at most 8 rows (kVerifyMaxT); --batch-mtp waves more through it
+GLM_FP4_PARALLEL_MAX = 32   # native FP4 with "batch_native_fp4": its executor runs wider steps through 8-row kernels
 
 
 def glm_state_args(cfg: dict, metadata: dict) -> list[str]:
@@ -2824,7 +2833,7 @@ def glm_state_args(cfg: dict, metadata: dict) -> list[str]:
     return args
 
 
-def parallel_args(cfg: dict, args: list[str]) -> list[str]:
+def parallel_args(cfg: dict, args: list[str], limit: int = PARALLEL_MAX) -> list[str]:
     """#465 (opt-in): "parallel": N in the config - up to N requests decode together in the engine's batch slots
     (--batch N); more wait their turn.  1 or absent: one request at a time, as before.  A value the engine cannot use
     is said and passed on: the engine warns and adjusts (recommend, never force)."""
@@ -2834,14 +2843,14 @@ def parallel_args(cfg: dict, args: list[str]) -> list[str]:
     if n is None or n is False:
         return []
     if isinstance(n, bool) or not isinstance(n, int):
-        print(f'[strata] "parallel" must be a whole number of requests (2..{PARALLEL_MAX}), not {n!r}: ignored',
+        print(f'[strata] "parallel" must be a whole number of requests (2..{limit}), not {n!r}: ignored',
               flush=True)
         return []
     if n <= 1:
         return []
-    if n > PARALLEL_MAX and "--batch-mtp" not in args and os.environ.get("STRATA_BATCH_MTP", "0") in ("", "0"):
-        print(f'[strata] "parallel": {n} - the engine runs at most {PARALLEL_MAX} requests together; it will use '
-              f"{PARALLEL_MAX}", flush=True)
+    if n > limit and "--batch-mtp" not in args and os.environ.get("STRATA_BATCH_MTP", "0") in ("", "0"):
+        print(f'[strata] "parallel": {n} - the engine runs at most {limit} requests together; it will use '
+              f"{limit}", flush=True)
     return ["--batch", str(n)]
 
 
@@ -7187,12 +7196,22 @@ def main() -> int:
         if spec == "mtp" and (lookup or gpu_decode or expert_mib):
             ap.error("GLM speculative=mtp cannot be combined with lookup, decode_experts=gpu or expert_cache_mib")
         parallel = cfg.get("parallel")
+        # Opt-in: native FP4 batch slots (both GPUs stay inside the FP4 executor; up to 32 slots).
+        batch_fp4 = cfg.get("batch_native_fp4") is True
+        if batch_fp4 and not glm_modelopt:
+            ap.error('GLM "batch_native_fp4" requires a native ModelOpt FP4 checkpoint')
         if isinstance(parallel, int) and not isinstance(parallel, bool) and parallel > 1:
-            if parallel > 8:
+            if batch_fp4:
+                if parallel > GLM_FP4_PARALLEL_MAX:
+                    ap.error(f"GLM native FP4 parallel must be 2..{GLM_FP4_PARALLEL_MAX}")
+                if lookup or gpu_decode or expert_mib or prepack:
+                    ap.error("GLM parallel requires CPU decode experts, no lookup, no expert_cache_mib "
+                             "and no cpu_prepack_mib")
+            elif parallel > 8:
                 ap.error("GLM parallel must be 2..8 (the engine has at most 8 sequence slots)")
             devices_cfg = cfg.get("gpu_devices", "0")
             n_devices = len(devices_cfg) if isinstance(devices_cfg, list) else len(str(devices_cfg).split(","))
-            if lookup or gpu_decode or expert_mib or prepack or n_devices > 1:
+            if not batch_fp4 and (lookup or gpu_decode or expert_mib or prepack or n_devices > 1):
                 ap.error("GLM parallel requires one GPU, CPU decode experts, no lookup, no expert_cache_mib "
                          "and no cpu_prepack_mib")
         recovery = cfg.get("reasoning_loop_recovery", False)
@@ -7227,7 +7246,18 @@ def main() -> int:
             if backend not in ("native", "auto", "packed-dot", "packed-lut"):
                 ap.error("invalid GLM CPU expert backend")
             args.extend(("4k", cfg["expert_pack"], cfg.get("expert_pack_profile", ""), backend))
-        batch_args = parallel_args(cfg, [])
+        batch_args = parallel_args(cfg, [], GLM_FP4_PARALLEL_MAX if batch_fp4 else PARALLEL_MAX)
+        slot_contexts = cfg.get("batch_contexts")
+        if slot_contexts is not None:
+            # "2x65536,30x4096": slot counts and their contexts.  The counts add up to "parallel" and the largest
+            # context is "context"; each request goes to a free slot that holds it (--batch-contexts).
+            ok = isinstance(slot_contexts, str) and re.fullmatch(r"\d+x\d+(,\d+x\d+)*", slot_contexts)
+            pairs = [tuple(map(int, p.split("x"))) for p in slot_contexts.split(",")] if ok else []
+            if (not batch_fp4 or not batch_args or not pairs or sum(n for n, _ in pairs) != parallel
+                    or max(c for _, c in pairs) != context):
+                ap.error('GLM "batch_contexts" needs "batch_native_fp4", "parallel" equal to its slot count and '
+                         'its largest context equal to "context"')
+            batch_args = batch_args + [f"--batch-contexts={slot_contexts}"]
         gpu_layout = cfg.get("gpu_layout", "legacy")
         if gpu_layout not in ("legacy", "layer"):
             ap.error("GLM gpu_layout must be legacy or layer")
@@ -7302,8 +7332,8 @@ def main() -> int:
             print(f"[strata] prefix cache: {k} checkpoint(s) in pinned host memory (~146 MiB each)", flush=True)
             prefix_args += glm_state_args(cfg, glm_metadata)
         if batch_args or layer_args or prefix_args:
-            if glm_native:
-                ap.error("GLM parallel requests currently require GGUF weights")
+            if glm_native and (layer_args or prefix_args or not batch_fp4):
+                ap.error("GLM parallel requests currently require GGUF weights (native FP4: \"batch_native_fp4\": true)")
             # Preserve all positional fields before appending named batch options.
             defaults = ["mmq", "4k", "", "", "auto"]
             while len(args) < 27:

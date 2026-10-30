@@ -696,14 +696,16 @@ __global__ void half_qpn_cache(const void* w,const void* scales,half* out,int N,
 // applied before each MMA operand conversion, rather than as a single matrix
 // epilogue scale: MXFP8 varies along K and block FP8 varies along both axes.
 // SPLITK is fixed across M=1..8 so verification does not change the K reduction.
-template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1,int NACC=1>
+// CH 8-row chunks (M<=8*CH) share each decoded weight fragment; every chunk runs
+// the MMAs and K reduction of a separate M<=8 call, so its rows are bitwise equal.
+template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1,int NACC=1,int CH=1>
 __device__ __forceinline__ void scaled_qpn_body(const void* w,const void* scales,
                             const half* x,float* y,int N,int K,int M,float (&sums)[SPLITK][256]) {
     const int lane=threadIdx.x&31,warp=threadIdx.x>>5,qp=(lane>>2)&3;
     const int r=(lane&3)+((lane&16)?4:0),n=blockIdx.x*32+qp*8+r;
     const int groups=K/16,part=blockIdx.y*SPLITK+warp;
     const int first=groups*part/(SPLITK*OUTER),last=groups*(part+1)/(SPLITK*OUTER);
-    float c[NACC][8]={};
+    float c[CH][NACC][8]={};
     for(int g=first;g<last;++g) {
         alignas(16) half b[16];
         if constexpr(FORMAT==GlmPackedFormat::F16Qpn) {
@@ -734,70 +736,87 @@ __device__ __forceinline__ void scaled_qpn_body(const void* w,const void* scales
             for(int j=0;j<16;++j)b[j]=n<N?__float2half_rn(weight_value(FORMAT,w,scales,1.f,n,g*16+j,K)):__float2half_rn(0.f);
         }
         const unsigned* B=reinterpret_cast<const unsigned*>(b);
-        uint4 a0=make_uint4(0,0,0,0),a1=a0;
-        if(r<M) {a0=*reinterpret_cast<const uint4*>(x+size_t(r)*K+g*16);a1=*reinterpret_cast<const uint4*>(x+size_t(r)*K+g*16+8);}
-        const unsigned* A0=reinterpret_cast<const unsigned*>(&a0);
-        const unsigned* A1=reinterpret_cast<const unsigned*>(&a1);
-        MMA_8N8K4(c[0],A0[0],A0[1],B[0],B[1]);
-        MMA_8N8K4(c[1%NACC],A0[2],A0[3],B[2],B[3]);
-        MMA_8N8K4(c[2%NACC],A1[0],A1[1],B[4],B[5]);
-        MMA_8N8K4(c[3%NACC],A1[2],A1[3],B[6],B[7]);
-    }
-    #pragma unroll
-    for(int a=1;a<NACC;++a)
-    #pragma unroll
-    for(int i=0;i<8;++i)c[0][i]+=c[a][i];
-    #pragma unroll
-    for(int i=0;i<8;++i) {
-        const int row=(i&2)|((lane&16)?4:0)|(lane&1);
-        const int col=(i&1)|(((lane>>1)&1)<<1)|((i>>2)<<2);
-        sums[warp][row*32+qp*8+col]=c[0][i];
-    }
-    __syncthreads();
-    for(int e=threadIdx.x;e<256;e+=blockDim.x) {
-        float sum=0;
         #pragma unroll
-        for(int i=0;i<SPLITK;++i)sum+=sums[i][e];
-        if((e>>5)<M && blockIdx.x*32+(e&31)<N)
-            y[size_t(blockIdx.y)*8*N+size_t(e>>5)*N+blockIdx.x*32+(e&31)]=sum;
+        for(int h=0;h<CH;++h) {
+            const int t=h*8+r;
+            uint4 a0=make_uint4(0,0,0,0),a1=a0;
+            if(t<M) {a0=*reinterpret_cast<const uint4*>(x+size_t(t)*K+g*16);a1=*reinterpret_cast<const uint4*>(x+size_t(t)*K+g*16+8);}
+            const unsigned* A0=reinterpret_cast<const unsigned*>(&a0);
+            const unsigned* A1=reinterpret_cast<const unsigned*>(&a1);
+            MMA_8N8K4(c[h][0],A0[0],A0[1],B[0],B[1]);
+            MMA_8N8K4(c[h][1%NACC],A0[2],A0[3],B[2],B[3]);
+            MMA_8N8K4(c[h][2%NACC],A1[0],A1[1],B[4],B[5]);
+            MMA_8N8K4(c[h][3%NACC],A1[2],A1[3],B[6],B[7]);
+        }
+    }
+    #pragma unroll
+    for(int h=0;h<CH;++h) {
+        #pragma unroll
+        for(int a=1;a<NACC;++a)
+        #pragma unroll
+        for(int i=0;i<8;++i)c[h][0][i]+=c[h][a][i];
+        if(h)__syncthreads();
+        #pragma unroll
+        for(int i=0;i<8;++i) {
+            const int row=(i&2)|((lane&16)?4:0)|(lane&1);
+            const int col=(i&1)|(((lane>>1)&1)<<1)|((i>>2)<<2);
+            sums[warp][row*32+qp*8+col]=c[h][0][i];
+        }
+        __syncthreads();
+        for(int e=threadIdx.x;e<256;e+=blockDim.x) {
+            float sum=0;
+            #pragma unroll
+            for(int i=0;i<SPLITK;++i)sum+=sums[i][e];
+            const int t=h*8+(e>>5);
+            if(t<M && blockIdx.x*32+(e&31)<N)
+                y[size_t(blockIdx.y)*8*CH*N+size_t(t)*N+blockIdx.x*32+(e&31)]=sum;
+        }
     }
 }
-template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1,int NACC=1>
+template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1,int NACC=1,int CH=1>
 __global__ void scaled_qpn(const void* w,const void* scales,
                             const half* x,float* y,int N,int K,int M) {
     __shared__ float sums[SPLITK][256];
-    scaled_qpn_body<FORMAT,SPLITK,OUTER,NACC>(w,scales,x,y,N,K,M,sums);
+    scaled_qpn_body<FORMAT,SPLITK,OUTER,NACC,CH>(w,scales,x,y,N,K,M,sums);
 }
 // Independent matrices share one launch and input, without concatenating or
 // copying resident weights. Each block keeps the ordinary eight-warp K tree.
+template<int CH=1>
 __global__ void mxfp8_qpn_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection c,
                                const half* x,int N,int K,int M) {
     __shared__ float sums[8][256];
     const auto p=blockIdx.z==0?a:blockIdx.z==1?b:c;
-    scaled_qpn_body<GlmPackedFormat::Mxfp8Qpn,8>(p.weights,p.scales,x,p.output,N,K,M,sums);
+    scaled_qpn_body<GlmPackedFormat::Mxfp8Qpn,8,1,1,CH>(p.weights,p.scales,x,p.output,N,K,M,sums);
 }
-__global__ void reduce_partials(const float* partials,float* y,int N,int M,int parts) {
+// Partial p holds `stride` rows (8 per chunk); rows past M are not read.
+__global__ void reduce_partials(const float* partials,float* y,int N,int M,int parts,int stride) {
     const int i=blockIdx.x*blockDim.x+threadIdx.x;
     if(i>=N*M)return;
     float sum=0;
-    for(int part=0;part<parts;++part)sum+=partials[size_t(part)*8*N+i];
+    for(int part=0;part<parts;++part)sum+=partials[size_t(part)*stride*N+i];
     y[i]=sum;
 }
-template<GlmPackedFormat FORMAT,int PARTS,int NACC=1>
+template<GlmPackedFormat FORMAT,int PARTS,int NACC=1,int CH=1>
 void small_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream) {
-    scaled_qpn<FORMAT,8,PARTS,NACC><<<dim3((N+31)/32,PARTS),256,0,stream>>>(w,scales,x,partials,N,K,M);
-    reduce_partials<<<(N*M+255)/256,256,0,stream>>>(partials,y,N,M,PARTS);
+    scaled_qpn<FORMAT,8,PARTS,NACC,CH><<<dim3((N+31)/32,PARTS),256,0,stream>>>(w,scales,x,partials,N,K,M);
+    reduce_partials<<<(N*M+255)/256,256,0,stream>>>(partials,y,N,M,PARTS,8*CH);
 }
-template<GlmPackedFormat FORMAT,int NACC=1>
+template<GlmPackedFormat FORMAT,int NACC=1,int CH=1>
 void scaled_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream) {
     if(partials && N<=8192 && K>=4096) {
-        if(N<=32)small_gemm<FORMAT,64,NACC>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=64)small_gemm<FORMAT,32,NACC>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=128)small_gemm<FORMAT,16,NACC>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=1024)small_gemm<FORMAT,8,NACC>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=2048)small_gemm<FORMAT,4,NACC>(w,scales,x,y,partials,N,K,M,stream);
-        else small_gemm<FORMAT,2,NACC>(w,scales,x,y,partials,N,K,M,stream);
-    }else scaled_qpn<FORMAT,8,1,NACC><<<(N+31)/32,256,0,stream>>>(w,scales,x,y,N,K,M);
+        if(N<=32)small_gemm<FORMAT,64,NACC,CH>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=64)small_gemm<FORMAT,32,NACC,CH>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=128)small_gemm<FORMAT,16,NACC,CH>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=1024)small_gemm<FORMAT,8,NACC,CH>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=2048)small_gemm<FORMAT,4,NACC,CH>(w,scales,x,y,partials,N,K,M,stream);
+        else small_gemm<FORMAT,2,NACC,CH>(w,scales,x,y,partials,N,K,M,stream);
+    }else scaled_qpn<FORMAT,8,1,NACC,CH><<<(N+31)/32,256,0,stream>>>(w,scales,x,y,N,K,M);
+}
+// 9..32 rows with one weight pass: two or four 8-row chunks per block.
+template<GlmPackedFormat FORMAT>
+void wide_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream) {
+    if(M<=16)scaled_gemm<FORMAT,1,2>(w,scales,x,y,partials,N,K,M,stream);
+    else scaled_gemm<FORMAT,1,4>(w,scales,x,y,partials,N,K,M,stream);
 }
 template<GlmPackedFormat FORMAT>
 void fp8_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream,int accumulators) {
@@ -825,8 +844,8 @@ __global__ void route_gather_half(const half* x,const int* routes,half* out,int 
 __global__ void grouped_route_scatter(const GlmFp4ExpertGroup* __restrict__ groups,int count,
                                       const int* __restrict__ routes,const float* __restrict__ weights,
                                       const float* __restrict__ values,float* __restrict__ sum) {
-    __shared__ int rows[64];
-    __shared__ float coefficients[64];
+    __shared__ int rows[256];
+    __shared__ float coefficients[256];
     const int token=blockIdx.y,g=threadIdx.x;
     if(g<count) {
         const auto* group=groups+g;
@@ -888,7 +907,31 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* w,const void* scales,float 
     if(fp8_accumulators!=1&&fp8_accumulators!=2&&fp8_accumulators!=4)
         throw std::invalid_argument("GLM FP4: FP8 accumulators must be 1, 2 or 4");
     if(!sm70) {reference_kernel<<<dim3((N+7)/8,M),256,0,s>>>(format,w,scales,global,h,y,N,K,M);return;}
-    if(M>8)throw std::invalid_argument("GLM FP4: skinny MMA supports M<=8");
+    if(M>32)throw std::invalid_argument("GLM FP4: skinny MMA supports M<=32");
+    if(M>8) {
+        // One weight pass for the single-accumulator FP8/FP16/BF16/F32 kernels; NVFP4 and
+        // multi-accumulator FP8 run as 8-row calls. Rows are bitwise equal to 8-row calls either way.
+        const bool fp8=format==GlmPackedFormat::Mxfp8||format==GlmPackedFormat::BlockFp8||
+                       format==GlmPackedFormat::Mxfp8Qpn||format==GlmPackedFormat::BlockFp8Qpn;
+        if(format==GlmPackedFormat::Nvfp4||(fp8&&fp8_accumulators!=1)) {
+            for(int first=0;first<M;first+=8)
+                glm_fp4_gemm(format,w,scales,global,x+size_t(first)*K,y+size_t(first)*N,N,K,std::min(8,M-first),
+                             sm70,stream,partials,fp8_accumulators);
+            return;
+        }
+        switch(format) {
+        case GlmPackedFormat::Mxfp8:wide_gemm<GlmPackedFormat::Mxfp8>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::BlockFp8:wide_gemm<GlmPackedFormat::BlockFp8>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::Bf16:wide_gemm<GlmPackedFormat::Bf16>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::F32:wide_gemm<GlmPackedFormat::F32>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::F16:wide_gemm<GlmPackedFormat::F16>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::F16Qpn:wide_gemm<GlmPackedFormat::F16Qpn>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::Mxfp8Qpn:wide_gemm<GlmPackedFormat::Mxfp8Qpn>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::BlockFp8Qpn:wide_gemm<GlmPackedFormat::BlockFp8Qpn>(w,scales,h,y,partials,N,K,M,s);break;
+        default:throw std::invalid_argument("GLM FP4: unknown packed format");
+        }
+        return;
+    }
     if(format==GlmPackedFormat::Nvfp4) {
         if(N%32)throw std::invalid_argument("FP4 MMA requires N%32=0");
         // Eight independent K partitions keep grouped narrow MoE shapes busy.
@@ -914,15 +957,17 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* w,const void* scales,float 
 void glm_mxfp8_gemm_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection c,
                          const uint16_t* x,int N,int K,int M,void* stream) {
     valid(N,K,M);
-    if(N%32||M>8||!x||!a.weights||!b.weights||!c.weights||!a.scales||!b.scales||!c.scales||
+    if(N%32||M>32||!x||!a.weights||!b.weights||!c.weights||!a.scales||!b.scales||!c.scales||
        !a.output||!b.output||!c.output)
-        throw std::invalid_argument("GLM FP8: three products require packed MXFP8 and tokens1..8");
-    mxfp8_qpn_three<<<dim3(N/32,1,3),256,0,static_cast<cudaStream_t>(stream)>>>(
-        a,b,c,reinterpret_cast<const half*>(x),N,K,M);
+        throw std::invalid_argument("GLM FP8: three products require packed MXFP8 and tokens1..32");
+    const auto s=static_cast<cudaStream_t>(stream);const auto* h=reinterpret_cast<const half*>(x);
+    if(M<=8)mxfp8_qpn_three<<<dim3(N/32,1,3),256,0,s>>>(a,b,c,h,N,K,M);
+    else if(M<=16)mxfp8_qpn_three<2><<<dim3(N/32,1,3),256,0,s>>>(a,b,c,h,N,K,M);
+    else mxfp8_qpn_three<4><<<dim3(N/32,1,3),256,0,s>>>(a,b,c,h,N,K,M);
 }
 void glm_fp4_expert_group_products(const GlmFp4ExpertGroup* groups,int count,bool down,
                                    const uint16_t* input,float* output,float* up,void* stream) {
-    if(count<1||count>64||!groups||!input||!output||(!down&&!up))
+    if(count<1||count>256||!groups||!input||!output||(!down&&!up))
         throw std::invalid_argument("GLM FP4: invalid resident expert batch");
     const auto s=static_cast<cudaStream_t>(stream);
     if(down)fp4_qpn_grouped<8,2,false,true><<<dim3(4096/32,count),256,0,s>>>(groups,reinterpret_cast<const half*>(input),output,nullptr,4096,2048);
@@ -1037,7 +1082,7 @@ void glm_fp4_route_gather_half(const uint16_t* x,const int* routes,uint16_t* out
 void glm_fp4_expert_group_scatter(const GlmFp4ExpertGroup* groups,int count,
                                  const int* routes,const float* weights,const float* values,
                                  float* sum,int tokens,void* stream) {
-    if(count<1||count>64||tokens<1||tokens>8||!groups||!routes||!weights||!values||!sum)
+    if(count<1||count>256||tokens<1||tokens>64||!groups||!routes||!weights||!values||!sum)
         throw std::invalid_argument("GLM FP4: invalid grouped ordered scatter");
     grouped_route_scatter<<<dim3(4096/256,tokens),256,0,static_cast<cudaStream_t>(stream)>>>(groups,count,routes,weights,values,sum);
 }

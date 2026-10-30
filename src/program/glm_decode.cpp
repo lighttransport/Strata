@@ -40,6 +40,7 @@
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
+#include "strata/kernels/glm_rows.hpp"
 #include "strata/kernels/glm_mailbox.hpp"
 #include "strata/kernels/glm_q23.hpp"
 #include "strata/kernels/canon_expert.hpp"
@@ -1836,6 +1837,10 @@ class Decoder {
     }();
     const bool norm_q8_fused_batch = strata_env_is_one("STRATA_GLM_NORM_Q8_FUSED_BATCH");
     const bool pointwise_batch = strata_env_is_one("STRATA_GLM_POINTWISE_BATCH");
+    const bool batch_mixers = strata_env_is_one("STRATA_GLM_BATCH_MIXERS");
+    // STRATA_GLM_FP4_BATCH_OVERLAP=1 (opt-in, native FP4 batched decode): the rows run as two groups, layer by layer,
+    // so one group's CPU and GPU1 experts run while GPU0 computes the other group's mixer.
+    const bool fp4_batch_overlap = strata_env_is_one("STRATA_GLM_FP4_BATCH_OVERLAP");
     const bool conv_batch_history = strata_env_is_one("STRATA_GLM_CONV_BATCH_HISTORY");
     const bool mhc_save_fused = [] {
         const char *v = std::getenv("STRATA_GLM_MHC_SAVE_FUSED");
@@ -2148,7 +2153,16 @@ class Decoder {
     int routing_request = 0, routing_round = -1;
     const char *routing_phase = "target";
     bool routing_events = std::getenv("STRATA_GLM_ROUTING_EVENTS") != nullptr;
-    void trace_routes(int layer, int position, int nt, int k, const int *ids) {
+    // STRATA_GLM_ROUTING_WEIGHTS=1 (native FP4, with routing events): decode-width events (up to 8 rows) also carry
+    // the rows' routing weights; =2 also each row's 16 best candidates by unbonused selection score as [id, sigmoid,
+    // score], so a batch simulator can route again under another keep set (tools/glm_batch_route_sim.cpp). Diagnostic.
+    const long long routing_weights = [] {
+        const auto v = strata_env_value_ll("STRATA_GLM_ROUTING_WEIGHTS", 0);
+        if (v < 0 || v > 2) throw std::invalid_argument("STRATA_GLM_ROUTING_WEIGHTS must be 0, 1 or 2");
+        return v;
+    }();
+    void trace_routes(int layer, int position, int nt, int k, const int *ids, const float *weights = nullptr,
+                      const float *logits = nullptr, const float *bias = nullptr) {
         if (!fast && !layer_route_counts.empty() && layer >= 0 && (size_t)layer < m.layers.size())
             for (int j = 0; j < nt*k; ++j) {
                 if (ids[j] < 0 || ids[j] >= m.experts) throw std::runtime_error("GLM: invalid committed route");
@@ -2164,6 +2178,35 @@ class Decoder {
                 routing_trace << '[';
                 for (int j = 0; j < k; ++j) { if (j) routing_trace << ','; routing_trace << ids[t*k+j]; }
                 routing_trace << ']';
+            }
+            if (weights) {
+                routing_trace << "],\"weights\":[";
+                for (int t = 0; t < nt; ++t) {
+                    if (t) routing_trace << ',';
+                    routing_trace << '[';
+                    for (int j = 0; j < k; ++j) { if (j) routing_trace << ','; routing_trace << weights[t*k+j]; }
+                    routing_trace << ']';
+                }
+            }
+            if (logits && bias) {
+                routing_trace << "],\"candidates\":[";
+                const int experts = int(m.experts), count = std::min(16, experts);
+                std::vector<std::pair<float,int>> order(static_cast<size_t>(experts));
+                for (int t = 0; t < nt; ++t) {
+                    const float *row = logits + size_t(t)*experts;
+                    for (int e = 0; e < experts; ++e) order[size_t(e)] = {1.f/(1.f+std::exp(-row[e])) + bias[e], e};
+                    std::partial_sort(order.begin(), order.begin()+count, order.end(), [](const auto &a, const auto &b) {
+                        return a.first > b.first || (a.first == b.first && a.second < b.second);
+                    });
+                    if (t) routing_trace << ',';
+                    routing_trace << '[';
+                    for (int j = 0; j < count; ++j) {
+                        const int e = order[size_t(j)].second;
+                        if (j) routing_trace << ',';
+                        routing_trace << '[' << e << ',' << 1.f/(1.f+std::exp(-row[e])) << ',' << order[size_t(j)].first << ']';
+                    }
+                    routing_trace << ']';
+                }
             }
             routing_trace << "],\"resident\":[";
             bool comma = false;
@@ -3366,13 +3409,39 @@ private:
     };
     std::vector<SequenceState> sequences;
     int current_sequence = 0;
+    // Rows of one independent decode step: cpu::MAXT, or up to kSequenceRowsMax slots (or verify rows) with native
+    // FP4, whose executor runs wider steps through its 8-row kernels.
+    static constexpr int kSequenceRowsMax = 32;
+    int sequence_rows = cpu::MAXT;
+    // --batch-contexts: each slot's own context, slot 0 the largest (it owns the original state, at `capacity`).
+    // Empty: every slot has the full context. Otherwise `capacity` follows the selected slot.
+    std::vector<int> sequence_contexts;
     std::vector<int> row_sequences, row_positions;
+    bool row_sequences_distinct = false;   // every row of row_sequences names a different sequence
     int sequence_row_offset = 0;
     const bool batch_split = [] { const char *v = std::getenv("STRATA_GLM_BATCH_SPLIT"); return v && std::string(v) == "1"; }();
     int row_position(int row) const { return row_positions[row + sequence_row_offset]; }
     LayerState &row_state(int row, int layer) {
         const int slot = row_sequences[row + sequence_row_offset];
         return slot == current_sequence ? states[layer] : sequences[slot].layers[layer];
+    }
+    // STRATA_GLM_BATCH_MIXERS=1: the decode rows of independent sequences run each per-row KDA and MLA state kernel
+    // as one launch (glm_rows.hpp), every row with the arithmetic of its one-row call.
+    // The state kernels update every row's state at once, so each row must belong to a different sequence (a verify
+    // window's consecutive rows of one sequence take the per-row loops, in order).
+    bool rows_mixers(int rows) const {
+        return batch_mixers && !row_sequences.empty() && row_sequences_distinct && rows <= k::kGlmRowsMax &&
+               !capturing_history;
+    }
+    template <class Pick> k::GlmRowPointers row_pointers(int rows, int layer, Pick pick) {
+        k::GlmRowPointers table{};
+        for (int r = 0; r < rows; ++r) table.p[r] = pick(row_state(r, layer));
+        return table;
+    }
+    k::GlmRowPositions row_position_table(int rows) const {
+        k::GlmRowPositions table{};
+        for (int r = 0; r < rows; ++r) table.p[r] = row_position(r);
+        return table;
     }
 
     std::unique_ptr<Device> verify_history;
@@ -4899,8 +4968,10 @@ private:
         }
         moe_prefixes[l] = {(int *)ids.p, rw.f(), gpu ? gpu->cursor : 0};
     }
+    // routed_group >= 0 (native FP4 overlap): start the routed experts as that row group's call in flight; the
+    // caller adds them with routed_finish.
     void moe(const std::string &p, int l, const float *x, float *out,
-             const strata::core::LayerDescriptor &layer) {
+             const strata::core::LayerDescriptor &layer, int routed_group = -1) {
 #ifndef STRATA_USE_HIP
         if(artifact.is_modelopt()) {
             const int nt=batch_tokens;
@@ -4915,9 +4986,23 @@ private:
             if(routing_trace.is_open()) {
                 std::vector<int> selected(size_t(nt)*m.top_k);
                 check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*sizeof(int),cudaMemcpyDeviceToHost,stream));
-                check(cudaStreamSynchronize(stream));trace_routes(l,position,nt,m.top_k,selected.data());
+                std::vector<float> weights,scores,biases;
+                if(routing_events&&routing_weights>=1&&nt<=8) {
+                    weights.resize(selected.size());
+                    check(cudaMemcpyAsync(weights.data(),routing.f(),weights.size()*sizeof(float),cudaMemcpyDeviceToHost,stream));
+                }
+                if(routing_events&&routing_weights>=2&&nt<=8) {
+                    scores.resize(size_t(nt)*m.experts);biases.resize(size_t(m.experts));
+                    check(cudaMemcpyAsync(scores.data(),logits.f(),scores.size()*sizeof(float),cudaMemcpyDeviceToHost,stream));
+                    check(cudaMemcpyAsync(biases.data(),bias.f(),biases.size()*sizeof(float),cudaMemcpyDeviceToHost,stream));
+                }
+                check(cudaStreamSynchronize(stream));
+                trace_routes(l,position,nt,m.top_k,selected.data(),weights.empty()?nullptr:weights.data(),
+                             scores.empty()?nullptr:scores.data(),biases.empty()?nullptr:biases.data());
             }
-            const bool early_inputs=modelopt_gpu->prepare_routed_inputs(x,static_cast<const int*>(ids.p),routing.f(),nt,stream,moe_ready);
+            // An overlapped group's routed call reads its inputs itself (no early readback).
+            const bool early_inputs=routed_group<0&&
+                modelopt_gpu->prepare_routed_inputs(x,static_cast<const int*>(ids.p),routing.f(),nt,stream,moe_ready);
             struct DrainEarlyFailure {
                 cudaStream_t stream;bool active;int exceptions;
                 ~DrainEarlyFailure(){if(active&&std::uncaught_exceptions()>exceptions)cudaStreamSynchronize(stream);}
@@ -4925,6 +5010,11 @@ private:
             ffn(p,x,out,"_shexp",m.shared_intermediate,layer.shared_swiglu_limit);
             // The final routed sum remains on this stream, after the shared
             // FFN. Only the independent expert inputs cross the earlier fence.
+            if(routed_group>=0) {
+                modelopt_gpu->routed_begin(routed_group,l,x,static_cast<const int*>(ids.p),routing.f(),out,nt,
+                                           layer.swiglu_limit,stream);
+                return;
+            }
             modelopt_gpu->routed(l,x,static_cast<const int*>(ids.p),routing.f(),out,nt,layer.swiglu_limit,stream,
                                  early_inputs?moe_ready:nullptr);
             return;
@@ -6778,7 +6868,7 @@ private:
                 [&](const auto& name){return prepared_projections.contains(name);}) &&
                modelopt_gpu->can_batch_kda_qkv(qkv_names,n,m.hidden,batch_tokens)) {
                 std::array<float*,3> outputs;
-                for(int i=0;i<3;++i)outputs[i]=buf("linear_raw_"+names[i],size_t(8)*n).f();
+                for(int i=0;i<3;++i)outputs[i]=buf("linear_raw_"+names[i],size_t(std::max(8,batch_tokens))*n).f();
                 modelopt_gpu->batch_kda_qkv(qkv_names,x,outputs,batch_tokens,stream);
                 std::copy(outputs.begin(),outputs.end(),projected.begin());
             }
@@ -6803,6 +6893,10 @@ private:
                 k::glm_conv_batch_history(raw, W.f(), hist[i]->f(), dest[i], n, m.conv_kernel,
                     batch_tokens, snapshots, history_stride / sizeof(float), count, stream);
             }
+            else if (rows_mixers(batch_tokens))
+                k::glm_conv_rows(raw, W.f(), row_pointers(batch_tokens, l, [i](LayerState &rs) {
+                    return (i == 0 ? rs.conv_q : i == 1 ? rs.conv_k : rs.conv_v)->f(); }),
+                    dest[i], n, m.conv_kernel, batch_tokens, stream);
             else
                 for (int t = 0; t < batch_tokens; ++t) {
                     Device *history = hist[i];
@@ -6824,6 +6918,9 @@ private:
         if (fast || pointwise_batch)
             k::glm_kda_gate_batch(tmp.f(), dt.f(), a.f(), decay.f(), heads, dim, m.gate_lower_bound,
                                   batch_tokens, stream);
+        else if (rows_mixers(batch_tokens))
+            k::glm_kda_gate_rows(tmp.f(), dt.f(), a.f(), decay.f(), heads, dim, m.gate_lower_bound, batch_tokens,
+                                 stream);
         else
             for (int t = 0; t < batch_tokens; ++t)
                 k::glm_kda_gate(tmp.f(t * n), dt.f(), a.f(), decay.f(t * n), heads, dim, m.gate_lower_bound,
@@ -6831,6 +6928,11 @@ private:
         mat(p + "ssm_beta.weight", x, beta.f());
         auto &y = buf("linear_y", n * batch_tokens);
         if (!row_sequences.empty()) {
+            if (rows_mixers(batch_tokens) && row_parts == 1)
+                k::glm_kda_chunk_rows(row_pointers(batch_tokens, l, [](LayerState &rs) { return rs.recurrent->f(); }),
+                                      q.f(), key.f(), v.f(), decay.f(), beta.f(), y.f(), heads, dim, batch_tokens,
+                                      stream, kda_columns);
+            else
             for (int t = 0; t < batch_tokens; ++t)
                 k::glm_kda_chunk(row_state(t, l).recurrent->f(), q.f(t * n), key.f(t * n), v.f(t * n),
                                  decay.f(t * n), beta.f(t * heads), y.f(t * n), heads, dim, 1, stream,
@@ -6897,6 +6999,8 @@ private:
         if (fast || pointwise_batch)
             k::glm_kda_output_batch(y.f(), tmp.f(), W.f(), q.f(), heads, dim, m.rms_epsilon, batch_tokens,
                                     stream);
+        else if (rows_mixers(batch_tokens))   // one block per head of every row: each row's one-row blocks
+            k::glm_kda_output(y.f(), tmp.f(), W.f(), q.f(), heads * batch_tokens, dim, m.rms_epsilon, stream);
         else
             for (int t = 0; t < batch_tokens; ++t)
                 k::glm_kda_output(y.f(t * n), tmp.f(t * n), W.f(), q.f(t * n), heads, dim, m.rms_epsilon,
@@ -6972,6 +7076,10 @@ private:
         } else if (!row_sequences.empty()) {
             auto &normalized = buf("mla_cache_rows", latent * B);
             norm(p + "attn_kv_a_norm.weight", raw.f(), normalized.f(), latent);
+            if (rows_mixers(B))
+                k::glm_cache_rows_each(normalized.f(), row_pointers(B, l, [](LayerState &rs) { return rs.cache->f(); }),
+                                       row_position_table(B), latent, B, stream);
+            else
             for (int t = 0; t < B; ++t)
                 check(cudaMemcpyAsync(row_state(t, l).cache->f((size_t)row_position(t) * latent),
                                       normalized.f((size_t)t * latent), (size_t)latent * 4,
@@ -7009,7 +7117,13 @@ private:
         if (index_keys_f16 && (!row_sequences.empty() || split_mla))
             throw std::invalid_argument("GLM: FP16 pooled indexer keys support one sequence without split MLA");
         auto *pooled16 = index_keys_f16 ? (uint16_t *)state.pooled->p : nullptr;
-        if (!row_sequences.empty()) {
+        if (rows_mixers(B))
+            k::glm_index_prepare_rows(ikn.f(), gate.f(), ape.f(),
+                                      row_pointers(B, l, [](LayerState &rs) { return rs.keys->f(); }),
+                                      row_pointers(B, l, [](LayerState &rs) { return rs.gates->f(); }),
+                                      row_pointers(B, l, [](LayerState &rs) { return rs.pooled->f(); }),
+                                      row_position_table(B), B, pool_size, idim, stream);
+        else if (!row_sequences.empty()) {
             for (int t = 0; t < B; ++t) {
                 auto &rs = row_state(t, l);
                 k::glm_index_prepare(ikn.f(t * idim), gate.f(t * idim), ape.f(), rs.keys->f(),
@@ -7038,15 +7152,19 @@ private:
         inspect("index_norm", ikn.f(), (size_t)B * idim, stream);
         if (!pooled16) inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
-        int pools = capacity / pool_size, ntile = std::min(tile, B);
+        // With --batch-contexts the shared buffers cover the largest slot; each decode row scores its own slot's pools.
+        int pools = (sequence_contexts.empty() || row_sequences.empty() ? capacity : (size_t)sequence_contexts[0]) / pool_size,
+            ntile = std::min(tile, B);
         // Decode and verify block too: their scratch arena is 32 MiB, and unblocked dots for one query outgrow it
         // near a 1M context (32 heads x 262144 pools x 4 bytes).
         const bool block_index = index_block_pools && index_block_pools < pools;
         const int dot_pools = block_index ? index_block_pools : std::max(1, pools);
         auto &dots = buf("index_dots", (size_t)ntile * ih * dot_pools);
-        auto &scores = buf("index_scores", (size_t)ntile * std::max(1, pools));
-        auto &ids = buf("index_ids", ntile * stride);
-        auto &counts = buf("index_counts", ntile);
+        // STRATA_GLM_BATCH_MIXERS selects for all rows at once (glm_index_select_rows).
+        const int selected = batch_mixers && !fast && tile == 1 && B <= k::kGlmRowsMax ? B : ntile;
+        auto &scores = buf("index_scores", (size_t)selected * std::max(1, pools));
+        auto &ids = buf("index_ids", selected * stride);
+        auto &counts = buf("index_counts", selected);
         auto &aq = buf("mla_absorbed_q", ntile * heads * latent);
         auto &av = buf("mla_absorbed_v", ntile * heads * latent);
         const bool halves = tensor_mla && fast && gpu && gpu->gemm && (!artifact.is_modelopt()||lossy_prefill());
@@ -7088,6 +7206,9 @@ private:
             const uint8_t *cache8 = nullptr;    // STRATA_GLM_KV_FORMAT=int8|fp8 rows, in place of `cache`
             bool fp8 = false;
             const uint16_t *pooled16 = nullptr; // STRATA_GLM_INDEX_KEYS=f16 keys, in place of `pooled`
+            // STRATA_GLM_BATCH_MIXERS decode rows: both absorptions run once for all rows (glm_mla_absorb_rows)
+            // into aq_all / av_all.
+            bool absorb_rows = false;
         };
         auto run_tiles = [&, B, heads, latent, dim, ih, idim, pool_size, pools, tile](const Tiles &d, bool stoppable) {
             const float one = 1, zero = 0;
@@ -7117,11 +7238,17 @@ private:
                                                 (long long)in * out, x, ld_x, in, &zero, y, ld_y, out, count));
             };
             const bool hoisted = d.aq_all && d.av_all && d.wk8 && d.wv8 && !d.gemm && !d.back;
+            const bool absorb_rows = d.absorb_rows && d.aq_all && d.av_all && !hoisted;
             if (hoisted)
                 k::glm_q8_heads_gemv(d.wk8, d.q, d.aq_all, (int)kb.shape[2], (int)kb.shape[0], (int)kb.shape[1],
                                      d.tokens, heads * dim, heads * latent, d.stream, pointwise_batch);
-            for (int t = 0; t < d.tokens; t += tile) {
-                if (stoppable) check_stop();
+            else if (absorb_rows)
+                k::glm_mla_absorb_rows(d.wk, d.q, d.aq_all, (int)kb.shape[0], (int)kb.shape[1], (int)kb.shape[2],
+                                       d.tokens, heads * dim, heads * latent, d.stream);
+            // STRATA_GLM_BATCH_MIXERS rows: every row's index scores (part 0), one selection for all rows, then
+            // every row's attention (part 1). Otherwise one pass per tile (part -1).
+            const bool select_rows = absorb_rows && tile == 1;
+            auto tile_body = [&](int t, int part) {
                 const int count = std::min(tile, d.tokens - t);
                 const int row = d.first + t;
                 const int at = row_sequences.empty() ? position + row : row_position(row);
@@ -7132,15 +7259,23 @@ private:
                     ? std::min(2052, ((at + count + 3) / 4) * 4) : 2052;
                 const float *pooled_rows = row_sequences.empty() ? d.pooled : row_state(row, l).pooled->f();
                 const float *cache_rows = row_sequences.empty() ? d.cache : row_state(row, l).cache->f();
-                float *aq_t = hoisted ? d.aq_all + (size_t)t * heads * latent : d.aq;
-                float *av_t = hoisted ? d.av_all + (size_t)t * heads * latent : d.av;
-                const int scored_pools = active_index_pools ? (at + count) / pool_size : pools;
-                if (block_index && !d.back) {
+                float *aq_t = hoisted || absorb_rows ? d.aq_all + (size_t)t * heads * latent : d.aq;
+                float *av_t = hoisted || absorb_rows ? d.av_all + (size_t)t * heads * latent : d.av;
+                // A decode row of a shorter --batch-contexts slot scores that slot's pools, as a step of the slot alone does.
+                const int row_pools = row_sequences.empty() || sequence_contexts.empty() ? pools
+                    : sequence_contexts[row_sequences[row + sequence_row_offset]] / pool_size;
+                const bool row_block = index_block_pools && index_block_pools < row_pools;
+                const int scored_pools = active_index_pools ? (at + count) / pool_size : row_pools;
+                float *scores_t = select_rows ? d.scores + (size_t)t * pools : d.scores;
+                int *ids_t = select_rows ? d.ids + (size_t)t * stride : d.ids;
+                int *counts_t = select_rows ? d.counts + t : d.counts;
+                if (part != 1) {
+                if (row_block && !d.back) {
                     // Blocked indexer: the same products and per-pool sums, one key block at a time.
                     const bool f16 = (mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill()) || d.pooled16;
                     auto *index_product = d.gemm ? d.gemm : index_gemm.get();
                     if (f16 && scored_pools) {
-                        const size_t pn = (size_t)pools * idim, qn = (size_t)count * ih * idim;
+                        const size_t pn = (size_t)row_pools * idim, qn = (size_t)count * ih * idim;
                         if (!d.pooled16 && (t == 0 || !index_pool16)) {
                             if (!index_pool16 || index_pool16->bytes < pn * 2) index_pool16 = std::make_unique<Device>(pn * 2);
                             k::glm_f16(pooled_rows, (uint16_t *)index_pool16->p, (int64_t)pn, d.stream);
@@ -7149,9 +7284,9 @@ private:
                         k::glm_f16(d.iq + (size_t)t * ih * idim, (uint16_t *)index_q16->p, (int64_t)qn, d.stream);
                     }
                     // ACTIVE_POOLS: blocks past the scored pools hold no key selection reads.
-                    const int block_end = active_index_pools ? scored_pools : pools;
+                    const int block_end = active_index_pools ? scored_pools : row_pools;
                     for (int first = 0; first < block_end; first += index_block_pools) {
-                        const int n = std::min(index_block_pools, pools - first);
+                        const int n = std::min(index_block_pools, row_pools - first);
                         const int scored = std::clamp(scored_pools - first, 0, n);
                         if (scored && f16)
                             index_product->f16((uint16_t *)index_q16->p,
@@ -7161,14 +7296,14 @@ private:
                             check(cublasSgemm(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, scored, count * ih, idim, &one,
                                               pooled_rows + (size_t)first * idim, idim, d.iq + (size_t)t * ih * idim,
                                               idim, &zero, d.dots, index_block_pools));
-                        k::glm_index_reduce_block(d.dots, d.iw + (size_t)t * ih, d.scores, ih, index_block_pools, first,
-                                                  n, pools, count, at, pool_size, idim, d.stream, device_pos, d.first + t);
+                        k::glm_index_reduce_block(d.dots, d.iw + (size_t)t * ih, scores_t, ih, index_block_pools, first,
+                                                  n, row_pools, count, at, pool_size, idim, d.stream, device_pos, d.first + t);
                     }
                 } else {
                 if (scored_pools && ((mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill()) || d.pooled16)) {
                     // Pooled rows only grow within this call, so one cast covers every tile; rows beyond a tile's
                     // scored_pools are not read. FP16 pooled keys need no cast.
-                    const size_t pn = (size_t)pools * idim, qn = (size_t)count * ih * idim;
+                    const size_t pn = (size_t)row_pools * idim, qn = (size_t)count * ih * idim;
                     if (!d.pooled16 && (t == 0 || !index_pool16)) {
                         if (!index_pool16 || index_pool16->bytes < pn * 2) index_pool16 = std::make_unique<Device>(pn * 2);
                         k::glm_f16(pooled_rows, (uint16_t *)index_pool16->p, (int64_t)pn, d.stream);
@@ -7176,21 +7311,24 @@ private:
                     if (!index_q16 || index_q16->bytes < qn * 2) index_q16 = std::make_unique<Device>(qn * 2);
                     k::glm_f16(d.iq + (size_t)t * ih * idim, (uint16_t *)index_q16->p, (int64_t)qn, d.stream);
                     (d.gemm ? d.gemm : index_gemm.get())->f16((uint16_t *)index_q16->p,
-                        d.pooled16 ? d.pooled16 : (uint16_t *)index_pool16->p, d.dots, count * ih, scored_pools, idim, pools);
+                        d.pooled16 ? d.pooled16 : (uint16_t *)index_pool16->p, d.dots, count * ih, scored_pools, idim, row_pools);
                 } else if (scored_pools)
                     check(cublasSgemm(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, scored_pools, count * ih, idim, &one,
-                                      pooled_rows, idim, d.iq + (size_t)t * ih * idim, idim, &zero, d.dots, pools));
+                                      pooled_rows, idim, d.iq + (size_t)t * ih * idim, idim, &zero, d.dots, row_pools));
                 // ACTIVE_POOLS: the same sums for the scored pools only; selection reads no pool beyond them.
-                if (active_index_pools && scored_pools < pools)
-                    k::glm_index_reduce_block(d.dots, d.iw + (size_t)t * ih, d.scores, ih, pools, 0, scored_pools, pools,
+                if (active_index_pools && scored_pools < row_pools)
+                    k::glm_index_reduce_block(d.dots, d.iw + (size_t)t * ih, scores_t, ih, row_pools, 0, scored_pools, row_pools,
                                               count, at, pool_size, idim, d.stream, device_pos, d.first + t);
                 else
-                k::glm_index_reduce(d.dots, d.iw + (size_t)t * ih, d.scores, ih, pools, count, at, pool_size,
+                k::glm_index_reduce(d.dots, d.iw + (size_t)t * ih, scores_t, ih, row_pools, count, at, pool_size,
                                     idim, d.stream, device_pos, d.first + t);
                 }
-                k::glm_index_select_batch(d.scores, d.ids, d.counts, pools, at, count,
+                }
+                if (part == 0) return;
+                if (part < 0)
+                k::glm_index_select_batch(scores_t, ids_t, counts_t, row_pools, at, count,
                                           pool_size, m.index_top_k, stride, d.stream, device_pos, d.first + t);
-                if (hoisted) {}
+                if (hoisted || absorb_rows) {}
                 else if (d.wk8)
                     k::glm_q8_heads_gemv(d.wk8, d.q + (size_t)t * heads * dim, d.aq, (int)kb.shape[2], (int)kb.shape[0],
                                          (int)kb.shape[1], count, heads * dim, heads * latent, d.stream);
@@ -7203,26 +7341,26 @@ private:
                     const int attention_stride = shared_keys ? std::min(d.dense_rows, stride) : stride;
                     const auto *keys = shared_keys ? d.dense_keys : (uint16_t *)d.gathered;
                     if (!shared_keys && d.cache8)
-                        k::glm_mla_gather_q8_f16(d.cache8, d.fp8, d.ids, d.counts, (uint16_t *)d.gathered,
+                        k::glm_mla_gather_q8_f16(d.cache8, d.fp8, ids_t, counts_t, (uint16_t *)d.gathered,
                                                 count, stride, latent, d.stream);
                     else if (!shared_keys && d.cache16)
-                        k::glm_mla_gather_h2h(d.cache16, d.ids, d.counts, (uint16_t *)d.gathered,
+                        k::glm_mla_gather_h2h(d.cache16, ids_t, counts_t, (uint16_t *)d.gathered,
                                              count, stride, latent, d.stream);
                     else if (!shared_keys)
-                        k::glm_mla_gather_f16(cache_rows, d.ids, d.counts, (uint16_t *)d.gathered,
+                        k::glm_mla_gather_f16(cache_rows, ids_t, counts_t, (uint16_t *)d.gathered,
                                              count, stride, latent, d.stream);
                     k::glm_f16(d.aq, d.aq16, (int64_t)count * heads * latent, d.stream);
                     if (!shared_keys && mla_f16_out && mla_absorb_f16 && lossy_prefill() && !diagnose && !d.back) {
                         auto *scores16 = (uint16_t *)d.attn;   // FP16 rows in the FP32 score buffer
                         d.gemm->f16_batched_out16(d.aq16, keys, scores16, heads, stride, latent, count);
-                        k::glm_mla_softmax_h2h(scores16, d.counts, d.attn16, heads, stride, count,
+                        k::glm_mla_softmax_h2h(scores16, counts_t, d.attn16, heads, stride, count,
                                                1.f / std::sqrt((float)dim), d.stream);
                         const size_t vn = (size_t)count * heads * latent;
                         if (!absorb_x16 || absorb_x16->bytes < vn * 2) absorb_x16 = std::make_unique<Device>(vn * 2);
                         d.gemm->f16_batched_nn_out16(keys, d.attn16, (uint16_t *)absorb_x16->p, latent, heads, stride, count);
                         absorb(vb, d.wv, nullptr, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim,
                                (const uint16_t *)absorb_x16->p);
-                        continue;
+                        return;
                     }
                     if (shared_keys)
                         d.gemm->f16(d.aq16, keys, d.attn, count * heads, attention_stride, latent);
@@ -7231,12 +7369,12 @@ private:
                     // With all keys selected, counts[q] is the causal prefix
                     // length. The existing softmax zeros every future key.
                     if (diagnose || !strata_env_is_one("STRATA_GLM_MLA_SOFTMAX_F16")) {
-                        k::glm_mla_softmax(d.attn, d.counts, heads, attention_stride, count,
+                        k::glm_mla_softmax(d.attn, counts_t, heads, attention_stride, count,
                                           1.f / std::sqrt((float)dim), d.stream);
                         inspect("attention_probabilities", d.attn, (size_t)count * heads * attention_stride, d.stream);
                         k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * attention_stride, d.stream);
                     } else
-                        k::glm_mla_softmax_f16(d.attn, d.counts, d.attn16, heads, attention_stride, count,
+                        k::glm_mla_softmax_f16(d.attn, counts_t, d.attn16, heads, attention_stride, count,
                                                1.f / std::sqrt((float)dim), d.stream);
                     if (shared_keys)
                         d.gemm->f16_batched_nn(keys, d.attn16, d.av, latent, count * heads, attention_stride, 1);
@@ -7255,18 +7393,18 @@ private:
                                                   d.value + (size_t)t * heads * dim, d.device,
                                                   (size_t)count * heads * dim * 4, d.back));
                     }
-                    continue;
+                    return;
                 }
-                if (d.cache8) k::glm_mla_gather_q8_f32(d.cache8, d.fp8, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
-                else if (d.cache16) k::glm_mla_gather_h2f(d.cache16, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
-                else k::glm_mla_gather(cache_rows, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
+                if (d.cache8) k::glm_mla_gather_q8_f32(d.cache8, d.fp8, ids_t, counts_t, d.gathered, count, stride, latent, d.stream);
+                else if (d.cache16) k::glm_mla_gather_h2f(d.cache16, ids_t, counts_t, d.gathered, count, stride, latent, d.stream);
+                else k::glm_mla_gather(cache_rows, ids_t, counts_t, d.gathered, count, stride, latent, d.stream);
                 // STRATA_GLM_MLA_KERNELS=1, one query: two decode kernels instead of the strided-batched SGEMMs.
                 if (mla_one_kernels && count == 1 && !graph_mla() && !d.back) {
                     const size_t scratch = k::glm_mla_one_scratch_bytes(stride, latent, heads);
                     if (!mla_one_scratch || mla_one_scratch->bytes < scratch) mla_one_scratch = std::make_unique<Device>(scratch);
                     k::glm_mla_scores_one(d.gathered, aq_t, d.attn, stride, latent, heads, d.stream);
                     inspect("attention_scores", d.attn, (size_t)heads * stride, d.stream);
-                    k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
+                    k::glm_mla_softmax(d.attn, counts_t, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
                     k::glm_mla_values_one(d.gathered, d.attn, av_t, mla_one_scratch->f(), stride, latent, heads, d.stream);
                 } else {
                     check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, stride, heads, latent, &one,
@@ -7274,7 +7412,7 @@ private:
                                                     (long long)heads * latent, &zero, d.attn, stride,
                                                     (long long)heads * stride, count));
                     inspect("attention_scores", d.attn, (size_t)count * heads * stride, d.stream);
-                    k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
+                    k::glm_mla_softmax(d.attn, counts_t, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
                     inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
                     check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_N, CUBLAS_OP_N, latent, heads, stride, &one,
                                                     d.gathered, latent, (long long)stride * latent, d.attn,
@@ -7282,7 +7420,7 @@ private:
                                                     (long long)heads * latent, count));
                 }
                 inspect("absorbed_value", av_t, (size_t)count * heads * latent, d.stream);
-                if (hoisted) continue;
+                if (hoisted || absorb_rows) return;
                 if (d.wv8)
                     k::glm_q8_heads_gemv(d.wv8, d.av, d.value + (size_t)t * heads * dim, (int)vb.shape[2], (int)vb.shape[0],
                                          (int)vb.shape[1], count, heads * latent, heads * dim, d.stream);
@@ -7295,10 +7433,28 @@ private:
                                               d.value + (size_t)t * heads * dim, d.device,
                                               (size_t)count * heads * dim * 4, d.back));
                 }
-            }
+            };
+            if (select_rows) {
+                for (int t = 0; t < d.tokens; ++t) {
+                    if (stoppable) check_stop();
+                    tile_body(t, 0);
+                }
+                k::GlmRowPositions at{};
+                for (int t = 0; t < d.tokens; ++t) at.p[t] = row_sequences.empty() ? position + d.first + t : row_position(d.first + t);
+                k::glm_index_select_rows(d.scores, d.ids, d.counts, pools, at, d.tokens, pool_size, m.index_top_k, 2052,
+                                         d.stream);
+                for (int t = 0; t < d.tokens; ++t) tile_body(t, 1);
+            } else
+                for (int t = 0; t < d.tokens; t += tile) {
+                    if (stoppable) check_stop();
+                    tile_body(t, -1);
+                }
             if (hoisted)
                 k::glm_q8_heads_gemv(d.wv8, d.av_all, d.value, (int)vb.shape[2], (int)vb.shape[0], (int)vb.shape[1],
                                      d.tokens, heads * latent, heads * dim, d.stream, pointwise_batch);
+            else if (absorb_rows)
+                k::glm_mla_absorb_rows(d.wv, d.av_all, d.value, (int)vb.shape[0], (int)vb.shape[1], (int)vb.shape[2],
+                                       d.tokens, heads * latent, heads * dim, d.stream);
             (void)B;
         };
         const bool q8_mla = !fast && floating_q8_weight(p + "attn_k_b.weight") && floating_q8_weight(p + "attn_v_b.weight");
@@ -7335,6 +7491,14 @@ private:
             }
         }
         const bool decode_halves = tensor_mla_decode && !fast && B == 1 && !capturing_history && row_sequences.empty();
+        // Every FP32 decode and verify call takes the same absorption in this mode, so a sequence decoded alone
+        // and the same sequence in a batch of rows keep equal logits.
+        if (batch_mixers && !fast && !q8_mla && !halves && !decode_halves && tile == 1 && kv_format == KvFormat::F32 &&
+            B <= k::kGlmRowsMax && !device_pos) {
+            local.aq_all = buf("mla_absorbed_q_window", (size_t)B * heads * latent).f();
+            local.av_all = buf("mla_absorbed_v_window", (size_t)B * heads * latent).f();
+            local.absorb_rows = true;
+        }
         if (halves || decode_halves) {
             local.gemm = halves ? gpu->gemm.get() : mla_decode_gemm.get();
             if (!local.gemm) throw std::runtime_error("GLM: decode MLA GEMM not prepared");
@@ -7792,6 +7956,10 @@ private:
             if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
             exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu,
                 artifact.is_modelopt()&&strata_env_is_one("STRATA_GLM_FP4_CPU_SPIN"));
+            // STRATA_GLM_FP4_CPU_ISOLATE=1 (opt-in): this thread and the threads it starts later (GPU workers, the
+            // batch scheduler) leave the pinned CPU workers' CPUs to them.
+            if(artifact.is_modelopt()&&strata_env_is_one("STRATA_GLM_FP4_CPU_ISOLATE"))
+                std::cerr<<"FP4_CPU_ISOLATE caller_cpus="<<exl_pool->isolate_caller()<<'\n';
         }
         if (!artifact.is_exl3() && GpuPrefill::prefetch_groups() && prefetch_geometry_supported())
             for (size_t l = 0; l < m.layers.size(); ++l) {
@@ -8021,7 +8189,8 @@ private:
             throw std::runtime_error("GLM: registered prefill upload requires --warm-weights before prefill");
         reset_phase();
         const int nt = tokens.size();
-        if (nt < 1 || nt > (fast ? gpu->chunk : cpu::MAXT) || (row_sequences.empty() && position + nt > (int)capacity))
+        if (nt < 1 || nt > (fast ? gpu->chunk : row_sequences.empty() ? cpu::MAXT : sequence_rows) ||
+            (row_sequences.empty() && position + nt > (int)capacity))
             throw std::out_of_range("GLM: invalid batch size or context capacity");
 #ifndef STRATA_USE_HIP
         // Only prefill may use TF32. Restore the original mode for every decode
@@ -8168,9 +8337,17 @@ private:
         auto &c = buf("hc_coeff", 24 * nt);
         // Split verify: group A is the first split tokens (in r's rows), group B the rest (in its own streams).
         const int split = (row_sequences.empty() || batch_split) && pipelining && split_verify && nt >= 2 && !fast && !tp_active() && !kda_split_active() ? nt / 2 : 0;
-        if (split) {
+#ifndef STRATA_USE_HIP
+        const int fp4_split = !split && fp4_batch_overlap && artifact.is_modelopt() && modelopt_gpu && !row_sequences.empty() &&
+            row_sequences_distinct && nt >= 2 && !fast && !pipelining && !capturing_history && !tp_active() && !kda_split_active() &&
+            !stage_input && !stage_output && !dflash_enabled && owned_layer_first == 0 && owned_layer_last == m.layers.size() ? nt / 2 : 0;
+#else
+        const int fp4_split = 0;
+#endif
+        if (split || fp4_split) {
+            const int first = split ? split : fp4_split;
             buffer_group = 1;
-            buf("streams", m.hidden * 4 * nt).put((stage_input ? stage_input : emb.data()) + (size_t)split * 4 * m.hidden, (size_t)(nt - split) * 4 * m.hidden * 4);
+            buf("streams", m.hidden * 4 * nt).put((stage_input ? stage_input : emb.data()) + (size_t)first * 4 * m.hidden, (size_t)(nt - first) * 4 * m.hidden * 4);
             buffer_group = 0;
         }
         // put() completes the host-to-device copy. Do not retain up to 512 MiB
@@ -8551,7 +8728,77 @@ private:
                 throw;
             }
         };
+        // Native FP4 overlap (STRATA_GLM_FP4_BATCH_OVERLAP): rows [0, fp4_split) and [fp4_split, nt) alternate per
+        // layer. A group's MoE layer leaves its routed experts in flight (routed_begin) through the other group's
+        // next segment; the group adds them (routed_finish) before its own next mixer. Every row's arithmetic is
+        // that of the unsplit step.
+        auto enqueue_fp4_split = [&] {
+#ifndef STRATA_USE_HIP
+            const int base = position;
+            struct Group { int first, count; Device *r = nullptr; bool waiting = false; };
+            std::array<Group, 2> groups{Group{0, fp4_split}, Group{fp4_split, nt - fp4_split}};
+            auto select = [&](int g) {
+                buffer_group = g; batch_tokens = groups[g].count; position = base + groups[g].first;
+                history_token_offset = groups[g].first; sequence_row_offset = groups[g].first;
+                reset_phase();
+            };
+            auto finish = [&](int g) {
+                modelopt_gpu->routed_finish(g);
+                k::glm_mhc_write_tokens(buf("streams", m.hidden * 4 * nt).f(), buf("hc_coeff", 24 * nt).f(),
+                                        buf("y", m.hidden * nt).f(), buf("streams", m.hidden * 4 * nt).f(),
+                                        m.hidden, batch_tokens, stream);
+                groups[g].waiting = false;
+            };
+            try {
+                for (size_t l = 0; l < m.layers.size(); ++l) for (int g = 0; g < 2; ++g) {
+                    const std::string p = "blk." + std::to_string(l) + ".";
+                    const auto &layer = m.layers[l];
+                    check_stop();
+                    if (streaming_dense) active_dense_prefix = p;
+                    select(g);
+                    auto &gr = buf("streams", m.hidden * 4 * nt), &gcol = buf("collapsed", m.hidden * nt);
+                    auto &gx = buf("x", m.hidden * nt), &gy = buf("y", m.hidden * nt), &gc = buf("hc_coeff", 24 * nt);
+                    groups[g].r = &gr;
+                    if (groups[g].waiting) { finish(g); reset_phase(); }
+                    hc_read(p, "attn", gr.f(), gcol.f(), gc.f());
+                    norm(p + "attn_norm.weight", gcol.f(), gx.f(), m.hidden);
+                    reset_phase();
+                    if (layer.mixer == strata::core::MixerKind::Kda) kda(p, l, gx.f(), gy.f());
+                    else mla(p, l, gx.f(), gy.f());
+                    k::glm_mhc_write_tokens(gr.f(), gc.f(), gy.f(), gr.f(), m.hidden, batch_tokens, stream);
+                    reset_phase();
+                    hc_read(p, "ffn", gr.f(), gcol.f(), gc.f());
+                    norm(p + "ffn_norm.weight", gcol.f(), gx.f(), m.hidden);
+                    reset_phase();
+                    if (layer.ffn == strata::core::FfnKind::Dense) {
+                        ffn(p, gx.f(), gy.f(), "", layer.intermediate, layer.swiglu_limit);
+                        k::glm_mhc_write_tokens(gr.f(), gc.f(), gy.f(), gr.f(), m.hidden, batch_tokens, stream);
+                    } else {
+                        moe(p, (int)l, gx.f(), gy.f(), layer, g);
+                        groups[g].waiting = true;
+                    }
+                }
+                for (int g = 0; g < 2; ++g) if (groups[g].waiting) { select(g); finish(g); }
+                active_dense_prefix.clear();
+                if (!tp_active()) tp_stale = true;   // as the unsplit step
+                // The rows in order, then one output norm over all of them.
+                buffer_group = 0; batch_tokens = nt; position = base; history_token_offset = 0; sequence_row_offset = 0;
+                reset_phase();
+                for (int g = 0; g < 2; ++g)
+                    for (int t = 0; t < groups[g].count; ++t)
+                        k::glm_hyper_head(groups[g].r->f((size_t)t * 4 * m.hidden),
+                                          collapsed.f((size_t)(groups[g].first + t) * m.hidden), m.hidden, stream);
+                norm("output_norm.weight", collapsed.f(), x.f(), m.hidden);
+            } catch (...) {
+                // A group still in flight must return before its buffers are reused.
+                for (int g = 0; g < 2; ++g) try { modelopt_gpu->routed_finish(g); } catch (...) {}
+                buffer_group = 0; batch_tokens = nt; position = base; history_token_offset = 0; sequence_row_offset = 0;
+                throw;
+            }
+#endif
+        };
         if (split) { ++split_windows; run_pipelined_step(enqueue_split, split); }
+        else if (fp4_split) enqueue_fp4_split();
         else if (pipelining) run_pipelined_step(enqueue_layers);
         else enqueue_layers();
         if (layer_stage && stage_output) {
@@ -8715,15 +8962,30 @@ private:
         sequence_speculating = false;
         tier_submit(); tier_plan();
     }
-    void enable_sequences(int count) {
-        if (count < 1 || count > cpu::MAXT || secondary || artifact.is_exl3())
-            throw std::invalid_argument("GLM: sequence batching needs 1..8 slots on one GPU with GGUF weights");
+    void enable_sequences(int count, const std::vector<int> &contexts = {}) {
+        const bool native = artifact.is_modelopt();
+        if (count < 1 || count > (native ? kSequenceRowsMax : cpu::MAXT) || secondary || (artifact.is_exl3() && !native))
+            throw std::invalid_argument("GLM: sequence batching needs 1..8 slots on one GPU with GGUF weights, or 1..32 with native FP4");
         if (!sequences.empty()) throw std::logic_error("GLM: sequence slots already allocated");
+#ifndef STRATA_USE_HIP
+        if (native && modelopt_gpu) throw std::logic_error("GLM FP4: enable sequence slots before the GPU executor");
+#endif
+        if (!contexts.empty()) {
+            if ((int)contexts.size() != count || contexts[0] != (int)capacity ||
+                std::any_of(contexts.begin(), contexts.end(), [&](int c) { return c < 64 || c > contexts[0] || c % m.index_pool; }) ||
+                !std::is_sorted(contexts.begin(), contexts.end(), std::greater<int>()))
+                throw std::invalid_argument("GLM: --batch-contexts needs one context per slot, largest first and equal to "
+                                            "the serve context, each a multiple of 4 and at least 64");
+            if (kv_format != KvFormat::F32 || index_keys_f16)
+                throw std::invalid_argument("GLM: --batch-contexts requires f32 latent cache and indexer keys");
+        }
+        if (native) sequence_rows = kSequenceRowsMax;
         sequences.resize(count);
         DeviceTag tag("sequence_state");
         for (int slot = 1; slot < count; ++slot) {
             auto &layers = sequences[slot].layers;
             layers.resize(states.size());
+            const size_t context = contexts.empty() ? capacity : (size_t)contexts[slot];
             for (size_t l = 0; l < states.size(); ++l) {
                 auto copy_shape = [](const std::unique_ptr<Device> &src, std::unique_ptr<Device> &dst) {
                     if (src) dst = std::make_unique<Device>(src->bytes, true);
@@ -8732,11 +8994,27 @@ private:
                 copy_shape(src.recurrent, dst.recurrent); copy_shape(src.conv_q, dst.conv_q);
                 copy_shape(src.conv_k, dst.conv_k); copy_shape(src.conv_v, dst.conv_v);
                 if (host_kv) throw std::invalid_argument("GLM: host KV (STRATA_GLM_KV_HOST) supports one sequence");
-                copy_shape(src.cache, dst.cache); copy_shape(src.keys, dst.keys);
-                copy_shape(src.gates, dst.gates); copy_shape(src.pooled, dst.pooled);
+                copy_shape(src.keys, dst.keys); copy_shape(src.gates, dst.gates);
+                if (contexts.empty()) { copy_shape(src.cache, dst.cache); copy_shape(src.pooled, dst.pooled); continue; }
+                // The latent cache and pooled keys grow with the context; a short slot holds only its own.
+                const size_t pools = std::max<size_t>(1, capacity / m.index_pool);
+                if ((src.cache && src.cache->bytes != capacity * kv_row_bytes()) ||
+                    (src.pooled && src.pooled->bytes != pools * pooled_key_bytes()))
+                    throw std::logic_error("GLM: unexpected sequence state shape");
+                if (src.cache) dst.cache = make_kv_cache(context * kv_row_bytes());
+                if (src.pooled) dst.pooled = std::make_unique<Device>(std::max<size_t>(1, context / m.index_pool) * pooled_key_bytes(), true);
             }
         }
+        sequence_contexts = contexts;
     }
+    // A slot's context: the most tokens (prompt plus generated) it holds.
+    size_t slot_context(int slot) const { return sequence_contexts.empty() ? capacity : (size_t)sequence_contexts[slot]; }
+    const std::vector<int> &slot_contexts() const { return sequence_contexts; }
+    // The most rows one independent decode step (or batch verify window) may hold.
+    int sequence_rows_max() const { return sequence_rows; }
+    // Whether running slots may take decode steps between an admission's prompt chunks: native FP4 keeps its
+    // executor in the prefill phase until the admitted prompt is read, so its admissions run to the end first.
+    bool admission_interleaves() const { return !artifact.is_modelopt(); }
     // The current sequence's draft (MTP) state is primed (prepare_mtp ran since its last reset).
     bool draft_ready() const { return mtp_ready; }
     void select_sequence(int slot) {
@@ -8757,21 +9035,23 @@ private:
         states.swap(sequences[slot].layers);
         position = sequences[slot].position;
         current_sequence = slot;
+        if (!sequence_contexts.empty()) capacity = sequence_contexts[slot];
         mixer_graphs.clear();
     }
     std::vector<float> step_sequences(const std::vector<int> &slots, const std::vector<int> &tokens, bool consecutive = false) {
-        if (slots.empty() || slots.size() != tokens.size() || slots.size() > cpu::MAXT || capturing_history || !gpu)
+        if (slots.empty() || slots.size() != tokens.size() || slots.size() > (size_t)sequence_rows || capturing_history || !gpu)
             throw std::invalid_argument("GLM: invalid independent decode batch");
         std::map<int, int> offsets;
         for (int slot : slots) {
             if (slot < 0 || slot >= (int)sequences.size() || (!consecutive && offsets[slot]))
                 throw std::invalid_argument("GLM: invalid or duplicate decode slot");
             const int at = (slot == current_sequence ? position : sequences[slot].position) + offsets[slot]++;
-            if (at >= (int)capacity) throw std::out_of_range("GLM: sequence context exhausted");
+            if (at >= (int)slot_context(slot)) throw std::out_of_range("GLM: sequence context exhausted");
         }
         const int saved_position = position;
         const bool saved_capture = capture_hidden;
         row_sequences = slots;
+        row_sequences_distinct = std::set<int>(slots.begin(), slots.end()).size() == slots.size();
         offsets.clear();
         for (int slot : slots) row_positions.push_back((slot == current_sequence ? position : sequences[slot].position) + offsets[slot]++);
         try {
@@ -10235,9 +10515,12 @@ private:
         prefill_width_saved = gpu->chunk;
         if(dflash_enabled)dflash_capture_buffer.reset();
         phase.clear(); scratch.clear(); gpu.reset();
-        gpu = std::make_unique<GpuPrefill>(cpu::MAXT, stream, true);
+        gpu = std::make_unique<GpuPrefill>(std::max(cpu::MAXT, sequence_rows), stream, true);
 #ifndef STRATA_USE_HIP
-        if(modelopt_gpu)modelopt_gpu->compact();
+        if(modelopt_gpu) {
+            modelopt_gpu->compact();
+            if(routing_events&&routing_trace.is_open())modelopt_gpu->trace_keep(routing_trace,routing_request);
+        }
 #endif
         fast = false;
         if (streaming_dense) {
@@ -10595,6 +10878,8 @@ private:
     void check_sequences(const std::vector<int> &prompt) {
         if (sequences.empty() || prompt.empty() || route_affinity != 0)
             throw std::invalid_argument("GLM: sequence parity requires slots, tokens and unbiased routing");
+        // The FP4 executor chooses its decode keep set during a prefill, as a served request does.
+        if (artifact.is_modelopt()) { select_sequence(0); reset(); batch(prompt); }
         compact_decode();
         std::vector<int> ids, inputs;
         for (int slot = 0; slot < (int)sequences.size(); ++slot) {
@@ -10812,6 +11097,7 @@ private:
                 throw std::invalid_argument("GLM FP4: native cache admission requires no GGUF prefill cache or direct-upload overrides");
             if(!gpu)enable_gpu(8192,total_budget);
             modelopt_gpu=std::make_unique<Fp4NativeExecutor>(artifact,*exl_pool,devices,total_budget,gpu->chunk,reserve_mtp);
+            if(sequence_rows>cpu::MAXT)modelopt_gpu->set_decode_rows(sequence_rows);
             return;
         }
 #endif
@@ -11335,6 +11621,23 @@ private:
 };
 } // namespace
 
+// --batch-contexts=2x65536,30x4096: slot counts and their contexts, as one context per slot, largest first.
+static std::vector<int> slot_contexts(const std::string &text) {
+    std::vector<int> contexts;
+    std::istringstream input(text);
+    for (std::string part; std::getline(input, part, ',');) {
+        const auto x = part.find('x');
+        size_t used_count = 0, used_context = 0;
+        const int count = x == std::string::npos ? 0 : std::stoi(part.substr(0, x), &used_count);
+        const int context = x == std::string::npos ? 0 : std::stoi(part.substr(x + 1), &used_context);
+        if (used_count != x || used_context != part.size() - x - 1 || count < 1 || context < 1)
+            throw std::invalid_argument("GLM: slot contexts are COUNTxCONTEXT[,COUNTxCONTEXT...]");
+        contexts.insert(contexts.end(), count, context);
+    }
+    if (contexts.empty() || contexts.size() > 32) throw std::invalid_argument("GLM: slot contexts must name 1..32 slots");
+    std::stable_sort(contexts.begin(), contexts.end(), std::greater<int>());
+    return contexts;
+}
 static std::vector<int> token_ids(const std::string &text) {
     std::vector<int> ids;
     std::istringstream input(text);
@@ -12224,11 +12527,13 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
     int parallel = 0, prefix_entries = 0;
     size_t state_ram_mib = 0;
     std::string state_dir, routing_trace_path;
+    std::vector<int> batch_contexts;
     double state_disk_gib = 0;
     std::vector<int> state_boundaries;
     int state_root_min = 2048;
     // Named flags follow the legacy positional serve arguments; existing invocations remain valid.
     //   --batch N            N sequence slots (glm_batch_serve.inc)
+    //   --batch-contexts=L   slots of differing contexts, e.g. 2x65536,30x4096 (the largest equals the serve context)
     //   --prefix-cache=K     resume a request from a saved prefix: K checkpoints in pinned host memory (~146 MiB each)
     //   --routing-trace=PATH write every router selection to PATH (diagnostic; STRATA_GLM_ROUTING_EVENTS=1 for JSON)
     const int argc_full = std::min(argc, 29);
@@ -12237,7 +12542,9 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
             const std::string flag = argv[i];
             if (flag == "--batch" && i + 1 < argc) {
                 parallel = std::stoi(argv[++i]);
-                if (parallel < 1 || parallel > cpu::MAXT) throw std::invalid_argument("GLM: --batch must be 1..8");
+                if (parallel < 1 || parallel > 32) throw std::invalid_argument("GLM: --batch must be 1..32 (above 8: native FP4)");
+            } else if (flag.starts_with("--batch-contexts=")) {
+                batch_contexts = slot_contexts(flag.substr(17));
             } else if (flag.starts_with("--state-ram-mib=")) {
                 state_ram_mib = std::stoull(flag.substr(16));
             } else if (flag.starts_with("--state-dir=")) {
@@ -12258,6 +12565,13 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
                 throw std::invalid_argument("GLM: unknown serve flag " + flag);
         }
         argc = 29;
+    }
+    if (!batch_contexts.empty()) {
+        if (parallel && parallel != (int)batch_contexts.size())
+            throw std::invalid_argument("GLM: --batch and --batch-contexts name different slot counts");
+        if (prefix_entries || state_ram_mib || !state_dir.empty() || state_disk_gib > 0)
+            throw std::invalid_argument("GLM: --batch-contexts does not support the prefix or state caches");
+        parallel = (int)batch_contexts.size();
     }
     const int ctx = std::stoi(argv[3]), dense = std::stoi(argv[4]), threads = std::stoi(argv[5]);
     const int experts = argc > 6 ? std::stoi(argv[6]) : 0;
@@ -12303,10 +12617,11 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
     if(use_dflash)decoder.enable_dflash_capture();
     if (use_mtp) decoder.enable_mtp_capture();
     if (parallel) {
-        if (devices.size() != 1 || lookup_depth || stream_decode || experts || cpu_prepack_mib ||
-            std::filesystem::is_directory(argv[2]))
-            throw std::invalid_argument("GLM: batching requires one GPU, GGUF, and CPU routed experts");
-        decoder.enable_sequences(parallel);
+        // Native FP4 keeps both GPUs inside its executor; GGUF batching stays on one GPU.
+        const bool native = std::filesystem::is_directory(argv[2]);
+        if ((devices.size() != 1 && !native) || lookup_depth || stream_decode || experts || cpu_prepack_mib)
+            throw std::invalid_argument("GLM: batching requires one GPU (or native FP4) and CPU routed experts");
+        decoder.enable_sequences(parallel, batch_contexts);
     }
     const bool tensor_bf16 = argc > 24 && std::string(argv[24]) == "bf16-batched";
     const bool tensor_batches = tensor_bf16 || (argc > 24 && std::string(argv[24]) == "f16-batched");
@@ -12880,6 +13195,7 @@ int main(int argc, char **argv) {
         bool replay = false;
         bool check_prefill = false, check_native_dense_q8 = false;
         int expert_mib = 0, decode_cache_mib = 0, decode_cache_slots = 0, check_sequence_count = 0;
+        std::vector<int> check_sequence_contexts;
         int prefill_batch = 8;
         size_t gpu_budget = 12288 * MiB;
         bool force_gpu = false, warm_weights = false, lock_weights = false, profile = false;
@@ -12982,7 +13298,13 @@ int main(int argc, char **argv) {
             else if (flag == "--speculative=lookup")
                 lookup_depth = 3;
             else if (flag == "--speculative=none") { lookup_depth = 0; use_mtp = false; }
-            else if (flag.starts_with("--check-sequences=")) { check_sequence_count = std::stoi(flag.substr(18)); force_gpu = true; }
+            else if (flag.starts_with("--check-sequences=")) {
+                // N slots, or COUNTxCONTEXT,... slots of differing contexts (--batch-contexts)
+                const auto value = flag.substr(18);
+                if (value.find('x') != std::string::npos) check_sequence_contexts = slot_contexts(value);
+                check_sequence_count = check_sequence_contexts.empty() ? std::stoi(value) : (int)check_sequence_contexts.size();
+                force_gpu = true;
+            }
             else if (flag == "--check-verify")
                 check_verify = true;
             else if (flag.starts_with("--lookup-depth="))
@@ -13132,7 +13454,7 @@ int main(int argc, char **argv) {
                         threads, (size_t)expert_mib * 1024 * 1024, pin_cpu,expert_pack_path,expert_pack_profile,cpu_expert_backend);
         task_trace("model_load_complete", 0, (int)tokens.size());
         if(use_dflash)decoder.enable_dflash_capture();
-        if (check_sequence_count) decoder.enable_sequences(check_sequence_count);
+        if (check_sequence_count) decoder.enable_sequences(check_sequence_count, check_sequence_contexts);
         if(check_native_dense_q8) {
             if((context ? size_t(context) : tokens.size()+steps)<tokens.size()+8)
                 throw std::invalid_argument("--check-native-dense-q8 requires native EXL3 and eight available positions");
