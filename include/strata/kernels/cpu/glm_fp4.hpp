@@ -49,6 +49,10 @@ void glm_fp4_cache_scale_quartets(GlmFp4Csf32SparseRows& scales);
 void glm_fp4_rows_csf32_sparse_table(const uint8_t* weights,const GlmFp4Csf32SparseRows& scales,
                                     const float* table,const float* x,float* y,int columns,
                                     int rows,int tokens,int first,int last);
+// Lossless, bounded per-row decode (at most 256 scale bytes on the stack).
+void glm_fp4_rows_csf32_sparse_local_table(const uint8_t* weights,const GlmFp4Csf32SparseRows& scales,
+                                         const float* table,const float* x,float* y,int columns,
+                                         int rows,int tokens,int first,int last);
 // Optional W4A8 approximation. Original FP4 codes stay compressed; activations
 // have one signed-int8 scale per 64 values. Weight factors use table[scale*8+1]
 // times twice the E2M1 magnitude, instead of rounding each operand to FP16.

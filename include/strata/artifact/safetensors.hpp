@@ -10,6 +10,8 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <functional>
+#include "strata/host/glm_fp4_layout.h"
 #ifndef _WIN32
 #include <cerrno>
 #include <fcntl.h>
@@ -36,11 +38,14 @@ struct TensorView {
     std::vector<uint64_t> shape; // source row-major dimensions, never GGUF dimensions
     uint64_t offset=0, bytes=0;
     size_t shard=0;
+    bool remote=false;
+    uint32_t remote_id=0;
 };
 class Safetensors {
     struct Shard {
         std::filesystem::path path;
         uint64_t start=0, size=0;
+        bool ram=false,gpu_fixed=false;
 #ifndef _WIN32
         int fd=-1;
         mutable void* mapping = MAP_FAILED;
@@ -106,6 +111,12 @@ public:
         Json index=read_json((root/"model.safetensors.index.json").string());
         const auto& map=index.at("weight_map");
         if(map.kind!=Json::Object || map.object.empty()) throw std::runtime_error("safetensors: empty weight map");
+        std::set<std::string> gpu_fixed_files;
+        if(ram_fds_ && std::filesystem::exists(root/"partition.json")) {
+            const auto partition=read_json((root/"partition.json").string());
+            if(partition.at("schema").string()!="strata.glm.fp4.partition.v1")throw std::runtime_error("safetensors: invalid partition schema");
+            if(const auto* files=partition.find("gpu_fixed_shards"))for(const auto& file:files->array)gpu_fixed_files.insert(file.string());
+        }
         std::set<std::string> paths;
         for(const auto& [name,shard] : map.object) {
             auto p=std::filesystem::path(shard.string());
@@ -117,7 +128,8 @@ public:
         if(paths.size()>1024) throw std::runtime_error("safetensors: too many shards");
         for(const auto& filename:paths) {
             auto shard=std::make_unique<Shard>();
-            if(ram_fds_)shard->path=root/filename;
+            shard->gpu_fixed=gpu_fixed_files.count(filename)!=0;shard->ram=ram_fds_&&!shard->gpu_fixed;
+            if(shard->ram)shard->path=root/filename;
             else {
                 shard->path=std::filesystem::canonical(root/filename);
                 const auto relative=shard->path.lexically_relative(root);
@@ -131,7 +143,7 @@ public:
 #ifndef _WIN32
             shard->fd=::open(shard->path.c_str(),O_RDONLY|O_CLOEXEC);
             if(shard->fd<0) throw std::runtime_error("safetensors: cannot open shard");
-            if(ram_fds_) {
+            if(shard->ram) {
 #ifdef __linux__
                 struct stat st{};struct statfs fs{};
                 const int required=F_SEAL_WRITE|F_SEAL_GROW|F_SEAL_SHRINK|F_SEAL_SEAL;
@@ -185,18 +197,56 @@ public:
         if(tensors_.size()!=map.object.size()) throw std::runtime_error("safetensors: missing indexed tensor");
         if(auto m=index.find("metadata")) if(auto size=m->find("total_size")) if(size->integer()!=payload_ && size->integer()!=file_bytes_) throw std::runtime_error("safetensors: total_size mismatch");
     }
+    Json partition_report;
+    std::function<const uint8_t*(const TensorView&)> remote_read;
+    void import_remote_catalogs(const std::filesystem::path& root) {
+        partition_report=read_json((root/"partition.json").string());
+        if(partition_report.at("schema").string()!="strata.glm.fp4.partition.v1" ||
+           partition_report.at("owner").string()!="decoder" || partition_report.at("payload_bytes").integer()!=payload_)
+            throw std::runtime_error("safetensors: invalid decoder partition");
+        uint64_t next=0;
+        for(const auto& filename:partition_report.at("remote_catalogs").array) {
+            const auto name=std::filesystem::path(filename.string());
+            if(name.has_parent_path()||name.extension()!=".json")throw std::runtime_error("safetensors: unsafe remote catalog");
+            auto catalog=read_json((root/name).string());
+            for(const auto& [tensor,row]:catalog.object) {
+                unsigned layer=0,expert=0;int prefix=0;
+                const auto count=partition_report.at("remote_experts_per_layer").integer();
+                if(count>288 || std::sscanf(tensor.c_str(),"model.language_model.layers.%u.mlp.experts.%u.%n",&layer,&expert,&prefix)!=2 ||
+                   !prefix || strata_glm_fp4_layout_owner(layer,expert,unsigned(count))!=1)
+                    throw std::runtime_error("safetensors: remote catalog contains an unowned tensor");
+                TensorView t;t.name=tensor;t.dtype=row.at("dtype").string();t.bytes=row.at("bytes").integer();
+                if(t.bytes>32*1024*1024||row.at("tensor_id").integer()!=next || next>=UINT32_MAX)
+                    throw std::runtime_error("safetensors: invalid remote tensor size or ordering");
+                t.remote=true;t.remote_id=uint32_t(next++);uint64_t bytes=dtype_bytes(t.dtype);
+                for(const auto& dimension:row.at("shape").array) {
+                    const uint64_t n=dimension.integer();
+                    if(n&&bytes>UINT64_MAX/n)throw std::runtime_error("safetensors: remote shape overflow");
+                    bytes*=n;t.shape.push_back(n);
+                }
+                if(bytes!=t.bytes || !tensors_.emplace(tensor,std::move(t)).second)
+                    throw std::runtime_error("safetensors: remote tensor mismatch or overlap");
+            }
+        }
+    }
     const std::map<std::string,TensorView>& tensors() const { return tensors_; }
     const TensorView& at(const std::string& name) const {
         auto i=tensors_.find(name); if(i==tensors_.end()) throw std::runtime_error("safetensors: missing tensor " + name); return i->second;
     }
     uint64_t bytes() const { return payload_; }
     uint64_t file_bytes() const { return file_bytes_; }
+    uint64_t resident_file_bytes()const {
+        uint64_t bytes=0;for(const auto& shard:shards_)if(!shard->gpu_fixed)bytes+=shard->size;return bytes;
+    }
+    bool gpu_fixed(const TensorView& t)const {return !t.remote && shards_.at(t.shard)->gpu_fixed;}
+
     size_t shards() const { return shards_.size(); }
     void expect(const std::string& name,const std::string& dtype,const std::vector<uint64_t>& shape) const {
         const auto& t=at(name); if(t.dtype!=dtype || t.shape!=shape) throw std::runtime_error("safetensors: incompatible dtype/shape " + name);
     }
     void read(const TensorView& t,uint64_t offset,void* out,size_t bytes) const {
         if(offset>t.bytes || bytes>t.bytes-offset || (bytes && !out)) throw std::runtime_error("safetensors: read exceeds tensor " + t.name);
+        if(t.remote) {if(bytes)std::memcpy(out,data(t)+offset,bytes);return;}
         if((resident_copy_||ram_fds_) && bytes) {std::memcpy(out,data(t)+offset,bytes);return;}
         shards_.at(t.shard)->read(shards_[t.shard]->start+t.offset+offset,out,bytes);
     }
@@ -205,6 +255,10 @@ public:
     // source file; the opt-in RAM copy keeps its original compressed bytes.
     // Mapping lifetime equals this reader's lifetime.
     const uint8_t* data(const TensorView& t) const {
+        if(t.remote) {
+            if(!remote_read)throw std::runtime_error("safetensors: remote tensor has no active provider: "+t.name);
+            return remote_read(t);
+        }
 #ifndef _WIN32
         const auto& s=*shards_.at(t.shard);
         return s.map(resident_copy_)+s.start+t.offset;
@@ -219,6 +273,7 @@ public:
         if(!resident_copy_&&!ram_fds_)throw std::runtime_error("safetensors: direct DMA requires RAM-backed shards");
 #ifndef _WIN32
         std::vector<std::pair<void*,size_t>> result;
+        for(const auto& shard:shards_)if(shard->gpu_fixed)throw std::runtime_error("safetensors: GPU-fixed disk files cannot be registered as RAM");
         for(const auto& shard:shards_)result.emplace_back(const_cast<uint8_t*>(shard->map(resident_copy_)),shard->size);
         return result;
 #else
@@ -231,6 +286,7 @@ public:
         uint64_t bytes=0;unsigned checksum=0;
         for(const auto& holder:shards_) {
             const auto& s=*holder;
+            if(s.gpu_fixed)continue;
             s.map(resident_copy_);
             std::lock_guard guard(s.mapping_mutex);
             if(lock && ::mlock(s.mapping,s.size))throw std::runtime_error("safetensors: cannot lock shared weight pages");
@@ -247,8 +303,16 @@ public:
     // Drop a tensor's clean pages from the page cache (a hint; a weight set larger than RAM is streamed once per use).
     void drop(const TensorView& t) const {
 #ifndef _WIN32
-        if(resident_copy_||ram_fds_)return;
+        if(t.remote||resident_copy_)return;
         const auto& s=*shards_.at(t.shard);
+        if(s.ram)return;
+        if(s.gpu_fixed&&s.mapping!=MAP_FAILED&&t.bytes) {
+            std::lock_guard guard(s.mapping_mutex);
+            const uintptr_t page=uintptr_t(sysconf(_SC_PAGESIZE));
+            const uintptr_t first=reinterpret_cast<uintptr_t>(s.mapping)+s.start+t.offset;
+            const uintptr_t begin=first/page*page,end=(first+t.bytes+page-1)/page*page;
+            ::madvise(reinterpret_cast<void*>(begin),end-begin,MADV_DONTNEED);
+        }
         ::posix_fadvise(s.fd,static_cast<off_t>(s.start+t.offset),static_cast<off_t>(t.bytes),POSIX_FADV_DONTNEED);
 #else
         (void)t;

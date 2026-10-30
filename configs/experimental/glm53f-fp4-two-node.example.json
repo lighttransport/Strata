@@ -1,0 +1,18 @@
+{
+  "model": "models/glm53f-fp4-local",
+  "ssh_alias": "gpu-node",
+  "remote_decoder": "/opt/strata/bin/strata-glm-decode",
+  "worker_binary": "build-cpu/strata-glm-fp4-cpu-worker",
+  "compute_address": "192.0.2.1:29581",
+  "fetch_address": "192.0.2.1:29582",
+  "backend": "ib",
+  "remote_parent": "/var/tmp",
+  "gpu_fixed": true,
+  "context": 9216,
+  "prefill_batch": 2048,
+  "gpu_budget_mib": 15000,
+  "threads": 14,
+  "worker_gib": 118,
+  "decoder_gib": 60,
+  "timeout_seconds": 3600
+}

@@ -3,6 +3,7 @@
 #include "strata/kernels/cpu/exl3/math.hpp"
 #include "strata/host/glm_fp4.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <bit>
 #include <limits>
@@ -90,6 +91,21 @@ struct SparseScales {
             return {codes,end,begin,data.borrowed_bases[index],256,128,index%4,cached};
         }
         return {data.codes.data()+size_t(index)*(groups/2),end,begin,data.bases[index],2,1,0,cached};
+    }
+};
+struct LocalSparseScales {
+    const GlmFp4Csf32SparseRows& data;
+    struct Row {
+        std::array<uint8_t,256> values;
+        uint8_t at(int group)const{return values[size_t(group)];}
+    };
+    Row row(int index,int groups)const {
+        Row result{};auto source=SparseScales{data}.row(index,groups);
+        for(int group=0;group<groups;group+=4) {
+            const uint32_t values=source.quartet(group);
+            for(int j=0;j<4;++j)result.values[size_t(group+j)]=uint8_t(values>>(j*8));
+        }
+        return result;
     }
 };
 static void scale_table(float global,bool qpn,float* table) {
@@ -539,6 +555,12 @@ void glm_fp4_rows_csf32_sparse_table(const uint8_t* w,const GlmFp4Csf32SparseRow
                                     const float* x,float* y,int K,int N,int M,int first,int last) {
     if(N!=s.rows||K/16!=s.groups)throw std::invalid_argument("GLM FP4 CPU: sparse CSF32 scale shape mismatch");
     dispatch<true>(w,SparseScales{s},table,x,y,K,N,M,first,last);
+}
+void glm_fp4_rows_csf32_sparse_local_table(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
+                                          const float* x,float* y,int K,int N,int M,int first,int last) {
+    if(N!=s.rows||K/16!=s.groups||s.groups>256||s.groups<4||s.groups%4)
+        throw std::invalid_argument("GLM FP4 CPU: local scale extent mismatch");
+    dispatch<true>(w,LocalSparseScales{s},table,x,y,K,N,M,first,last);
 }
 GlmFp4Q8 glm_fp4_quantize_q8(const float* x,int columns,int tokens) {
     if(!x||columns<64||columns%64||tokens<1||tokens>8)

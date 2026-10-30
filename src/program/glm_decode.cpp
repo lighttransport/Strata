@@ -53,6 +53,8 @@
 #include "strata/kernels/iq_kernels.hpp"
 #include "strata/kernels/native_mmvq.hpp"
 #include "strata/net/expert_tp.hpp"
+#include "strata/net/glm_fp4_worker.hpp"
+#include "strata/kernels/cpu/glm_fp4_exact.hpp"
 #include "ucomm.h"
 #include <algorithm>
 #include <iomanip>
@@ -7782,7 +7784,7 @@ private:
 #ifdef __linux__
             const uint64_t ram=artifact.is_modelopt()?strata::core::host_memory_allowance_bytes():uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
             const auto census=artifact.census();
-            const uint64_t resident=artifact.is_modelopt()?artifact.exl3().tensors.file_bytes():(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;
+            const uint64_t resident=artifact.is_modelopt()?artifact.exl3().tensors.resident_file_bytes():(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;
             const uint64_t host_reserve=artifact.is_modelopt()?strata::core::glm_fp4_host_reserve_bytes():6ULL*1024*MiB;
             if(artifact.is_modelopt())std::cerr<<"FP4_HOST_BUDGET weights_bytes="<<resident<<" reserve_bytes="<<host_reserve<<" limit_bytes="<<ram<<'\n';
             if(resident>ram || host_reserve>ram-resident)throw std::runtime_error(artifact.is_modelopt()?"GLM FP4: indexed files plus runtime reserve exceed the memory allowance":"EXL3: main weights plus 6 GiB host reserve exceed system RAM");
@@ -12803,6 +12805,14 @@ int main(int argc, char **argv) {
         catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 2; }
     }
 #endif
+    if(argc==2&&std::string(argv[1])=="--fp4-distributed-capability") {
+#if defined(STRATA_USE_HIP) || !defined(__linux__)
+        std::cout<<"0\n";
+#else
+        std::cout<<"1\n";
+#endif
+        return 0;
+    }
     if (argc==2 && std::string(argv[1])=="--mixed-backend") {
 #ifdef STRATA_USE_HIP
         std::cout << "hip\n";
@@ -12912,6 +12922,16 @@ int main(int argc, char **argv) {
             else if (flag == "--check-eval-stream") { check_eval_stream = true; force_gpu = true; }
             else if (flag.starts_with("--decode-cache-window=")) decode_cache_window = std::stoi(flag.substr(22));
             else if (flag == "--decode-graphs") { decode_graphs = true; force_gpu = true; }
+            else if (flag.starts_with("--fp4-layout=")) {
+                const auto layout=std::filesystem::canonical(flag.substr(13));
+                const auto root=std::filesystem::canonical(argv[1]);
+                if(layout!=root/"glm-fp4-layout.json")throw std::invalid_argument("--fp4-layout must name the partition's glm-fp4-layout.json");
+#ifdef _WIN32
+                throw std::invalid_argument("distributed native FP4 requires Linux");
+#else
+                setenv("STRATA_GLM_FP4_PARTITION","1",1);
+#endif
+            }
             else if (flag.starts_with("--remote-tp=")) remote_tp_address = flag.substr(12);
             else if (flag.starts_with("--remote-tp-share=")) remote_tp_share = std::stod(flag.substr(18));
             else if (flag == "--remote-tp-reply=f32" || flag == "--remote-tp-reply=f16") remote_tp_reply = flag.substr(18);

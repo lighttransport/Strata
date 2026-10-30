@@ -1,2 +1,5 @@
 # Optional native safetensors tokenizer; no torch or transformers runtime.
 tokenizers==0.23.2
+
+# Native text generation renders the checkpoint chat template.
+jinja2==3.1.6

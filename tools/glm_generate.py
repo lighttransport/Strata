@@ -6,7 +6,6 @@ import sys
 import tempfile
 
 from gguf_reader import GGUFFile
-from strata_tokenizer import Tokenizer
 
 
 def metadata_shard(path):
@@ -37,6 +36,7 @@ def chat_prompt(metadata, prompt, system=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", type=pathlib.Path, help="GLM GGUF shard or native EXL3/ModelOpt directory")
+    parser.add_argument("--fp4-layout", type=pathlib.Path, help="explicit native FP4 partition manifest")
     parser.add_argument("--fp4-kernel", choices=("reference", "sm70"), default="reference")
     parser.add_argument("prompt", nargs="?")
     parser.add_argument("--prompt-file", type=pathlib.Path, help="UTF-8 prompt, avoiding shell argument limits")
@@ -107,7 +107,10 @@ def main():
         if "--cpu-affinity" not in sys.argv and not any(x.startswith("--cpu-affinity=") for x in sys.argv): args.cpu_affinity = "numa"
     else:
         metadata = GGUFFile(shard).metadata
+        from strata_tokenizer import Tokenizer
         tokenizer = Tokenizer.from_gguf(shard)
+    if args.fp4_layout and not modelopt:
+        parser.error('--fp4-layout requires a native ModelOpt partition')
     if not modelopt and any(x=="--fp4-kernel" or x.startswith("--fp4-kernel=") for x in sys.argv[1:]):
         parser.error("--fp4-kernel requires a native ModelOpt checkpoint")
     if metadata.get("general.architecture") not in ("glm5next", "glm5-next"):
@@ -135,6 +138,8 @@ def main():
     command.extend((f"--draft-depth={args.draft_depth}", f"--cpu-affinity={args.cpu_affinity}", f"--cpu-prepack-mib={args.cpu_prepack_mib}"))
     if native:
         command.append(f"--weight-pages={args.weight_pages}")
+        if args.fp4_layout:
+            command.append(f"--fp4-layout={args.fp4_layout.resolve()}")
         if modelopt: command.append(f"--fp4-kernel={args.fp4_kernel}")
     # Read only the token-ID protocol from stdout; decoder failures use stderr.
     if args.context is not None: command.append(f"--context={args.context}")

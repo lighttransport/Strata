@@ -150,7 +150,7 @@ else()
 endif()
 set_property(SOURCE ${STRATA_ROOT}/src/kernels/cpu/q2_avx2.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${_strata_avxvnni})
 find_package(Threads REQUIRED)
-add_library(strata_host STATIC ${STRATA_ROOT}/src/host/glm_names.c ${STRATA_ROOT}/src/host/glm_env.c
+add_library(strata_host STATIC ${STRATA_ROOT}/src/host/glm_fp4_layout.c ${STRATA_ROOT}/src/host/glm_names.c ${STRATA_ROOT}/src/host/glm_env.c
                                ${STRATA_ROOT}/src/host/glm_expert_pack.c)
 set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 target_include_directories(strata_host PUBLIC ${STRATA_ROOT}/include)
@@ -210,7 +210,7 @@ if(STRATA_NATIVE_EXPERTS)
   # Shared CPU Q2_K dispatch reads the same C11 environment rules as CUDA/HIP.
   if(NOT TARGET strata_host)
     enable_language(C)
-    add_library(strata_host STATIC ${STRATA_ROOT}/src/host/glm_names.c
+    add_library(strata_host STATIC ${STRATA_ROOT}/src/host/glm_fp4_layout.c ${STRATA_ROOT}/src/host/glm_names.c
       ${STRATA_ROOT}/src/host/glm_env.c ${STRATA_ROOT}/src/host/glm_expert_pack.c)
     set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
     target_include_directories(strata_host PUBLIC ${STRATA_ROOT}/include)

@@ -426,6 +426,7 @@ class Fp4NativeExecutor {
     const bool cpu_logical=strata_env_is_one("STRATA_GLM_FP4_CPU_LOGICAL");
     const std::array<long long,2> worker_cpus={strata_env_value_ll("STRATA_GLM_FP4_WORKER_CPU0",-1),
                                              strata_env_value_ll("STRATA_GLM_FP4_WORKER_CPU1",-1)};
+    const bool cpu_csf32_local=strata_env_is_one("STRATA_GLM_FP4_CPU_CSF32_LOCAL");
     const bool cpu_csf32_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_CSF32");
     const bool cpu_sparse_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_SPARSE")||strata_env_is_one("STRATA_GLM_FP4_CPU_Q8");
     const bool cpu_q8_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8");
@@ -447,6 +448,7 @@ class Fp4NativeExecutor {
     const double route_affinity=strata_env_value_double("STRATA_GLM_FP4_ROUTE_AFFINITY",0);
     const bool route_affinity_secondary=strata_env_is_one("STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY");
     std::map<int,std::unique_ptr<Device>> route_affinity_bonuses;
+    const long long prefill_reserve_mib=strata_env_value_ll("STRATA_GLM_FP4_PREFILL_RESERVE_MIB",-1);
     const long long decode_reserve_mib=strata_env_value_ll("STRATA_GLM_FP4_DECODE_RESERVE_MIB",-1);
     // STRATA_GLM_FP4_CACHE_SHRINK0_MIB (diagnostic): GPU0's prefill and decode expert caches are this much
     // smaller, as a long context's latent cache would make them, with the attention state of a short one.
@@ -495,6 +497,14 @@ class Fp4NativeExecutor {
     uint64_t cpu_cache_hits=0,cpu_cache_misses=0;
     // Destroy workers and their DMA streams before unregistering the source.
     std::unique_ptr<RegisteredRam> registered_ram;
+    std::unique_ptr<strata::net::GlmFp4WorkerConnection> remote_cpu,remote_weights;
+    std::mutex remote_weight_mutex;
+    std::map<uint32_t,std::vector<uint8_t>> remote_weight_buffers;
+    bool remotely_owned(int layer,int id)const {
+        return remote_cpu && layer>=3 && layer<45 &&
+            artifact.exl3().tensors.at(strata::artifact::GlmExl3::prefix(layer,id,"gate_proj")+".weight").remote;
+    }
+
     std::array<std::array<std::array<std::unique_ptr<ExpertSource>,3>,288>,46> expert_sources;
     std::vector<std::unique_ptr<Context>> contexts;
     std::unique_ptr<HeadPartition> head_partition;
@@ -584,6 +594,7 @@ class Fp4NativeExecutor {
                             int columns,int rows,int tokens,int first,int last,const cpu::GlmFp4Q8* q8=nullptr) {
         const auto& packed=e.projection[projection];
         if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last,int(cpu_row_tile),cpu_scale_local||(cpu_scale_local_m1&&tokens==1),cpu_q8_policy);
+        else if(e.sparse[projection]&&cpu_csf32_local)cpu::glm_fp4_rows_csf32_sparse_local_table(packed.data(),*e.sparse[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else if(e.sparse[projection])cpu::glm_fp4_rows_csf32_sparse_table(packed.data(),*e.sparse[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else if(e.csf32[projection])cpu::glm_fp4_rows_csf32_table(packed.data(),*e.csf32[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else cpu::glm_fp4_rows_table(packed.data(),packed.scales.data(),e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
@@ -594,6 +605,22 @@ class Fp4NativeExecutor {
                   cudaStream_t stream=nullptr) {
         // `stream` replaces the context stream, which dense() may swap meanwhile.
         cudaStream_t on=stream?stream:c.stream;
+        struct RemoteLease {
+            Fp4NativeExecutor& owner;cudaStream_t stream;bool active,disk;std::string matrix;
+            std::unique_lock<std::mutex> lock;
+            RemoteLease(Fp4NativeExecutor& o,cudaStream_t s,const strata::artifact::ModelOptMatrix& d):owner(o),stream(s),active(d.weights->remote),disk(o.artifact.exl3().tensors.gpu_fixed(*d.weights)),matrix(d.name),lock(o.remote_weight_mutex,std::defer_lock) {
+                if(active){lock.lock();owner.remote_weight_buffers.clear();}
+            }
+            ~RemoteLease(){
+                if(active||disk)cudaStreamSynchronize(stream);
+                if(active)owner.remote_weight_buffers.clear();
+                if(disk) {
+                    auto& tensors=owner.artifact.exl3().tensors;const auto& entries=tensors.tensors();
+                    for(auto it=entries.lower_bound(matrix);it!=entries.end()&&(it->first==matrix||it->first.starts_with(matrix+"_scale"));++it)tensors.drop(it->second);
+                }
+            }
+        } remote_lease(*this,on,desc);
+
         auto copy=[&](void* dst,const void* src,size_t bytes,cudaMemcpyKind kind,cudaStream_t stream) {
             if(kind==cudaMemcpyHostToDevice)c.wire_bytes[c.phase]+=bytes;
             return cudaMemcpyAsync(dst,src,bytes,kind,stream);
@@ -1433,6 +1460,27 @@ public:
     explicit Fp4NativeExecutor(strata::core::ModelArtifact& a,strata::cpu::exl3::Pool& pool,
                               const std::vector<int>& devices,size_t gpu_budget,int width,bool draft)
         :artifact(a),model(*a.exl3().modelopt),cpu_pool(pool),sm70(fp4_sm70_kernel),reserve_draft(draft) {
+        auto& tensors=artifact.exl3().tensors;
+        if(tensors.partition_report.kind!=strata::artifact::Json::Null) {
+            const char* address=std::getenv("STRATA_GLM_FP4_REMOTE");
+            const char* fetch=std::getenv("STRATA_GLM_FP4_FETCH");
+            if(devices.size()!=1 || !address || !*address || !fetch || !*fetch ||
+               async_upload_enabled || prefill_stream_enabled || prefill_bank_enabled || prefill_operand_pipeline ||
+               strata_env_is_one("STRATA_GLM_FP4_REGISTER_WEIGHTS") || cpu_q8_enabled || cpu_fused_enabled ||
+               cpu_team_size || route_drop_fraction || route_affinity || route_affinity_secondary ||
+               prefill_mma_tile || prefill_batch_experts!=1 || prefill_queue_depth!=1 ||
+               keep_reselect_prefetch || global_cache_mode || cache_adapt_rows)
+                throw std::invalid_argument("distributed GLM FP4 needs one GPU, REMOTE/FETCH endpoints, exact CPU arithmetic, no route approximations and synchronous bounded uploads");
+            const auto layout=tensors.partition_report.at("layout_sha256").string();
+            const auto index=tensors.partition_report.at("index_sha256").string();
+            remote_cpu=std::make_unique<strata::net::GlmFp4WorkerConnection>(address,layout,index,sm70,false);
+            remote_weights=std::make_unique<strata::net::GlmFp4WorkerConnection>(fetch,layout,index,sm70,true);
+            tensors.remote_read=[this](const strata::artifact::TensorView& t) {
+                auto it=remote_weight_buffers.find(t.remote_id);
+                if(it==remote_weight_buffers.end())it=remote_weight_buffers.emplace(t.remote_id,remote_weights->fetch(t.remote_id,t.bytes)).first;
+                return it->second.data();
+            };
+        }
         if(devices.empty()||devices.size()>2)throw std::invalid_argument("GLM FP4: expected one or two GPUs");
         if(fixed_half_mask<0||fixed_half_mask>7)
             throw std::invalid_argument("GLM FP4: FIXED_HALF must be a mask from 0 through 7");
@@ -1548,6 +1596,8 @@ public:
            !std::isfinite(route_drop_fraction)||route_drop_fraction<0||route_drop_fraction>route_drop_cap||
            route_drop_max<0||route_drop_max>7)
             throw std::invalid_argument("GLM FP4: ROUTE_DROP must be in [0,ROUTE_DROP_CAP], CAP in [0.5,0.75], MAX in [0,7]");
+        if(prefill_reserve_mib!=-1 && (prefill_reserve_mib<256 || prefill_reserve_mib>8192))
+            throw std::invalid_argument("GLM FP4: PREFILL_RESERVE_MIB must be 256..8192, or -1 for the original reserve");
         if(decode_reserve_mib!=-1 && (decode_reserve_mib<256 || decode_reserve_mib>8192))
             throw std::invalid_argument("GLM FP4: DECODE_RESERVE_MIB must be in [256,8192], or -1 for the original per-device reserves");
         if(cache_shrink0_mib<0||cache_shrink0_mib>16384)throw std::invalid_argument("GLM FP4: CACHE_SHRINK0_MIB must be in [0,16384]");
@@ -1653,7 +1703,7 @@ public:
             // Prefill scratch scales with tokens. The coordinator additionally
             // holds attention state and its GpuPrefill arena outside this class.
             const size_t reserve=cache_reserve(*ctx,std::max<size_t>(
-                (ctx.get()==contexts.front().get()?4096:1024)*MiB,size_t(width)*4096*24));
+                (prefill_reserve_mib>=0?size_t(prefill_reserve_mib):(ctx.get()==contexts.front().get()?4096:1024))*MiB,size_t(width)*4096*24));
             const size_t available=std::min(free,Device::limit()>Device::live()?Device::limit()-Device::live():0);
             ctx->cache_limit=shrink0(*ctx,available>reserve?available-reserve:0);
             ctx->prefill_cache_limit=ctx->cache_limit;
@@ -1663,7 +1713,7 @@ public:
         }
         sums.resize(contexts.size());
     }
-    ~Fp4NativeExecutor(){if(held_fill.valid())held_fill.wait();for(auto& f:restore_work)if(f.valid())f.wait();report(false);}
+    ~Fp4NativeExecutor(){if(held_fill.valid())held_fill.wait();for(auto& f:restore_work)if(f.valid())f.wait();report(false);if(remote_cpu)artifact.exl3().tensors.remote_read={};}
     bool set_decode_device_routing(bool enabled) {
         const bool previous=decode_device_routing_enabled;decode_device_routing_enabled=enabled;return previous;
     }
@@ -2030,6 +2080,18 @@ public:
             if(cpu_jobs.empty())return;
             cpu_experts+=cpu_jobs.size();
             if(cpu_q8_policy||cpu_scale_local_m1)for(const auto& job:cpu_jobs)++cpu_width_groups.at(job.routes->size());
+            std::future<void> remote_work;
+            if(remote_cpu)remote_work=std::async(std::launch::async,[&] {
+                for(auto& job:cpu_jobs)if(remotely_owned(layer,job.id)) {
+                    const size_t count=job.routes->size();job.result.resize(count*4096);
+                    for(size_t first=0;first<count;first+=8) {
+                        const size_t n=std::min(size_t(8),count-first);std::vector<float> input(n*4096);
+                        for(size_t t=0;t<n;++t)std::copy_n(activation+size_t((*job.routes)[first+t]/8)*4096,4096,input.data()+t*4096);
+                        const auto result=remote_cpu->run(layer,job.id,input);
+                        std::copy(result.begin(),result.end(),job.result.begin()+first*4096);
+                    }
+                }
+            });
             auto begin=tick();
             cpu::GlmFp4Q8 shared_input;
             if(cpu_input_reuse&&cpu_q8_enabled) {
@@ -2043,7 +2105,7 @@ public:
             // scale planes so repeat CPU misses do not re-expand CSF32.
             cpu_pool.run([&](size_t rank) {
                 for(size_t i=rank;i<cpu_jobs.size();i+=cpu_pool.size()) {
-                    auto& job=cpu_jobs[i];const size_t count=job.routes->size();
+                    auto& job=cpu_jobs[i];if(remotely_owned(layer,job.id))continue;const size_t count=job.routes->size();
                     job.weights=cpu_expert(layer,job.id);
                     const bool reuse=shared_input.tokens&&job.weights->sparse[0]&&job.weights->sparse[1];
                     if(!reuse)job.input.resize(count*4096);
@@ -2077,6 +2139,7 @@ public:
                 const int first=2048*rank/workers,last=2048*(rank+1)/workers;
                 for(size_t j=begin_job;j<end_job;++j) {
                     auto& job=cpu_jobs[j];
+                    if(remotely_owned(layer,job.id))continue;
                     const int count=job.routes->size();
                     for(int p=0;p<2;++p)cpu_product(*job.weights,p,
                         job.input.data(),p?job.up.data():job.gate.data(),4096,2048,count,first,last,cpu_q8_enabled?&job.qinput:nullptr);
@@ -2102,7 +2165,7 @@ public:
             auto down_range=[&](size_t rank,size_t workers,size_t begin_job,size_t end_job) {
                 const int first=4096*rank/workers,last=4096*(rank+1)/workers;
                 for(size_t j=begin_job;j<end_job;++j) {
-                    auto& job=cpu_jobs[j];cpu_product(*job.weights,2,
+                    auto& job=cpu_jobs[j];if(remotely_owned(layer,job.id))continue;cpu_product(*job.weights,2,
                     job.hidden.data(),job.result.data(),2048,4096,job.routes->size(),first,last,cpu_q8_enabled?&job.qhidden:nullptr);
                 }
             };
@@ -2187,6 +2250,25 @@ public:
                 if(profile)cpu_times.product+=elapsed(begin);
             }
             begin=tick();
+            if(remote_work.valid())remote_work.get();
+            if(remote_cpu&&strata_env_is_one("STRATA_GLM_FP4_REMOTE_CHECK")) {
+                // Bounded local recomputation uses the same checkpoint bytes and
+                // W4A16 evaluator, without fitting the entire checkpoint here.
+                for(const auto& job:cpu_jobs)if(remotely_owned(layer,job.id)) {
+                    std::lock_guard lock(remote_weight_mutex);remote_weight_buffers.clear();
+                    struct Clear {decltype(remote_weight_buffers)& buffers;~Clear(){buffers.clear();}} clear{remote_weight_buffers};
+                    cpu::GlmFp4ExactExpert reference(model,layer,job.id,sm70);
+                    strata::cpu::exl3::Pool reference_pool(1,false);
+                    for(size_t first=0;first<job.routes->size();first+=8) {
+                        const size_t n=std::min(size_t(8),job.routes->size()-first);std::vector<float> input(n*4096);
+                        for(size_t t=0;t<n;++t)std::copy_n(activation+size_t((*job.routes)[first+t]/8)*4096,4096,input.data()+t*4096);
+                        const auto expected=reference.run(reference_pool,input,n,limit);
+                        if(std::memcmp(expected.data(),job.result.data()+first*4096,expected.size()*sizeof(float)))
+                            throw std::runtime_error("FP4 remote expert differs from local W4A16 reference");
+                    }
+                }
+            }
+
             for(const auto& job:cpu_jobs)for(size_t t=0;t<job.routes->size();++t) {
                 const int route=(*job.routes)[t];float* dst=cpu_sum.data()+size_t(route/8)*4096;
                 for(int h=0;h<4096;++h)dst[h]+=routing[route]*job.result[t*4096+h];

@@ -128,6 +128,9 @@ int main(int argc,char** argv){try {
             std::fill(got.begin(),got.end(),-777.f);
             strata::kernels::cpu::glm_fp4_rows_csf32_sparse_table(w.data(),borrowed,table,input.data(),got.data(),columns,rows,tokens,13,rows-1);
             if(std::memcmp(expected.data(),got.data(),got.size()*4))throw std::runtime_error("borrowed CSF32 CPU rows differ from logical scale planes");
+            std::fill(got.begin(),got.end(),-777.f);
+            strata::kernels::cpu::glm_fp4_rows_csf32_sparse_local_table(w.data(),borrowed,table,input.data(),got.data(),columns,rows,tokens,13,rows-1);
+            if(std::memcmp(expected.data(),got.data(),got.size()*4))throw std::runtime_error("local sparse scale decode changed W4A16 output or row guards");
             if(tokens==1)first.assign(got.begin(),got.begin()+rows);
             else if(std::memcmp(first.data(),got.data(),rows*4))throw std::runtime_error("CSF32 CPU first row changes with verification width");
         }

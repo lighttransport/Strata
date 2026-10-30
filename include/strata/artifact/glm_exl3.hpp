@@ -2,6 +2,7 @@
 #include "strata/artifact/safetensors.hpp"
 #include "strata/artifact/glm_modelopt.hpp"
 #include "strata/host/glm_env.h"
+#include "strata/host/glm_fp4_layout.h"
 #include "strata/kernels/cpu/exl3/math.hpp"
 namespace strata::artifact {
 // This reader accepts the inspected K2/MCG pack contract and, as a reference source, the FP8 release
@@ -19,6 +20,11 @@ public:
         tensors(root,config.at("quantization_config").at("quant_method").string()=="modelopt",
                 config.at("quantization_config").at("quant_method").string()=="modelopt"&&strata_env_is_one("STRATA_GLM_FP4_RAM_COPY"),
                 config.at("quantization_config").at("quant_method").string()=="modelopt"&&strata_env_is_one("STRATA_GLM_FP4_RAM_FDS")) {
+        if(strata_env_is_one("STRATA_GLM_FP4_PARTITION")) {
+            if(config.at("quantization_config").at("quant_method").string()!="modelopt")
+                throw std::runtime_error("GLM FP4 partition requires ModelOpt");
+            tensors.import_remote_catalogs(root);
+        }
         const auto& q=config.at("quantization_config");
         if(q.at("quant_method").string()=="modelopt") {
             if(q.at("quant_algo").string()!="MIXED_PRECISION")throw std::runtime_error("GLM ModelOpt: expected mixed precision checkpoint");
@@ -34,6 +40,8 @@ public:
         if(c.at("vocab_size").integer()!=154880||c.at("hidden_size").integer()!=4096||c.at("moe_intermediate_size").integer()!=2048||
            c.at("num_hidden_layers").integer()!=45||c.at("n_routed_experts").integer()!=288||
            c.at("num_experts_per_tok").integer()!=8)throw std::runtime_error("GLM EXL3: unsupported model geometry");
+        if(tensors.partition_report.kind!=Json::Null && tensors.gpu_fixed(tensors.at("model.language_model.embed_tokens.weight")))
+            throw std::runtime_error("GLM FP4 embedding source must remain in RAM");
         token_ids.resize(c.at("vocab_size").integer(),false);
         const auto tokenizer=read_json((root/"tokenizer.json").string());
         auto add_token=[&](uint64_t id){if(id>=token_ids.size())throw std::runtime_error("GLM EXL3: tokenizer ID exceeds vocabulary");token_ids[id]=true;};
@@ -59,6 +67,12 @@ public:
             const uint64_t in=down?2048:4096,out=down?4096:2048;
             if(codec==Codec::ModelOpt) {
                 const auto matrix=modelopt->matrix(p+".weight");
+                if(tensors.partition_report.kind!=Json::Null) {
+                    const auto count=tensors.partition_report.at("remote_experts_per_layer").integer();
+                    if(tensors.gpu_fixed(*matrix.weights))throw std::runtime_error("GLM FP4 routed expert source must remain in RAM");
+                    if(count>288 || matrix.weights->remote != bool(strata_glm_fp4_layout_owner(l,e,count)))
+                        throw std::runtime_error("GLM FP4 partition ownership disagrees with tensor catalog");
+                }
                 if(matrix.format!=ModelOptFormat::Nvfp4 || matrix.rows!=out || matrix.columns!=in)
                     throw std::runtime_error("GLM ModelOpt: incompatible routed expert: "+p);
                 continue;
