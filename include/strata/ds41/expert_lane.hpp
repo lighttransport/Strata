@@ -13,6 +13,7 @@
 #include "strata/kernels/cpu/native_expert.hpp"
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <map>
 #include <memory>
@@ -31,6 +32,9 @@ struct LaneLayer {
     strata::kernels::cpu::NativeFmt f;
     const uint8_t *gate = nullptr, *up = nullptr, *down = nullptr;
     size_t gate_stride = 0, down_stride = 0;
+    // Optional immutable, leased expert spans. Null preserves the mapped layout.
+    const std::array<const uint8_t*, 3>* expert_spans = nullptr;
+    size_t expert_span_count = 0;
 };
 
 class ExpertLane {
@@ -48,6 +52,8 @@ public:
     /// finish(), which waits for them and writes y). ids, w, z and y must stay valid until finish().
     void begin(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, const float* w, int top_k, float* y);
     void finish();
+    // Join outstanding readers without collecting outputs, including during unwinding.
+    void wait_pending() noexcept;
     /// Finish an asynchronous job and insert bounded externally computed raw
     /// route outputs before collecting in the original route order.
     void finish_with_external(const int32_t* original_ids, const int32_t* entries,
@@ -86,7 +92,10 @@ public:
 
 private:
     // entries: t * top_k + k routed to this expert; ready: a cold group's reads (MISS_READ), null when warm
-    struct Group { int expert; std::vector<int> entries; int team = 0; std::atomic<int>* ready = nullptr; };
+    struct Group {
+        int expert; std::vector<int> entries; int team = 0; std::atomic<int>* ready = nullptr;
+        const uint8_t *gate = nullptr, *up = nullptr, *down = nullptr;
+    };
     void phase_work(int thread);
     // fn(ctx, part, parts) on every lane thread (the caller is part 0) and a barrier: the merge across tokens (needs !async_)
     void parallel_for(void (*fn)(void*, int, int), void* ctx);

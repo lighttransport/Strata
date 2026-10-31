@@ -368,8 +368,11 @@ void ExpertLane::pin(int thread) {
 }
 
 void ExpertLane::barrier() {
+    // Read the job's mode before publishing arrival. After the final arrival
+    // the caller may already prepare a job with another participant count.
+    const int participants = async_ ? threads_ - 1 : threads_;
     const unsigned s = sense_.load(std::memory_order_acquire);
-    if (arrived_.fetch_add(1, std::memory_order_acq_rel) + 1 == (async_ ? threads_ - 1 : threads_)) {
+    if (arrived_.fetch_add(1, std::memory_order_acq_rel) + 1 == participants) {
         arrived_.store(0, std::memory_order_relaxed);
         sense_.store(s + 1, std::memory_order_release);
     } else {
@@ -392,8 +395,11 @@ void ExpertLane::worker(int thread) {
         }
         if (stop_.load(std::memory_order_acquire)) return;
         seen = start_.load(std::memory_order_acquire);
+        // The caller can begin an async job as soon as a sync job's last
+        // barrier releases. Its workers must not credit that new job here.
+        const bool job_async = async_;
         phase_work(thread);
-        if (async_) {
+        if (job_async) {
             const int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
             for (int64_t seen = end_ns_.load(std::memory_order_relaxed); seen < now && !end_ns_.compare_exchange_weak(seen, now);) {}
             done_.fetch_add(1, std::memory_order_acq_rel);
@@ -408,14 +414,13 @@ void ExpertLane::phase_work(int t) {
         barrier();
         return;
     }
-    const int T = async_ ? threads_ - 1 : threads_;   // begin(): threads 1.. only
-    if (async_) --t;
+    const bool job_async = async_;
+    const int T = job_async ? threads_ - 1 : threads_;   // begin(): threads 1.. only
+    if (job_async) --t;
     const cpu::NativeFmt& f = layer_->f;
     static const bool skip_unused = strata_env_is_one("STRATA_DS41_LANE_SKIP_UNUSED");
     const size_t act_bytes = f.act_bytes, h_bytes = f.h_bytes;
-    const size_t gate_bytes = layer_->gate_stride ? layer_->gate_stride : f.gu_row * size_t(ff_);
-    const size_t down_bytes = layer_->down_stride ? layer_->down_stride : f.d_row * size_t(hidden_);
-    const int abs_t = async_ ? t + 1 : t;
+    const int abs_t = job_async ? t + 1 : t;
     if (bands_) {   // LANE_BANDS: this node's bands of every group, its team's share of them
         const int node = node_of_[size_t(abs_t)], tn = band_size_[size_t(node)], ti = band_index_[size_t(abs_t)];
         // the (group, band) items of this node, in order; this thread takes items [n * ti / tn, n * (ti + 1) / tn)
@@ -437,8 +442,8 @@ void ExpertLane::phase_work(int t) {
         };
         items(ff_, [&](const Group& g, int r0, int r1) {
             if (g.ready) miss_wait(g);
-            const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
-            const uint8_t* up = layer_->up + size_t(g.expert) * gate_bytes;
+            const uint8_t* gate = g.gate;
+            const uint8_t* up = g.up;
             for (size_t j0 = 0; j0 < g.entries.size(); j0 += cpu::MAXT) {
                 const size_t ng = std::min<size_t>(cpu::MAXT, g.entries.size() - j0);
                 const void* acts[cpu::MAXT];
@@ -457,8 +462,8 @@ void ExpertLane::phase_work(int t) {
                 cpu::native_quant_h(f, hidden_buf_.data() + size_t(e) * size_t(ff_), hq_.data() + size_t(e) * h_bytes);
         barrier();
         items(hidden_, [&](const Group& g, int r0, int r1) {
-            const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
-            const uint8_t* down = layer_->down + size_t(g.expert) * down_bytes;
+            const uint8_t* gate = g.gate;
+            const uint8_t* down = g.down;
             for (size_t j0 = 0; j0 < g.entries.size(); j0 += cpu::MAXT) {
                 const size_t ng = std::min<size_t>(cpu::MAXT, g.entries.size() - j0);
                 const void* hqs[cpu::MAXT];
@@ -495,8 +500,8 @@ void ExpertLane::phase_work(int t) {
             if (r0 == r1) break;
             if (numa_ && g.team != team) continue;
             if (g.ready) miss_wait(g);   // MISS_READ: a cold expert's pieces are in
-            const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
-            const uint8_t* up = layer_->up + size_t(g.expert) * gate_bytes;
+            const uint8_t* gate = g.gate;
+            const uint8_t* up = g.up;
             for (size_t j0 = 0; j0 < g.entries.size(); j0 += cpu::MAXT) {   // the row kernels take up to MAXT tokens
                 const size_t ng = std::min<size_t>(cpu::MAXT, g.entries.size() - j0);
                 const void* acts[cpu::MAXT];
@@ -524,8 +529,8 @@ void ExpertLane::phase_work(int t) {
         for (const Group& g : groups_) {
             if (r0 == r1) break;
             if (numa_ && g.team != team) continue;
-            const uint8_t* gate = layer_->gate + size_t(g.expert) * gate_bytes;
-            const uint8_t* down = layer_->down + size_t(g.expert) * down_bytes;
+            const uint8_t* gate = g.gate;
+            const uint8_t* down = g.down;
             for (size_t j0 = 0; j0 < g.entries.size(); j0 += cpu::MAXT) {
                 const size_t ng = std::min<size_t>(cpu::MAXT, g.entries.size() - j0);
                 const void* hqs[cpu::MAXT];
@@ -539,7 +544,7 @@ void ExpertLane::phase_work(int t) {
         }
     }
     sync(2);
-    if (stats && abs_t == (async_ ? 1 : 0)) ++stat_calls_;
+    if (stats && abs_t == (job_async ? 1 : 0)) ++stat_calls_;
 }
 
 void ExpertLane::prepare(const LaneLayer& layer, const float* z, int nt, const int32_t* ids, int top_k) {
@@ -563,6 +568,24 @@ void ExpertLane::prepare(const LaneLayer& layer, const float* z, int nt, const i
             if (ids[e] >= 0) by_expert[ids[e]].push_back(e);   // negative: handled elsewhere (the GPU tier)
         for (auto& [expert, entries] : by_expert) groups_.push_back({expert, std::move(entries)});
     }
+    const size_t gu_stride = layer.gate_stride ? layer.gate_stride : layer.f.gu_row * size_t(ff_);
+    const size_t d_stride = layer.down_stride ? layer.down_stride : layer.f.d_row * size_t(hidden_);
+    for (Group& g : groups_) {
+        if (layer.expert_spans) {
+            if (size_t(g.expert) >= layer.expert_span_count)
+                throw std::out_of_range("ds41 expert lane: cached expert index");
+            const auto& span = layer.expert_spans[g.expert];
+            if (!span[0] || !span[1] || !span[2])
+                throw std::invalid_argument("ds41 expert lane: missing cached span");
+            g.gate = span[0]; g.up = span[1]; g.down = span[2];
+        } else {
+            g.gate = layer.gate + size_t(g.expert) * gu_stride;
+            g.up = layer.up + size_t(g.expert) * gu_stride;
+            g.down = layer.down + size_t(g.expert) * d_stride;
+        }
+    }
+    if (miss_ && layer.expert_spans)
+        throw std::invalid_argument("ds41 expert lane: cached spans do not use mapped-page readers");
     if (miss_) miss_mark(layer);
     if (numa_) assign_teams(layer);
     if (bands_) band_teams();
@@ -684,6 +707,17 @@ void ExpertLane::begin(const LaneLayer& layer, const float* z, int nt, const int
     prepare(layer, z, nt, ids, top_k);
     start_.fetch_add(1, std::memory_order_acq_rel);
     start_.notify_all();
+}
+
+void ExpertLane::wait_pending() noexcept {
+    if (!idle_ && async_) {
+        while (done_.load(std::memory_order_acquire) < threads_ - 1) pause();
+        async_ = false;
+        const int64_t e = end_ns_.load(std::memory_order_relaxed);
+        const int64_t b = std::chrono::duration_cast<std::chrono::nanoseconds>(begin_t_.time_since_epoch()).count();
+        if (e > b) async_busy_s_ += double(e - b) * 1e-9;
+        ++async_jobs_;
+    }
 }
 
 void ExpertLane::finish() {

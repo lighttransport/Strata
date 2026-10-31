@@ -13,6 +13,7 @@
 //                     [--dump-logits=PATH] the prompt's last-position logits (f32)
 //                     [--eval-corpus=IDS --eval-reference=LOGITS | --eval-save-logits=LOGITS]
 #include "strata/core/model.hpp"
+#include "strata/core/exact_expert_cache.hpp"
 #include "strata/ds41/config.hpp"
 #include "strata/ds41/decode.hpp"
 #include "strata/ds41/engram_wire.hpp"
@@ -1482,6 +1483,7 @@ public:
         if (const char* v = std::getenv("STRATA_DS41_ENGRAM_THREADS")) engram_threads_ = std::max(1, std::atoi(v));
         if (const char* v = std::getenv("STRATA_DS41_ENGRAM_RAM_GIB")) load_engram_ram(std::atof(v));
         (void)process_cpus();   // before the lane pins this thread
+        init_cpu_cache();      // reader threads inherit the original CPU affinity
         lane_ = std::make_unique<ExpertLane>(c.hidden, fl_, threads, true);
         // STRATA_DS41_LANE_BENCH=map: the lane alone on 64 experts of a middle layer, one token on 6 of them a call,
         // read in place from the mapping (4 KiB pages) and then from an anonymous huge-page copy of the same experts
@@ -1635,6 +1637,174 @@ public:
         }
         if (const char* v = std::getenv("STRATA_DS41_CANON_MIB"); v && *v && std::string(v) != "0") canon_load(v);
         if (const char* v = std::getenv("STRATA_DS41_REMOTE_OWN"); v && *v) connect_own(v);
+        if (cpu_cache_) {
+            release_cpu_cache_mappings();
+            preload_cpu_cache();
+        }
+    }
+
+    // An exclusive, bounded host tier: only unchanged GGUF bytes are cached.
+    // File-backed expert pages are not a second host tier in this mode.
+    void init_cpu_cache() {
+        const long long mib = strata_env_value_ll("STRATA_DS41_CPU_CACHE_MIB", 0);
+        if (!mib) return;
+        if (mib < 1 || mib > 45056)
+            throw std::invalid_argument("ds41: CPU cache budget must be 1..45056 MiB");
+        if (borrow_ || ram_copy_ || fl_ != cfg_.ff || stage_cpu_expert_ ||
+            !strata_env_equals("STRATA_DS41_POPULATE", "0") ||
+            strata_env_value_double("STRATA_DS41_PIN_GB", 60) != 0 ||
+            strata_env_is_one("STRATA_DS41_PIN_EXPERTS") ||
+            strata_env_value_ll("STRATA_DS41_GPU_EXPERT_MIB", -1) != 0 ||
+            strata_env_value_ll("STRATA_DS41_CANON_STREAM", 0) != 0 ||
+            strata_env_value_ll("STRATA_DS41_MISS_READ", 0) != 0 ||
+            strata_env_value_ll("STRATA_DS41_PREFILL_HYBRID", 0) != 0 ||
+            strata_env_value_ll("STRATA_DS41_DEFER_RANK", 0) != 0 ||
+            strata_env_is_one("STRATA_DS41_DEFER_ALL") ||
+            strata_env_is_one("STRATA_DS41_LANE_NUMA") || strata_env_is_one("STRATA_DS41_LANE_BANDS") ||
+            strata_env_is_set("STRATA_DS41_REMOTE_TP") || strata_env_is_set("STRATA_DS41_REMOTE_OWN") ||
+            strata_env_is_set("STRATA_DS41_PEER_GPU") || strata_env_is_set("STRATA_DS41_SESSIONS") ||
+            strata_env_is_set("STRATA_DS41_DUAL") || strata_env_is_set("STRATA_DS41_GPU_SUBST") ||
+            strata_env_is_set("STRATA_DS41_CPU_TOPK") || strata_env_is_set("STRATA_DS41_CPU_TRIM") ||
+            strata_env_is_one("STRATA_DS41_GPU_ROUTE"))
+            throw std::invalid_argument("ds41: CPU cache requires local, unsplit CPU routing, optional static canonical GPU cache, no mapped pinning/population or lossy routes");
+        if (cfg_.layers <= 0 || cfg_.experts <= 0 || int64_t(cfg_.layers) * cfg_.experts > INT_MAX)
+            throw std::invalid_argument("ds41: CPU cache model geometry");
+        cpu_cache_sources_.resize(size_t(cfg_.layers));
+        for (int l = 0; l < cfg_.layers; ++l) {
+            int part = 0;
+            for (const char* role : {"gate", "up", "down"}) {
+                const auto& t = art_.at("blk." + std::to_string(l) + ".ffn_" + role + "_exps.weight");
+                const size_t bytes = t.bytes / size_t(cfg_.experts);
+                const size_t expected = part < 2 ? experts_[size_t(l)].gate_stride : experts_[size_t(l)].down_stride;
+                if (!t.file || t.bytes % size_t(cfg_.experts) || bytes != expected)
+                    throw std::invalid_argument("ds41: CPU cache expert tensor span");
+                cpu_cache_sources_[size_t(l)][size_t(part++)] = {t.file->path(), t.file->data_start() + t.tensor->offset, bytes};
+            }
+        }
+        const bool lfu = strata_env_equals("STRATA_DS41_CPU_CACHE_POLICY", "lfu");
+        if (strata_env_text_on("STRATA_DS41_CPU_CACHE_POLICY") && !lfu &&
+            !strata_env_equals("STRATA_DS41_CPU_CACHE_POLICY", "lru"))
+            throw std::invalid_argument("ds41: CPU cache policy must be lru or lfu");
+        cpu_cache_split_ = strata_env_is_one("STRATA_DS41_CPU_CACHE_SPLIT");
+        cpu_cache_ = std::make_unique<core::ExactExpertCache>(size_t(mib) << 20, 4,
+            lfu ? core::ExactExpertCache::Policy::lfu : core::ExactExpertCache::Policy::lru, cfg_.experts);
+        std::cerr << "DS41 cpu_cache budget_MiB=" << mib << " readers=4 direct=1 policy=" << (lfu ? "lfu" : "lru")
+                  << " split=" << cpu_cache_split_ << "\n";
+    }
+
+    core::ExactExpertCache::Source cpu_cache_source(int layer, int id) const {
+        auto source = cpu_cache_sources_.at(size_t(layer));
+        for (auto& span : source) span.offset += size_t(id) * span.bytes;
+        return source;
+    }
+
+    void preload_cpu_cache() {
+        if (!strata_env_text_on("STRATA_DS41_CPU_CACHE_PROFILE")) return;
+        const char* path = std::getenv("STRATA_DS41_CPU_CACHE_PROFILE");
+        std::ifstream input(path, std::ios::binary);
+        if (!input) throw std::runtime_error("ds41: cannot read CPU cache profile");
+        std::vector<double> hits(size_t(cfg_.layers) * cfg_.experts, 0);
+        std::vector<int32_t> row(size_t(cfg_.layers) * cfg_.top_k);
+        size_t records = 0;
+        while (input.read(reinterpret_cast<char*>(row.data()), std::streamsize(row.size() * sizeof(int32_t)))) {
+            ++records;
+            for (int l = 0; l < cfg_.layers; ++l)
+                for (int k = 0; k < cfg_.top_k; ++k) {
+                    const int id = row[size_t(l) * cfg_.top_k + k];
+                    if (id < -1 || id >= cfg_.experts) throw std::runtime_error("ds41: invalid expert in CPU cache profile");
+                    if (id >= 0) ++hits[size_t(l) * cfg_.experts + id];
+                }
+        }
+        if (!input.eof() || input.gcount() || !records) throw std::runtime_error("ds41: empty or truncated CPU cache profile");
+        std::vector<std::pair<double, int>> ranked;
+        for (size_t key = 0; key < hits.size(); ++key) {
+            if (hits[key] == 0 || (!canon_off_.empty() && canon_off_[key] >= 0)) continue;
+            const auto source = cpu_cache_source(int(key) / cfg_.experts, int(key) % cfg_.experts);
+            ranked.emplace_back(hits[key] / double(core::ExactExpertCache::allocation_bytes(source)), int(key));
+        }
+        std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        std::vector<int> selected;
+        size_t used = 0;
+        for (const auto& [score, key] : ranked) {
+            (void)score;
+            const size_t bytes = core::ExactExpertCache::allocation_bytes(cpu_cache_source(key / cfg_.experts, key % cfg_.experts));
+            if (bytes > cpu_cache_->budget_bytes() - used) continue;
+            used += bytes;
+            selected.push_back(key);
+        }
+        const auto start = std::chrono::steady_clock::now();
+        // Coldest first, so the hottest begin newest in LRU. All remain evictable.
+        for (size_t end = selected.size(); end > 0;) {
+            const size_t first = end > 32 ? end - 32 : 0;
+            std::vector<std::pair<int, core::ExactExpertCache::Source>> requests;
+            for (size_t i = end; i-- > first;) {
+                const int key = selected[i];
+                requests.emplace_back(key, cpu_cache_source(key / cfg_.experts, key % cfg_.experts));
+            }
+            cpu_cache_->acquire(requests);
+            end = first;
+        }
+        // Sixteen tokens' expected use as a modest LFU prior, which then decays.
+        for (size_t key = 0; key < hits.size(); ++key)
+            if (hits[key] > 0) cpu_cache_->seed_heat(int(key), 16.0 * hits[key] / double(records));
+        std::cerr << "DS41 cpu_cache_preload records=" << records << " experts=" << selected.size()
+                  << " bytes=" << used << " seconds="
+                  << std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() << "\n";
+    }
+
+    void release_cpu_cache_mappings() {
+        ck(cudaStreamSynchronize(stream_), "CPU cache source release sync");
+        const uint64_t page = uint64_t(sysconf(_SC_PAGESIZE));
+        for (int l = 0; l < cfg_.layers; ++l)
+            for (const char* role : {"gate", "up", "down"}) {
+                const auto& t = art_.at("blk." + std::to_string(l) + ".ffn_" + role + "_exps.weight");
+                const uint64_t offset = t.file->data_start() + t.tensor->offset;
+                const uint64_t first = (offset + page - 1) / page * page;
+                const uint64_t last = (offset + t.bytes) / page * page;
+                const auto mapped = shared_maps_.find(t.file);
+                if (mapped != shared_maps_.end() && last > first &&
+                    madvise(static_cast<uint8_t*>(mapped->second.first) + first, size_t(last-first), MADV_DONTNEED))
+                    throw std::runtime_error("ds41: CPU cache shared source release failed");
+                t.file->discard_tensor_pages(*t.tensor, t.bytes);
+            }
+    }
+
+    struct CpuCacheFrame {
+        LaneLayer layer;
+        std::vector<std::array<const uint8_t*, 3>> spans;
+        std::vector<std::shared_ptr<core::ExactExpertCache::Entry>> leases;
+        std::vector<uint8_t> ready;
+        std::vector<int32_t> original, hot_ids, hot_entries;
+        std::vector<float> hot_values;
+        ExpertLane* pending = nullptr;
+        ~CpuCacheFrame() { if (pending) pending->wait_pending(); }
+    };
+    std::unique_ptr<CpuCacheFrame> cpu_cache_frame(int layer, const std::vector<int32_t>& ids) {
+        if (!cpu_cache_) return {};
+        auto frame = std::make_unique<CpuCacheFrame>();
+        frame->layer = experts_.at(size_t(layer));
+        frame->spans.resize(size_t(cfg_.experts));
+        frame->ready.resize(size_t(cfg_.experts));
+        std::set<int> selected;
+        for (int id : ids) {
+            if (id >= cfg_.experts) throw std::out_of_range("ds41: CPU cache expert id");
+            if (id >= 0) selected.insert(id);
+        }
+        std::vector<std::pair<int, core::ExactExpertCache::Source>> requests;
+        for (int id : selected) {
+            requests.emplace_back(layer * cfg_.experts + id, cpu_cache_source(layer, id));
+        }
+        frame->leases = cpu_cache_split_ ? cpu_cache_->begin(requests) : cpu_cache_->acquire(requests);
+        size_t index = 0;
+        for (int id : selected) {
+            frame->ready[size_t(id)] = frame->leases[index]->ready;
+            for (int part = 0; part < 3; ++part)
+                frame->spans[size_t(id)][size_t(part)] = frame->leases[index]->data(part);
+            ++index;
+        }
+        frame->layer.expert_spans = frame->spans.data();
+        frame->layer.expert_span_count = frame->spans.size();
+        return frame;
     }
 
     // ---- STRATA_DS41_CANON_MIB=N (opt-in): a static GPU expert tier with the CPU lane's arithmetic.  The most-used
@@ -2311,6 +2481,14 @@ public:
             std::cerr << "DS41 prefill_hybrid cpu_lane_s=" << hybrid_cpu_s_ << " not_copied_GB=" << hybrid_skipped_gb_ << "\n";
     }
     void miss_line(double tokens) const {
+        if (cpu_cache_) {
+            const auto& s = cpu_cache_->stats;
+            std::cerr << "DS41 cpu_cache_stats hits=" << s.hits << " misses=" << s.misses
+                      << " evictions=" << s.evictions << " read_bytes=" << s.read_bytes
+                      << " resident_bytes=" << cpu_cache_->resident_bytes() << " wait_ms=" << s.wait_ms
+                      << " split_calls=" << cpu_cache_split_calls_ << " hot_routes=" << cpu_cache_hot_routes_
+                      << " hot_compute_ms=" << cpu_cache_hot_ms_ << "\n";
+        }
         if (substituted_ || dropped_ || affinity_swaps_)
             std::cerr << "DS41 lossy_routes gpu_subst_per_token=" << double(substituted_) / std::max(tokens, 1.0)
                       << " cpu_dropped_per_token=" << double(dropped_) / std::max(tokens, 1.0)
@@ -2328,6 +2506,11 @@ public:
     /// After a long prompt: the chunk buffers shrink to STRATA_DS41_DECODE_CHUNK (64) and the GPU expert tier takes
     /// the VRAM, seeded from the profile file or else from the prompt's own routing.
     void prefill_done() {
+        if (cpu_cache_) {
+            cpu_cache_->stats = {};
+            cpu_cache_split_calls_ = cpu_cache_hot_routes_ = 0;
+            cpu_cache_hot_ms_ = 0;
+        }
         if (peer_) { std::fill(std::begin(peer_->split_ms), std::end(peer_->split_ms), 0.0); peer_->split_on = false; }   // decode's own split
         // (DECODE_GROUPED computes grown experts with the resident ones; DECODE_MMQ by GEMV chains after its product)
         static const bool grow_on = std::getenv("STRATA_DS41_GROW") && std::string(std::getenv("STRATA_DS41_GROW")) == "1" &&
@@ -7754,7 +7937,7 @@ private:
         if (!ram_pos_.empty())   // packed copy: the lane addresses positions
             for (int& e : cpu_ids) if (e >= 0) e = ram_pos_[size_t(l)][size_t(e)];
         // STRATA_DS41_LANE_ASYNC=1: the CPU lane's other threads start while this one enqueues the GPU experts
-        const bool lane_async = staged_cpu_expert >= 0 || !canon_entries.empty() || own_n > 0 || (std::getenv("STRATA_DS41_LANE_ASYNC") && std::string(std::getenv("STRATA_DS41_LANE_ASYNC")) == "1");
+        bool lane_async = staged_cpu_expert >= 0 || !canon_entries.empty() || own_n > 0 || (std::getenv("STRATA_DS41_LANE_ASYNC") && std::string(std::getenv("STRATA_DS41_LANE_ASYNC")) == "1");
         static const bool decode_mmq = std::getenv("STRATA_DS41_DECODE_MMQ") && std::string(std::getenv("STRATA_DS41_DECODE_MMQ")) == "1";
         static const bool decode_grouped = !strata_env_is_one("STRATA_DS41_VERIFY_EXACT") && std::getenv("STRATA_DS41_DECODE_GROUPED") && std::string(std::getenv("STRATA_DS41_DECODE_GROUPED")) == "1" &&
                                            k::native_expert_supported(experts_[0].f.gu_type, experts_[0].f.d_type, c.hidden, c.ff);
@@ -7795,6 +7978,33 @@ private:
         static const bool defer_all = std::getenv("STRATA_DS41_DEFER_ALL") && std::string(std::getenv("STRATA_DS41_DEFER_ALL")) == "1";
         static const int defer_rank = defer_all ? 0 : std::getenv("STRATA_DS41_DEFER_RANK") ? std::atoi(std::getenv("STRATA_DS41_DEFER_RANK")) : 0;
         bool defer_now = false;
+        auto cache_frame = cpu_cache_frame(l, cpu_ids);
+        const LaneLayer& cpu_layer = cache_frame ? cache_frame->layer : experts_[size_t(l)];
+        if (cache_frame && cpu_cache_split_) {
+            const bool missing = std::any_of(cpu_ids.begin(), cpu_ids.end(), [&](int id) {
+                return id >= 0 && !cache_frame->ready[size_t(id)];
+            });
+            if (missing) {
+                cache_frame->original = canon_original.empty() ? cpu_ids : canon_original;
+                cache_frame->hot_ids.assign(cpu_ids.size(), -1);
+                for (size_t i = 0; i < cpu_ids.size(); ++i)
+                    if (cpu_ids[i] >= 0 && cache_frame->ready[size_t(cpu_ids[i])]) {
+                        cache_frame->hot_ids[i] = cpu_ids[i];
+                        cache_frame->hot_entries.push_back(int32_t(i));
+                        cpu_ids[i] = -1;
+                    }
+                if (!cache_frame->hot_entries.empty()) {
+                    cache_frame->hot_values.resize(cache_frame->hot_entries.size() * size_t(H));
+                    const auto start = std::chrono::steady_clock::now();
+                    lane_->run_raw(cpu_layer, pinned_[0], T, cache_frame->hot_ids.data(), K, cache_frame->hot_values.data());
+                    cpu_cache_hot_ms_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                    ++cpu_cache_split_calls_;
+                    cpu_cache_hot_routes_ += cache_frame->hot_entries.size();
+                    lane_async = true;
+                }
+            }
+            cpu_cache_->wait();
+        }
         if ((defer_rank > 0 || defer_all) && defer_rank < K && T <= 16 && !hook && !remote) {
             def_ids_.assign(cpu_ids.size(), -1);
             def_wts_ = wts;
@@ -7815,7 +8025,10 @@ private:
             dr_wts_ = wts;
             lane_->begin(experts_[size_t(l)], def_in_, T, dr_ids_.data(), dr_wts_.data(), K, def_out_);
         } else
-        if (lane_async) lane_->begin(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
+        if (lane_async) {
+            lane_->begin(cpu_layer, pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
+            if (cache_frame) cache_frame->pending = lane_.get();
+        }
         if (!canon_entries.empty()) canon_enqueue(l, T, K, canon_entries, canon_gstart, canon_groups);
         if (ad_thread_.joinable()) adapt_apply(true);
         bool any_gpu = false;
@@ -7975,7 +8188,14 @@ private:
                                      : peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]));
         if (dtiming_ && (T <= 64 || pf_timing_)) dmark(9);   // "experts": the GPU's experts enqueued (and run); "lane_wait": the CPU's and the peer's after
         const auto x1 = std::chrono::steady_clock::now();
-        if (!canon_entries.empty() && own_n == 0) {
+        if (cache_frame && !cache_frame->hot_entries.empty()) {
+            if (!canon_entries.empty()) {
+                ck(cudaStreamSynchronize(stream_), "canonical tier results sync");
+                if (strata_env_is_one("STRATA_DS41_CANON_CHECK") && !canon_checked_[size_t(l)]) canon_check(l, K, canon_entries[0]);
+            }
+            lane_->finish_with_external2(cache_frame->original.data(), canon_entries.data(), canon_res_, int(canon_entries.size()),
+                cache_frame->hot_entries.data(), cache_frame->hot_values.data(), int(cache_frame->hot_entries.size()), K);
+        } else if (!canon_entries.empty() && own_n == 0) {
             ck(cudaStreamSynchronize(stream_), "canonical tier results sync");
             if (strata_env_is_one("STRATA_DS41_CANON_CHECK") && !canon_checked_[size_t(l)]) canon_check(l, K, canon_entries[0]);
             lane_->finish_with_external(canon_original.data(), canon_entries.data(), canon_res_, int(canon_entries.size()), K);
@@ -8026,7 +8246,7 @@ private:
             lane_->finish_with_external(stage_original_ids.data(), staged_cpu_routes.data(), stage_cpu_results_, int(staged_cpu_routes.size()), K);
             if (sample) stage_timing_[4] += std::chrono::duration<double>(std::chrono::steady_clock::now() - wait_start).count();
         } else if (lane_async) lane_->finish();
-        else lane_->run(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
+        else lane_->run(cpu_layer, pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
         if (!stage_cpu_collect_ && !stage_diag_ids.empty() && staged_cpu_expert >= 0 && staged_cpu_routes.size() == 1 &&
             stage_cpu_diag_out_.size() == size_t(H)) {
             std::vector<float> full(size_t(H), 0.f);
@@ -8193,6 +8413,11 @@ private:
     int* route_host_ = nullptr;               // pinned: ids [16 * K] then weights
     cudaEvent_t route_ev_ = nullptr, slot_ev_ = nullptr;
     std::vector<LaneLayer> experts_;
+    std::unique_ptr<core::ExactExpertCache> cpu_cache_;
+    std::vector<core::ExactExpertCache::Source> cpu_cache_sources_;
+    bool cpu_cache_split_ = false;
+    uint64_t cpu_cache_split_calls_ = 0, cpu_cache_hot_routes_ = 0;
+    double cpu_cache_hot_ms_ = 0;
     std::unique_ptr<ExpertLane> lane_;
     std::vector<char> cut_;               // CPU_TOPK: routes dropped this pass
     uint64_t substituted_ = 0, dropped_ = 0, affinity_swaps_ = 0;   // GPU_SUBST / CPU_TOPK counts
