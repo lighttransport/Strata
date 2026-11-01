@@ -1060,7 +1060,7 @@ struct Engine {
             }
             f.swiglu_alpha = m->alpha;
             f.swiglu_limit = m->limit;
-            f.iq256_rows = strata_env_truthy_one("STRATA_M3_IQ256") != 0;   // opt-in (no gain measured on the Xeon 6240): the AVX2 multi-token row kernel
+            f.iq256_rows = strata_env_truthy_default("STRATA_M3_IQ256", 1) != 0;   // the AVX2 multi-token row kernel: +2-5 % end to end with verify windows (STRATA_M3_IQ256=0 for ggml's dots)
             if (f.up_off != y.gsz || f.down_off != 2 * y.gsz || f.bytes != 2 * y.gsz + y.dsz || f.gu_row * (size_t) m->FF != y.gsz) {
                 std::fprintf(stderr, "strata-m3: --cpu-experts: layer %zu: the CPU expert layout does not match the pack\n", l);
                 std::exit(1);
@@ -2101,6 +2101,7 @@ struct Dspark {
     Mat fc, mk1, mk2;
     float* conf_w = nullptr, *d_conf = nullptr;
     float conf_b = 0.f;
+    float pmin_default = 0.f;
     float pmin = 0.f;   // drafts whose confidence is below this are not verified (REPL key pmin=; 0 = all)
     long long conf_cut = 0;
     const float *out_norm = nullptr, *enc_norm = nullptr;
@@ -2330,6 +2331,7 @@ int strata::minimax::run(int argc, char** argv) {
     int preload_threads = 16, cpu_threads = 35, admit = 2, runs = 1;
     bool admit_freq = true, repl = false, route_renorm_opt = false, kv_f16_opt = strata_env_truthy_one("STRATA_M3_KV_F16") != 0;
     std::string spec_mode = "none", dspark_path;
+    bool spec_given = false, draft_given = false;
     bool pf_gemm_opt = strata_env_truthy_one("STRATA_M3_PF_GEMM") != 0, pf_pre_opt = false;
     int spec_draft = 2, route_topk_opt = 4;
     float route_min_w_opt = 0.0f;
@@ -2364,8 +2366,8 @@ int strata::minimax::run(int argc, char** argv) {
         else if (a == "--dspark") dspark_path = next();
         else if (a == "--pf-gemm") pf_gemm_opt = true;
         else if (a == "--pf-prefetch") pf_pre_opt = true;
-        else if (a == "--spec") spec_mode = next();
-        else if (a == "--draft") spec_draft = std::max(1, std::atoi(next().c_str()));
+        else if (a == "--spec") { spec_mode = next(); spec_given = true; }
+        else if (a == "--draft") { spec_draft = std::max(1, std::atoi(next().c_str())); draft_given = true; }
         else if (a == "--route-topk") route_topk_opt = std::max(1, std::atoi(next().c_str()));
         else if (a == "--route-min-weight") route_min_w_opt = (float) std::atof(next().c_str());
         else if (a == "--route-renorm") route_renorm_opt = true;
@@ -2460,6 +2462,12 @@ int strata::minimax::run(int argc, char** argv) {
         std::fprintf(stderr, "strata-m3: DSpark draft head loaded (%d layers, block %d, window %d)\n", dsp->L, dsp->block, dsp->window);
     }
     Dspark* ds = dsp.get();
+    if (ds) {   // with the head loaded, speculation is the default (measured best: 6 drafts, confidence floor 0.7)
+        if (!spec_given) spec_mode = "dspark";
+        if (!draft_given) spec_draft = std::min(6, kMaxWin - 1);
+        ds->pmin_default = 0.7f;
+        ds->pmin = ds->pmin_default;
+    }
     Engine E;
     E.pf_gemm = pf_gemm_opt;
     E.pf_pre = pf_pre_opt;
@@ -2801,7 +2809,7 @@ int strata::minimax::run(int argc, char** argv) {
             E.miss_keep = -1;
             E.miss_minw = 0.f;
             E.sub_mode = 0;
-            if (ds) ds->pmin = 0.f;
+            if (ds) ds->pmin = ds->pmin_default;
             std::string dump_path;
             bool ok = true;
             size_t at = 3;

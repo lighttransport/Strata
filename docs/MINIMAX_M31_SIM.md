@@ -450,3 +450,10 @@ under 0.01). The confidence cut only changes how many rows are verified, so it d
 text of plain top-3 decode against the speculative run agrees for 167 of 200 tokens (short prompt) and 7 of 200 (code prompt) before
 the first difference: the window and the single-token paths round differently (CPU Q8_K against GPU q8_1 activations, summation
 order), so near-tied tokens flip, as in the exact path (see the lossless bar above).
+
+### Defaults (strata-m3 with `--dspark FILE`)
+
+With the head loaded and no other flags, `strata-m3` now speculates (`--spec dspark --draft 6`, confidence floor 0.7) and runs the
+AVX2 multi-token CPU rows (`STRATA_M3_IQ256=0` selects ggml's dots again). `spec=none`, `draft=`, `pmin=` override per REPL request.
+Measured with no routing flags, 200 new tokens, code / short prompt: exact routing **19.1 / 21.0 tok/s** (16.4 / 15.4 with
+`spec=none`), `topk=3` 24.3 / 24.9 tok/s. Without `--dspark` the engine is as before apart from the CPU rows.
