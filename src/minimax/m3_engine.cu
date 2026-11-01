@@ -2487,6 +2487,7 @@ int strata::minimax::run(int argc, char** argv) {
     E.ph_sync = 0;
     E.ph_fwd = E.ph_emb = E.ph_attn_enq = E.ph_head = 0;
     E.route_dropped = E.route_total = 0;
+    if (ds) { ds->ms_draft = ds->ms_inject = 0; }
     E.pt_attn = E.pt_dense = E.pt_route = E.pt_copy = E.pt_gemm = E.pt_other = E.pt_deq = E.pt_mm = E.pt_conv = 0;
     E.pf_marks.clear();
 #if defined(STRATA_M3_CPU_POOL)
@@ -2659,6 +2660,9 @@ int strata::minimax::run(int argc, char** argv) {
     if (E.pfprof)
         std::printf("M3_PFPROF prefill ms: attention %.0f | dense ffn + shared + router %.0f | expert copy waits %.0f | expert gemm %.0f | other %.0f\n",
                     E.pt_attn, E.pt_dense, E.pt_copy, E.pt_gemm, E.pt_other);
+    if (ds && speculate)
+        std::printf("M3_DSPARK draft pass %.1f ms (%.2f ms per call), inject %.1f ms over the run (host enqueue + waits)\n", ds->ms_draft,
+                    ds->ms_draft / (double) std::max<long long>(1, spec_steps), ds->ms_inject);
     if (E.route_total)
         std::printf("M3_ROUTE lever: top-%d, min weight %.2f x max, renorm %d: dropped %lld of %lld routed experts (%.1f %%)\n",
                     E.route_topk, E.route_min_w, (int) E.route_renorm, E.route_dropped, E.route_total,

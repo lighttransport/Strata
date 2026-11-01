@@ -412,3 +412,8 @@ expert's weight (2)). KL and top-1 are on the 210-token / 487-token prompts, tok
 Targeting the missed experts does not buy quality: a dropped missed expert is heavier than the global lightest one, so each saved
 CPU millisecond costs more KL than uniform top-3, and a resident stand-in recovers little of it. The speed/quality curve of routing
 levers is monotone: 35 tok/s sits at KL 0.04-0.06, 2.5-6x over the gate.
+
+Step breakdown of the gate-passing configuration (code prompt, top-3, DSpark draft 2, `STRATA_M3_IQ256=1`, 82 verify steps, 2.44
+tokens per step, 103 ms per step, 23.6 tok/s): CPU lane 61.8 ms, waiting for the GPU chain 21.9 ms, GPU enqueue 4.3 ms, draft
+pass 6.2 ms per call (5 head layers, lm_head, Markov chain; `M3_DSPARK` line), about 9 ms for the head, accept logic and the K/V
+inject. The draft pass is already near its weight-read floor (about 2.1 GB at 576 GB/s = 3.6 ms plus the Markov tables).
