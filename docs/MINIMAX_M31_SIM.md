@@ -442,3 +442,11 @@ but in the engine it lost: admissions per step rise from ~8 to 20-40, copies in 
 43.7 / 46.2 / 31.7 / 19.7 % against 41.7 %). The frequency gate stays. Offline bounds on the same trace (1100 slots, 15 % of the
 experts): the best fixed set chosen with hindsight 61.4 %, a fixed set learned on the first half 47.3 %, a clairvoyant dynamic
 cache that admits every miss 78.4 %.
+
+Gate check of the best configuration (top-3 routing, DSpark `draft=6 pmin=0.7`, `STRATA_M3_IQ256=1`), teacher-forced 64 steps against
+the exact path, short / code prompt: the 6-row verify window with top-3 routing KL 4.9e-3 / 8.9e-3, top-1 62/64 / 64/64 (the
+single-token top-3 path measured 6.0e-3 / 9.8e-3, 61/64 / 63/64 in this run, 9.1e-3 in the earlier one: the code prompt sits just
+under 0.01). The confidence cut only changes how many rows are verified, so it does not enter this measurement. Free-running greedy
+text of plain top-3 decode against the speculative run agrees for 167 of 200 tokens (short prompt) and 7 of 200 (code prompt) before
+the first difference: the window and the single-token paths round differently (CPU Q8_K against GPU q8_1 activations, summation
+order), so near-tied tokens flip, as in the exact path (see the lossless bar above).
