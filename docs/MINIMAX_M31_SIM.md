@@ -492,3 +492,16 @@ passes 17 of 20 hard ones) and top-2, top-2 with a floor and `missk=0` are all a
 (51 tok/s) falls just below the bar at 78 %. Dropping the experts that would run on the CPU (`missk=0`) is the best trade at the
 top end: 47 tok/s for 95 % of the passes, and 50.6 tok/s for the same 95 % when top-2 is applied as well (`--speed max`). Not measured: other languages, prompts much longer than these, free-form (multi-function)
 programs, sampling with temperature, and repeats of each setting.
+
+### Where a `--speed max` step goes, and what did not help (measured; code tasks, up to 6 drafts)
+
+`--speed max` (top-2, every expert that misses VRAM dropped except a token's heaviest): 47.5 / 51.8 / 50.2 tok/s on three tasks, 91-96 %
+of drafts accepted, 3.7-4.3 tokens per verify step, about 82 ms per step: waiting for the GPU chain 40 ms, the CPU lane 20 ms (it
+still computes the heaviest expert of a token when that one is not resident: 70 expert computations per step), the draft pass
+10.3 ms (6.2 ms for 2 rows), the rest about 10 ms. The GPU chain of a 7-row window, per 57-layer step, from the CUDA-event timeline
+(`STRATA_M3_PROF=3`): q/k/v matvecs 11.0 ms, o-projection 6.7, sparse attention 6.4, router 2.4, block scores 1.2, the rest 4.2:
+31.9 ms against about 15 ms of dense weight reads at 576 GB/s, so the multi-column matvec kernels run at ~2.7x their bandwidth
+floor with 7 columns. Tried and neutral: cache admission 1-8 experts per layer (the frequency gate admits the same ~440 experts per
+run; LRU admits 5-10 times more, empties the CPU lane by 40 % and is slower, 43.9 against 46.8 tok/s), and the confidence floor
+(means over four tasks: 0.4 -> 47.9, 0.55 -> 49.2, 0.7 -> 48.1 tok/s; within the run-to-run spread). Note the REPL keeps `admit=` and
+`policy=` between requests: set them in every request of a sweep.

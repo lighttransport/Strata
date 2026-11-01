@@ -997,7 +997,8 @@ struct Engine {
     double ph_sync = 0;   // host time waiting for the GPU chain up to the router (per run)
     double ph_fwd = 0, ph_emb = 0, ph_attn_enq = 0, ph_head = 0;   // decode (T == 1) wall time of forward() and its parts
     // STRATA_M3_PROF=2: GPU-timeline durations between marks (CUDA events), resolved after each layer's router sync
-    bool prof_gpu = false;
+    bool prof_gpu = false, prof_all = false;   // prof_all (STRATA_M3_PROF=3): also the layers of verify windows
+    long long gcalls = 0;
     std::vector<cudaEvent_t> gev;
     std::vector<const char*> gname;
     int gn = 0;
@@ -1022,6 +1023,7 @@ struct Engine {
             if (!found) gacc.emplace_back(gname[(size_t) i], ms);
         }
         gn = 0;
+        ++gcalls;
     }
 #if defined(STRATA_M3_CPU_POOL)
     // ---- the CPU lane (decode, one token): experts missing from VRAM run on the CPU from the preloaded pack
@@ -1856,7 +1858,7 @@ struct Engine {
             for (int32_t e : h_ids) std::fprintf(route_trace, " %d", e);
             std::fprintf(route_trace, "\n");
         }
-        if (prof_gpu) { if (T == 1) gflush(); else gn = 0; }
+        if (prof_gpu) { if (T == 1 || prof_all) gflush(); else gn = 0; }
 #if defined(STRATA_M3_CPU_POOL)
         if (cpu_lane && T <= kMaxWin) {
             for (int32_t e : h_ids)
@@ -2596,6 +2598,8 @@ int strata::minimax::run(int argc, char** argv) {
         const char* pv = std::getenv("STRATA_M3_PROF");
         g_prof.on = pv && std::atoi(pv) >= 1;
         E.prof_gpu = pv && std::atoi(pv) >= 2;
+        E.prof_all = pv && std::atoi(pv) >= 3;
+        E.gcalls = 0;
         E.gacc.clear();
         E.gn = 0;
     }
@@ -2765,6 +2769,8 @@ int strata::minimax::run(int argc, char** argv) {
             sum += a.second;
         }
         std::printf("\n  %-48s %8.1f ms  (%.3f ms/step)\n", "total", sum, sum / steps);
+        if (E.prof_all && E.gcalls)
+            std::printf("  per layer call (%lld calls): %.3f ms; per 57-layer step: %.1f ms\n", E.gcalls, sum / (double) E.gcalls, sum / (double) E.gcalls * 57.0);
     }
     {
         long long hit_n = E.hits - dec_hits0, all_n = E.hits - dec_hits0 + E.misses - dec_miss0;
