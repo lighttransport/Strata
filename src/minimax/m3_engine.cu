@@ -2335,6 +2335,7 @@ int strata::minimax::run(int argc, char** argv) {
     bool pf_gemm_opt = strata_env_truthy_one("STRATA_M3_PF_GEMM") != 0, pf_pre_opt = false;
     int spec_draft = 2, route_topk_opt = 4;
     float route_min_w_opt = 0.0f;
+    int miss_keep_opt = -1;
     bool cpu_experts = strata_env_truthy_one("STRATA_M3_CPU_EXPERTS") != 0;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -2371,6 +2372,15 @@ int strata::minimax::run(int argc, char** argv) {
         else if (a == "--route-topk") route_topk_opt = std::max(1, std::atoi(next().c_str()));
         else if (a == "--route-min-weight") route_min_w_opt = (float) std::atof(next().c_str());
         else if (a == "--route-renorm") route_renorm_opt = true;
+        else if (a == "--route-miss-keep") miss_keep_opt = std::atoi(next().c_str());
+        else if (a == "--speed") {   // lossy decode presets, measured on the C++ benchmark (docs/MINIMAX_M31_SIM.md)
+            const std::string v = next();
+            if (v == "exact") { route_topk_opt = 4; miss_keep_opt = -1; }
+            else if (v == "fast") route_topk_opt = 3;            // slight loss: ~30 tok/s
+            else if (v == "turbo") route_topk_opt = 2;           // approximate: ~40 tok/s
+            else if (v == "max") { route_topk_opt = 4; miss_keep_opt = 0; }   // drops every expert that misses VRAM: ~47 tok/s
+            else { std::fprintf(stderr, "strata-m3: --speed exact|fast|turbo|max\n"); return 2; }
+        }
         else if (a == "--runs") runs = std::max(1, std::atoi(next().c_str()));
         else if (a == "--cpu-threads") cpu_threads = std::max(1, std::atoi(next().c_str()));
         else if (a == "--admit") admit = std::max(0, std::atoi(next().c_str()));
@@ -2782,6 +2792,7 @@ int strata::minimax::run(int argc, char** argv) {
     E.route_topk = route_topk_opt;
     E.route_min_w = route_min_w_opt;
     E.route_renorm = route_renorm_opt;
+    E.miss_keep = miss_keep_opt;
     if (!repl) {
         for (int run = 0; run < runs; ++run) do_run(run, runs, base);
     } else {
@@ -2806,7 +2817,7 @@ int strata::minimax::run(int argc, char** argv) {
             E.route_renorm = route_renorm_opt;
             E.lay_topk.clear();
             E.lay_minw.clear();
-            E.miss_keep = -1;
+            E.miss_keep = miss_keep_opt;
             E.miss_minw = 0.f;
             E.sub_mode = 0;
             if (ds) ds->pmin = ds->pmin_default;
