@@ -457,3 +457,8 @@ With the head loaded and no other flags, `strata-m3` now speculates (`--spec dsp
 AVX2 multi-token CPU rows (`STRATA_M3_IQ256=0` selects ggml's dots again). `spec=none`, `draft=`, `pmin=` override per REPL request.
 Measured with no routing flags, 200 new tokens, code / short prompt: exact routing **19.1 / 21.0 tok/s** (16.4 / 15.4 with
 `spec=none`), `topk=3` 24.3 / 24.9 tok/s. Without `--dspark` the engine is as before apart from the CPU rows.
+
+The CPU decode kernel is not the lever either: with the weights resident in L2 (one thread, 64 gate + 64 up rows repeated, `m3_cpu_bench
+--l1`) ggml's dots, the repo's AVX2 multi-token kernel and the same kernel rebuilt for 256-bit AVX512-VNNI (`vpdpwssd`/`vpdpbusd`
+on the Xeon 6240, parity test passing) all take 0.115-0.119 ns per weight (2.4 GB/s of expert bytes per core). Three independent
+implementations at the same speed point to a shared limit (the table-driven grid decode) rather than the multiply-add chain.
