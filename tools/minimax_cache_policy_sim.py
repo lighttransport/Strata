@@ -21,7 +21,7 @@ def load(path):
         f = line.split()
         if len(f) < 3:
             continue
-        steps[int(f[0])][int(f[1])] = [int(x) for x in f[2:]]
+        steps[int(f[0])][int(f[1])] = [int(x) for x in f[2:] if int(x) >= 0]   # -1 = an expert dropped by a routing lever
     return [steps[s] for s in sorted(steps)]
 
 

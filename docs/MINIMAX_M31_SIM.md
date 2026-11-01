@@ -417,3 +417,28 @@ Step breakdown of the gate-passing configuration (code prompt, top-3, DSpark dra
 tokens per step, 103 ms per step, 23.6 tok/s): CPU lane 61.8 ms, waiting for the GPU chain 21.9 ms, GPU enqueue 4.3 ms, draft
 pass 6.2 ms per call (5 head layers, lm_head, Markov chain; `M3_DSPARK` line), about 9 ms for the head, accept logic and the K/V
 inject. The draft pass is already near its weight-read floor (about 2.1 GB at 576 GB/s = 3.6 ms plus the Markov tables).
+
+### Confidence-gated draft length and the cache admission policy (measured; top-3 routing, DSpark, `STRATA_M3_IQ256=1`)
+
+`pmin=` (REPL) drops drafts whose DSpark confidence head (`conf_proj`: sigmoid of the final-normed draft row and the previous
+token's Markov row) is below the threshold, so low-confidence drafts add no rows to the verify window; the output is the same
+greedy output as without it. tok/s on the code / short prompt, 200 new tokens, single runs:
+
+| max draft, pmin | tokens per step (code / short) | tok/s code | tok/s short |
+|---|---|---|---|
+| 2, off | 2.44 / 2.53 | 23.3 | 22.9 |
+| 4, 0.5 | 2.70 / 3.12 | 21.2 | 23.4 |
+| 4, 0.7 | 2.41 / 2.44 | 24.2 | 24.3 |
+| 4, 0.8 | 1.79 / 2.08 | 21.5 | 22.9 |
+| **6, 0.7** | 2.56 / 3.12 | **24.5** | **25.0** |
+| 6, 0.8 | 2.15 / 2.41 | 23.7 | 23.5 |
+
+So the gate-passing best is now **24.5 tok/s (code) and 25.0 (short)**: top-3 routing, `draft=6 pmin=0.7` (KL as for top-3: 6.0e-3 / 9.1e-3).
+
+Cache admission: on a routing trace of 296 decode steps a policy that admits an expert once it has been routed to twice looked
+like +6 points of hit rate in the simulator (after excluding dropped `-1` experts, which the simulator had counted as accesses),
+but in the engine it lost: admissions per step rise from ~8 to 20-40, copies in flight count as misses, and the hit rate fell
+(code prompt, admissions per layer 1 / 2 / 3 / 4: 52.9 / 40.9 / 23.0 / 18.6 %, against 51.6 % for the frequency gate; short prompt
+43.7 / 46.2 / 31.7 / 19.7 % against 41.7 %). The frequency gate stays. Offline bounds on the same trace (1100 slots, 15 % of the
+experts): the best fixed set chosen with hindsight 61.4 %, a fixed set learned on the first half 47.3 %, a clairvoyant dynamic
+cache that admits every miss 78.4 %.

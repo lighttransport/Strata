@@ -2070,6 +2070,27 @@ __global__ void k_markov(const uint8_t* w1, const uint8_t* w2, const int32_t* pr
     col[v] += sum;
 }
 
+/// DSpark confidence of draft position i: sigmoid(conf_w . [hidden_i ; markov_w1[prev_i]] + b), hidden_i the draft's final-normed row
+__global__ void k_conf(const float* hrow, const uint8_t* w1, const int32_t* prev, const float* cw, float b, int N, float* out) {
+    __shared__ float e[256], red[256];
+    const int p = *prev;
+    {
+        const uint8_t* bl = w1 + (size_t) p * 272 + (threadIdx.x >> 5) * 34;
+        e[threadIdx.x] = __half2float(*reinterpret_cast<const __half*>(bl)) * (float) reinterpret_cast<const int8_t*>(bl + 2)[threadIdx.x & 31];
+    }
+    __syncthreads();
+    float acc = 0.f;
+    for (int i = threadIdx.x; i < N; i += 256) acc += hrow[i] * cw[i];
+    acc += e[threadIdx.x] * cw[N + threadIdx.x];
+    red[threadIdx.x] = acc;
+    __syncthreads();
+    for (int o = 128; o > 0; o >>= 1) {
+        if ((int) threadIdx.x < o) red[threadIdx.x] += red[threadIdx.x + o];
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) *out = 1.f / (1.f + __expf(-(red[0] + b)));
+}
+
 struct Dspark {
     struct DL {
         const float *an = nullptr, *fn = nullptr, *qn = nullptr, *kn = nullptr;
@@ -2078,6 +2099,10 @@ struct Dspark {
     std::shared_ptr<strata::GgufModel> file;
     std::vector<DL> ly;
     Mat fc, mk1, mk2;
+    float* conf_w = nullptr, *d_conf = nullptr;
+    float conf_b = 0.f;
+    float pmin = 0.f;   // drafts whose confidence is below this are not verified (REPL key pmin=; 0 = all)
+    long long conf_cut = 0;
     const float *out_norm = nullptr, *enc_norm = nullptr;
     std::vector<int> target_layers;
     int L = 0, N = 0, H = 0, HKV = 0, FF = 0, block = 7, window = 4096, mask_id = 0, ctx = 0;
@@ -2150,6 +2175,17 @@ struct Dspark {
                 CK(cudaMalloc(&d, nb));
                 CK(cudaMemcpy(d, gm.shard(s).tensor_data(*t), nb, cudaMemcpyHostToDevice));
                 (w ? mk2 : mk1).d = d;
+            }
+        }
+        {   // the confidence head (optional)
+            size_t sw = 0, sb = 0;
+            const strata::TensorInfo* tw = gm.find("conf_proj.weight", &sw);
+            const strata::TensorInfo* tb = gm.find("conf_proj.bias", &sb);
+            if (tw && tb && tw->type == 0 && (int) tw->elements() == N + 256 && tb->type == 0) {
+                CK(cudaMalloc(&conf_w, (size_t) (N + 256) * 4));
+                CK(cudaMemcpy(conf_w, gm.shard(sw).tensor_data(*tw), (size_t) (N + 256) * 4, cudaMemcpyHostToDevice));
+                std::memcpy(&conf_b, gm.shard(sb).tensor_data(*tb), 4);
+                CK(cudaMalloc(&d_conf, 8 * 4));
             }
         }
         ly.resize((size_t) L);
@@ -2236,9 +2272,21 @@ struct Dspark {
             k_markov<<<(unsigned) ((V + 255) / 256), 256, 0, E.st>>>(mk1.d, mk2.d, dprev + i, E.logits + (size_t) i * V, V);
             k_argmax1<<<1, 1024, 0, E.st>>>(E.logits + (size_t) i * V, V, dprev + i + 1);
         }
+        const bool use_conf = pmin > 0.f && conf_w;
+        if (use_conf)
+            for (int i = 0; i < R; ++i)
+                k_conf<<<1, 256, 0, E.st>>>(hb + (size_t) i * N, mk1.d, dprev + i, conf_w, conf_b, N, d_conf + i);
         std::vector<int32_t> out((size_t) R);
+        float conf[8] = {};
         CK(cudaMemcpyAsync(out.data(), dprev + 1, (size_t) R * 4, cudaMemcpyDeviceToHost, E.st));
+        if (use_conf) CK(cudaMemcpyAsync(conf, d_conf, (size_t) R * 4, cudaMemcpyDeviceToHost, E.st));
         CK(cudaStreamSynchronize(E.st));
+        if (use_conf) {
+            int keep = 0;
+            while (keep < R && conf[keep] >= pmin) ++keep;
+            conf_cut += R - keep;
+            out.resize((size_t) keep);
+        }
         drafts += R;
         ms_draft += ms_since(t0);
         return out;
@@ -2487,7 +2535,7 @@ int strata::minimax::run(int argc, char** argv) {
     E.ph_sync = 0;
     E.ph_fwd = E.ph_emb = E.ph_attn_enq = E.ph_head = 0;
     E.route_dropped = E.route_total = 0;
-    if (ds) { ds->ms_draft = ds->ms_inject = 0; }
+    if (ds) { ds->ms_draft = ds->ms_inject = 0; ds->conf_cut = 0; }
     E.pt_attn = E.pt_dense = E.pt_route = E.pt_copy = E.pt_gemm = E.pt_other = E.pt_deq = E.pt_mm = E.pt_conv = 0;
     E.pf_marks.clear();
 #if defined(STRATA_M3_CPU_POOL)
@@ -2661,8 +2709,8 @@ int strata::minimax::run(int argc, char** argv) {
         std::printf("M3_PFPROF prefill ms: attention %.0f | dense ffn + shared + router %.0f | expert copy waits %.0f | expert gemm %.0f | other %.0f\n",
                     E.pt_attn, E.pt_dense, E.pt_copy, E.pt_gemm, E.pt_other);
     if (ds && speculate)
-        std::printf("M3_DSPARK draft pass %.1f ms (%.2f ms per call), inject %.1f ms over the run (host enqueue + waits)\n", ds->ms_draft,
-                    ds->ms_draft / (double) std::max<long long>(1, spec_steps), ds->ms_inject);
+        std::printf("M3_DSPARK draft pass %.1f ms (%.2f ms per call), inject %.1f ms over the run (host enqueue + waits), %lld drafts cut by confidence\n", ds->ms_draft,
+                    ds->ms_draft / (double) std::max<long long>(1, spec_steps), ds->ms_inject, ds->conf_cut);
     if (E.route_total)
         std::printf("M3_ROUTE lever: top-%d, min weight %.2f x max, renorm %d: dropped %lld of %lld routed experts (%.1f %%)\n",
                     E.route_topk, E.route_min_w, (int) E.route_renorm, E.route_dropped, E.route_total,
@@ -2753,6 +2801,7 @@ int strata::minimax::run(int argc, char** argv) {
             E.miss_keep = -1;
             E.miss_minw = 0.f;
             E.sub_mode = 0;
+            if (ds) ds->pmin = 0.f;
             std::string dump_path;
             bool ok = true;
             size_t at = 3;
@@ -2794,6 +2843,7 @@ int strata::minimax::run(int argc, char** argv) {
                 else if (k == "missk") E.miss_keep = std::atoi(v.c_str());
                 else if (k == "missw") E.miss_minw = (float) std::atof(v.c_str());
                 else if (k == "sub") E.sub_mode = std::atoi(v.c_str());
+                else if (k == "pmin") { if (ds) ds->pmin = (float) std::atof(v.c_str()); }
                 else if (k == "topk") E.route_topk = std::atoi(v.c_str());
                 else if (k == "minw") E.route_min_w = (float) std::atof(v.c_str());
                 else if (k == "renorm") E.route_renorm = std::atoi(v.c_str()) != 0;
@@ -2803,6 +2853,7 @@ int strata::minimax::run(int argc, char** argv) {
                 else if (k == "force") rs.forced = parse_ids(read_file(v));
                 else if (k == "dump") dump_path = v;
                 else if (k == "admit") E.admit_per_layer = std::atoi(v.c_str());
+                else if (k == "policy") E.admit_freq = v != "lru";
                 else { std::printf("M3_ERROR unknown key %s\n", k.c_str()); ok = false; }
             }
             if (rs.prompt.empty() || (int) rs.prompt.size() + rs.n_gen > ctx) {
