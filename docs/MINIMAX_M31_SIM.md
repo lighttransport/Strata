@@ -358,3 +358,35 @@ was 4.6 s before the staged kernel and 1.7 s after. Quality against the default 
 1.1-1.3e-3, top-1 63-64/64 for every row, which is the level of FP16 K/V alone. Short prompts stay bound by streaming the pack:
 210 tokens 22.8 tok/s, 487 tokens 38.6 tok/s. Not done: the 128 experts of the last layer (large slots, 8 of them) still copy
 in line, about 0.25 s; prompts longer than the chunk need one pass over the pack per chunk.
+
+## Decode under a quality gate: what the combined path reaches (measured, one V100, 2 x Xeon 6240)
+
+Gate: teacher-forced 64 steps against the exact path, mean KL <= 0.01 and top-1 >= 95 % on **both** the 210-token and the 487-token
+prompt, for the final combined configuration (FP16 K/V, DSpark head, routing levers). Speed is 200 new tokens on the same prompts
+(short / code), `STRATA_M3_IQ256=1`.
+
+| Routing | Draft | KL short / code | Top-1 short / code | tok/s short / code | Gate |
+|---|---|---|---|---|---|
+| exact | 2 | - | - | 19.4 / 19.1 | pass |
+| top-3 | 2 | 6.0e-3 / 9.1e-3 | 61/64 / 63/64 | 22.8 / 23.4 | pass |
+| top-3 | 3 | same | same | 21.3 / 22.6 | pass |
+| top-3 + 0.25 threshold | 3 | 8.4e-3 / 1.06e-2 | 62/64 / 63/64 | 22.9 / 23.4 | **fails on code** |
+| top-3 + 0.3 threshold | 3 | 6.9e-3 / 1.36e-2 | 62/64 / 63/64 | - | fails |
+
+So the best configuration that meets the gate is **top-3 routing with the DSpark head and 2 drafted tokens: 22.8-23.4 tok/s**. The
+earlier single-lever figure of 4e-3 for top-3 was measured on the short prompt only.
+
+Per-layer sensitivity (a single MoE layer pruned to top-2, KL on the short / code prompt, 57 layers): 4e-4 to 4e-3, mostly 1e-3 to
+2e-3. Dropping a second expert in one layer costs about 5e-4 KL per expert, against 7e-5 for the first one in every layer (top-3),
+so after top-3 only about 4 more layers fit in the 0.01 budget: per-layer pruning cannot reach more than ~28-32 % of experts dropped
+under this gate (`lay=` / `layfile=` REPL keys exist for it).
+
+Where a speculative step goes (code prompt, top-3 + 0.25 threshold, draft 3, 70 steps, 8.45 s): 121 ms per step = CPU expert lane
+73 ms (290 experts per step, 5.1 per layer, 72 GB/s of expert bytes), waiting for the GPU chain 25 ms, GPU enqueue 6 ms, draft,
+inject, head and sync about 17 ms. Hardware limits measured on the node: 35 pinned threads read interleaved RAM at 121 GB/s
+(16 threads 47 GB/s); one core decodes + dots i-quant rows at 2.4 GB/s of expert bytes with data in L2 (ggml 0.119 ns per weight,
+the AVX2 multi-token kernel 0.127, the AVX-512 kernel 0.185, an AVX-512 variant with vector sign parity and gathered grids 0.234),
+so 35 cores cap the lane near 85 GB/s of compute and it already runs at 72. Pinned SMT (70 threads) gave +7 % on a cold six-expert
+round. `STRATA_M3_IQ256=1` is worth +2-5 % end to end. Reaching 35 tok/s inside the gate would need the lane at ~120 GB/s (a
+decode kernel about 1.5-2x faster than ggml's AVX2 one, which three attempts did not produce) plus the chain and draft overhead
+cut by ~15 ms; neither was found in the time of this allocation.

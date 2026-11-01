@@ -27,6 +27,26 @@ namespace C = strata::kernels::cpu;
 using Clock = std::chrono::steady_clock;
 static double ms_since(Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); }
 
+// logical CPUs in pin order: "physical" = the first sibling of each core; "smt" = both siblings of each core, adjacent
+static std::vector<int> pin_list(const std::string& mode) {
+    std::vector<int> first, all;
+    for (int c = 0; c < 4096; ++c) {
+        char p[128];
+        std::snprintf(p, sizeof p, "/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", c);
+        FILE* f = std::fopen(p, "r");
+        if (!f) break;
+        int a = -1, b = -1;
+        char sep = 0;
+        if (std::fscanf(f, "%d%c%d", &a, &sep, &b) >= 1 && a == c) {
+            first.push_back(c);
+            all.push_back(c);
+            if (b >= 0) all.push_back(b);
+        }
+        std::fclose(f);
+    }
+    return mode == "smt" ? all : first;
+}
+
 static std::vector<int> ints(const std::string& s) {
     std::vector<int> r;
     size_t i = 0;
@@ -42,9 +62,12 @@ static std::vector<int> ints(const std::string& s) {
 int main(int argc, char** argv) {
     int experts = 96, rounds = 200, per_round = 3, down_type = 18;
     std::vector<int> threads = {1, 8, 16, 35, 70}, gu = {16, 32, 64}, dn = {48, 96, 192};
+    bool l1 = false;
+    std::string pin = "none";
     std::string touch = "main", kernel = "ggml";   // ggml: native_gu/down_rows; iq512 / iq256: the repo's multi-token kernels
-    for (int i = 1; i + 1 < argc; i += 2) {
-        const std::string a = argv[i], v = argv[i + 1];
+    for (int i = 1; i < argc; i += 2) {
+        const std::string a = argv[i], v = i + 1 < argc ? argv[i + 1] : "";
+        if (a == "--l1") { l1 = true; i -= 1; continue; }
         if (a == "--experts") experts = std::atoi(v.c_str());
         else if (a == "--rounds") rounds = std::atoi(v.c_str());
         else if (a == "--per-round") per_round = std::atoi(v.c_str());
@@ -54,6 +77,7 @@ int main(int argc, char** argv) {
         else if (a == "--down-type") down_type = std::atoi(v.c_str());
         else if (a == "--touch") touch = v;
         else if (a == "--kernel") kernel = v;
+        else if (a == "--pin") pin = v;
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     }
     const int N = 6144, FF = 3072;
@@ -95,9 +119,31 @@ int main(int argc, char** argv) {
     std::vector<float> ffb((size_t) per_round * FF), outb((size_t) per_round * N);
     C::native_quant_act(f, x.data(), act.data());
 
+    if (l1) {   // one thread, 64 gate rows + 64 up rows (about 0.3 MB: L2-resident) over and over: the decode + dot cost, no DRAM
+        const void* actp[1] = {act.data()};
+        float g1[64], u1[64];
+        float* gp[1] = {g1};
+        float* up[1] = {u1};
+        for (const char* k : {"ggml", "iq512", "iq256"}) {
+            const int reps = 4000;
+            auto t0 = Clock::now();
+            for (int it = 0; it < reps; ++it) {
+                const uint8_t* bl = pool;
+                if (!std::strcmp(k, "ggml")) { C::native_gu_rows(f, bl, actp, 1, gp, 0, 64); }
+                else if (!std::strcmp(k, "iq512")) { C::iq512_rows(f.gu_type, bl, f.gu_row, N, actp, 1, gp, 0, 64); C::iq512_rows(f.gu_type, bl + f.up_off, f.gu_row, N, actp, 1, up, 0, 64); }
+                else { C::iq256_rows(f.gu_type, bl, f.gu_row, N, actp, 1, gp, 0, 64); C::iq256_rows(f.gu_type, bl + f.up_off, f.gu_row, N, actp, 1, up, 0, 64); }
+            }
+            const double ms = ms_since(t0);
+            const double weights = 128.0 * N * reps;   // 64 gate + 64 up rows of 6144
+            std::printf("l1 %-6s: %.3f ns per weight, %.2f GB/s of expert bytes (%.2f ms for %d x 128 rows)\n", k, ms * 1e6 / weights,
+                        128.0 * f.gu_row * reps / (ms * 1e6), ms, reps);
+        }
+        return 0;
+    }
     std::printf("%7s %6s %6s %10s %10s %10s %9s\n", "threads", "rowsGU", "rowsDN", "gate/up ms", "down ms", "round ms", "GB/s");
     for (int T : threads) {
-        Par par(T - 1);
+        const std::vector<int> cpus = pin == "none" ? std::vector<int>() : pin_list(pin);
+        Par par(T - 1, cpus);
         for (int rgu : gu)
             for (int rdn : dn) {
                 double t_gu = 0, t_dn = 0;

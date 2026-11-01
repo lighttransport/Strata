@@ -1,6 +1,7 @@
 // src/minimax/m3_cpu_expert_test.cpp - the CPU expert path MiniMax's decode lane uses, against an independent reference:
 // ggml's own dequantizers (weights, and the Q8_K activation) and a plain float dot.  Covers swigluoai (NativeFmt::
 // swiglu_alpha > 0) with the clamp, the unchanged default silu(g) * u (alpha = 0), and the down rows.  No GPU, no model.
+#include "strata/kernels/cpu/iq_avx512.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
 
 #include <ggml-cpu.h>
@@ -105,6 +106,21 @@ static void test_pair(int gu_type, int d_type) {
             double w2 = 0, sc2 = 1e-6;
             for (int r = 0; r < FF; ++r) { w2 = std::fmax(w2, std::fabs(ff2[r] - ff[r])); sc2 = std::fmax(sc2, std::fabs(ff[r])); }
             check(w2 <= 1e-5 * sc2 + 1e-6, tag + " iq256 gate/up rows match the ggml path (max rel diff " + std::to_string(w2 / sc2) + ")");
+            if (C::iq512_supported(fm.gu_type) && __builtin_cpu_supports("avx512bw")) {   // the AVX-512 rows (STRATA_IQ512_FAST=1: the fast IQ2_XS decode)
+                std::vector<float> ga(FF), ua(FF);
+                float* gp[1] = {ga.data()};
+                float* up[1] = {ua.data()};
+                C::iq512_rows(fm.gu_type, blob.data(), fm.gu_row, (int) fm.n_embd, actp, 1, gp, 0, FF);
+                C::iq512_rows(fm.gu_type, blob.data() + fm.up_off, fm.gu_row, (int) fm.n_embd, actp, 1, up, 0, FF);
+                double w3 = 0, sc3 = 1e-6;
+                for (int r = 0; r < FF; ++r) {
+                    const double g = std::fmin(ga[r], 7.0), u = std::fmax(-7.0, std::fmin(ua[r], 7.0));
+                    const double v = g / (1.0 + std::exp(-1.702 * g)) * (1.0 + u);
+                    w3 = std::fmax(w3, std::fabs(v - ff[r]));
+                    sc3 = std::fmax(sc3, std::fabs(ff[r]));
+                }
+                check(w3 <= 1e-4 * sc3 + 1e-5, tag + " iq512 gate/up rows match the ggml path (max rel diff " + std::to_string(w3 / sc3) + ")");
+            }
         }
         if (mode) {   // the down rows from this hidden
             C::native_quant_h(fm, ff.data(), hq.data());

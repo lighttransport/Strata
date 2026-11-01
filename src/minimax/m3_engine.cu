@@ -949,6 +949,14 @@ struct Engine {
     // lossy decode levers (T <= kMaxWin only; the prompt's prefill stays exact): keep at most route_topk of the router's
     // experts per token, drop those below route_min_w times the token's largest weight, optionally rescale the rest
     int route_topk = 4;
+    // per-layer overrides of the two levers (REPL keys lay= / layfile=): -1 = the global value
+    std::vector<int> lay_topk;
+    std::vector<float> lay_minw;
+    bool has_lay() const { return !lay_topk.empty(); }
+    void set_lay(int l, float minw, int topk) {
+        if (lay_topk.empty()) { lay_topk.assign((size_t) m->n_layers, -1); lay_minw.assign((size_t) m->n_layers, -1.f); }
+        if (l >= 0 && l < m->n_layers) { lay_topk[(size_t) l] = topk; lay_minw[(size_t) l] = minw; }
+    }
     float route_min_w = 0.0f;
     bool route_renorm = false;
     long long route_dropped = 0, route_total = 0;
@@ -1686,7 +1694,9 @@ struct Engine {
 
     /// Lossy decode lever: per token keep at most route_topk experts and drop those lighter than route_min_w times the
     /// heaviest; route_renorm rescales the kept weights to the original sum.  Dropped entries get id -1 (skipped by every lane).
-    void apply_route_filter(int T, int Kp) {
+    void apply_route_filter(int T, int Kp, int layer) {
+        const int tk = has_lay() && lay_topk[(size_t) layer] >= 0 ? lay_topk[(size_t) layer] : route_topk;
+        const float mw = has_lay() && lay_minw[(size_t) layer] >= 0.f ? lay_minw[(size_t) layer] : route_min_w;
         for (int t = 0; t < T; ++t) {
             int32_t* id = h_ids.data() + (size_t) t * Kp;
             float* wt = h_wts.data() + (size_t) t * Kp;
@@ -1698,7 +1708,7 @@ struct Engine {
             for (int k = 0; k < Kp; ++k) before += wt[k];
             for (int r = 0; r < Kp; ++r) {
                 const int k = order[r];
-                const bool keep = r < std::max(1, route_topk) && wt[k] >= route_min_w * wmax;
+                const bool keep = r < std::max(1, tk) && wt[k] >= mw * wmax;
                 if (keep) after += wt[k];
                 else { id[k] = -1; wt[k] = 0.0f; ++route_dropped; }
                 ++route_total;
@@ -1774,7 +1784,7 @@ struct Engine {
         ph_sync += ms_since(t_sync0);
         std::memcpy(h_ids.data(), p_ids, h_ids.size() * 4);
         std::memcpy(h_wts.data(), p_wts, h_wts.size() * 4);
-        if (T <= kMaxWin && (route_topk < Kp || route_min_w > 0.0f)) apply_route_filter(T, Kp);
+        if (T <= kMaxWin && (route_topk < Kp || route_min_w > 0.0f || has_lay())) apply_route_filter(T, Kp, l);
         if (route_trace && T == 1) {
             std::fprintf(route_trace, "%lld %d", route_step, l);
             for (int32_t e : h_ids) std::fprintf(route_trace, " %d", e);
@@ -2426,6 +2436,10 @@ int strata::minimax::run(int argc, char** argv) {
     const int route_topk_saved = E.route_topk;
     const auto t0 = Clock::now();
     E.route_topk = E.top_k_model();   // the prompt's prefill stays exact
+    const std::vector<int> lay_topk_saved = E.lay_topk;
+    const std::vector<float> lay_minw_saved = E.lay_minw;
+    E.lay_topk.clear();
+    E.lay_minw.clear();
     const int chunk_use = rs.chunk_req > 0 ? std::min(rs.chunk_req, chunk) : chunk;
     if (rs.pf >= 0 && (E.wscr || rs.pf == 0)) E.pf_gemm = rs.pf != 0;
     if (rs.pre >= 0) E.pf_pre = rs.pre != 0;
@@ -2436,6 +2450,8 @@ int strata::minimax::run(int argc, char** argv) {
         if (ds) ds->inject(E, T, p0);
     }
     E.route_topk = route_topk_saved;
+    E.lay_topk = lay_topk_saved;
+    E.lay_minw = lay_minw_saved;
     const double pp_ms = ms_since(t0);
     const long long pp_miss = E.misses;
     const double pp_copy = E.copy_bytes;
@@ -2659,6 +2675,8 @@ int strata::minimax::run(int argc, char** argv) {
             E.route_topk = route_topk_opt;
             E.route_min_w = route_min_w_opt;
             E.route_renorm = route_renorm_opt;
+            E.lay_topk.clear();
+            E.lay_minw.clear();
             std::string dump_path;
             bool ok = true;
             size_t at = 3;
@@ -2675,6 +2693,28 @@ int strata::minimax::run(int argc, char** argv) {
                 else if (k == "n") rs.n_gen = std::atoi(v.c_str());
                 else if (k == "spec") rs.spec = v;
                 else if (k == "draft") rs.draft = std::atoi(v.c_str());
+                else if (k == "lay") {   // L:minw:topk,L:minw:topk,...
+                    size_t q = 0;
+                    while (q < v.size()) {
+                        size_t e2 = v.find(',', q);
+                        if (e2 == std::string::npos) e2 = v.size();
+                        int ll = 0, tkk = -1;
+                        float mww = -1.f;
+                        if (std::sscanf(v.substr(q, e2 - q).c_str(), "%d:%f:%d", &ll, &mww, &tkk) == 3) E.set_lay(ll, mww, tkk);
+                        q = e2 + 1;
+                    }
+                } else if (k == "layfile") {   // lines "layer minw topk"
+                    const std::string txt = read_file(v);
+                    size_t q = 0;
+                    while (q < txt.size()) {
+                        size_t e2 = txt.find('\n', q);
+                        if (e2 == std::string::npos) e2 = txt.size();
+                        int ll = 0, tkk = -1;
+                        float mww = -1.f;
+                        if (std::sscanf(txt.substr(q, e2 - q).c_str(), "%d %f %d", &ll, &mww, &tkk) == 3) E.set_lay(ll, mww, tkk);
+                        q = e2 + 1;
+                    }
+                }
                 else if (k == "topk") E.route_topk = std::atoi(v.c_str());
                 else if (k == "minw") E.route_min_w = (float) std::atof(v.c_str());
                 else if (k == "renorm") E.route_renorm = std::atoi(v.c_str()) != 0;
