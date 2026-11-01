@@ -462,3 +462,31 @@ The CPU decode kernel is not the lever either: with the weights resident in L2 (
 --l1`) ggml's dots, the repo's AVX2 multi-token kernel and the same kernel rebuilt for 256-bit AVX512-VNNI (`vpdpwssd`/`vpdpbusd`
 on the Xeon 6240, parity test passing) all take 0.115-0.119 ns per weight (2.4 GB/s of expert bytes per core). Three independent
 implementations at the same speed point to a shared limit (the table-driven grid decode) rather than the multiply-add chain.
+
+## Lossy decode settings judged by C++ coding tasks (measured; the gate is functional, not KL)
+
+The KL gate above is replaced for the faster settings by `tools/minimax_cpp_eval.py`: 46 single-function C++ tasks (26 easy, 20
+harder: an LRU cache class, Dijkstra, topological sort, an expression evaluator, knapsack, DP, string algorithms), each with unit
+tests. The model answers with thinking off (the prompt ends in `</mm:think>`), greedy decoding, up to 450-500 new tokens; the first
+code block is compiled with g++ -std=c++17 and run against the tests. "Pass" = compiles and every assert holds. `selftest` checks
+that a reference solution passes each test. One run per setting (single greedy sample), DSpark speculation with the defaults
+(draft 6, confidence floor 0.7), `STRATA_M3_IQ256=1`, FP16 K/V, one V100 + 2 x Xeon 6240. Decode tok/s is the mean over the
+tasks' answers (about 230 tokens each); code answers speculate better than the prose prompts used above, hence the higher speeds.
+
+| Setting (REPL key / CLI) | tok/s | Pass, 46 tasks | Easy 26 | Hard 20 | Pass vs exact |
+|---|---|---|---|---|---|
+| exact (`--speed exact`) | 24.1 | 41 | 26 | 15 | - |
+| top-3 (`topk=3`, `--speed fast`) | **30.3** | 43 | 26 | 17 | 105 % |
+| top-2 (`topk=2`, `--speed turbo`) | **39.2** | 37 | 26 | 11 | 90 % |
+| top-2 + weight floor 0.4 (`topk=2 minw=0.4`) | 42.2 | 38 | 25 | 13 | 93 % |
+| keep one missed expert (`missk=1`) | 38.1 | 38 | 24 | 14 | 93 % |
+| drop every expert that misses VRAM (`missk=0`, `--speed max`) | **47.2** | 39 | 25 | 14 | 95 % |
+| missk=0 + resident stand-ins (`missk=0 sub=1`) | 43.1 | 36 of 43 done | - | - | slower, no better |
+| top-1 (`topk=1`) | 51.3 | 32 | 21 | 11 | 78 % |
+
+Reading: the exact path fails 5 of the 46 tasks itself, so differences of one or two tasks are within what a single sample can show.
+With "at least 80 % of the exact path's passes" as the bar (the user's), top-3 is the 30+ tok/s setting (it keeps every easy task and
+passes 17 of 20 hard ones) and top-2, top-2 with a floor and `missk=0` are all above 35 tok/s with 90-95 % of the passes; top-1
+(51 tok/s) falls just below the bar at 78 %. Dropping the experts that would run on the CPU (`missk=0`) is the best trade at the
+top end: 47 tok/s for 95 % of the passes. Not measured: other languages, prompts much longer than these, free-form (multi-function)
+programs, sampling with temperature, and repeats of each setting.
