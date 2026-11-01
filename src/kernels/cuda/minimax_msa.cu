@@ -857,8 +857,9 @@ void minimax_msa_attention_f32(const float* q, const float* k, const float* v,
         throw std::invalid_argument("MiniMax MSA attention: invalid geometry or buffer");
     const int rows = queries * query_heads;
     static const bool no_split = std::getenv("STRATA_MSA_NOSPLIT") != nullptr;   // A/B: one thread block per row
-    static const bool no_group = std::getenv("STRATA_MSA_NOGROUP") != nullptr;   // A/B: the per-head prefill kernel
-    if (dim == 128 && !slow_msa() && !no_group && queries >= 16 && query_heads / kv_heads <= 32) {
+    // opt-in (different summation order from the per-head kernel): the grouped prefill kernel for FLOAT caches
+    static const bool group_f32 = std::getenv("STRATA_MSA_GROUP") != nullptr;
+    if (dim == 128 && !slow_msa() && group_f32 && queries >= 16 && query_heads / kv_heads <= 32) {
         attention_group_kernel<float><<<dim3((unsigned)queries, (unsigned)kv_heads), 32 * (query_heads / kv_heads), 0, (cudaStream_t)stream>>>(
             q, k, v, query_positions, key_positions, selected_blocks, query_heads, kv_heads, keys, block_size, top_k, ids_stride, out);
     } else if (dim == 128 && !slow_msa() && !no_split && rows <= kSplitMaxRows && block_size <= kSplitMaxBlockSize &&

@@ -3081,16 +3081,13 @@ void iq_mmvq(int t, const void* w, const void* x_q8_1, float* y, int n_in, int n
 
 void iq_dequant_f16(int t, const void* src, int64_t n, uint16_t* dst, void* stream, const float* scale) {
     if (n % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_f16: bad arguments\n"); std::exit(1); }
-    if (scale == nullptr) {
-        static const bool plain = std::getenv("STRATA_IQ_DEQUANT_PLAIN") != nullptr;   // A/B against the one-warp-per-block kernel
-        if (!plain) {
-            dequant_flat_stage_kernel<__half><<<(unsigned) ((n / 256 + 7) / 8), 256, 0, (cudaStream_t) stream>>>(t, src, (__half*) dst, n / 256);
-            check("iq_dequant_f16");
-            return;
-        }
-    }
     dequant_flat_kernel<__half><<<(unsigned) (n / 256), 32, 0, (cudaStream_t) stream>>>(t, src, (__half*) dst, scale);
     check("iq_dequant_f16");
+}
+void iq_dequant_f16_staged(int t, const void* src, int64_t n, uint16_t* dst, void* stream) {
+    if (n % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_f16_staged: bad arguments\n"); std::exit(1); }
+    dequant_flat_stage_kernel<__half><<<(unsigned) ((n / 256 + 7) / 8), 256, 0, (cudaStream_t) stream>>>(t, src, (__half*) dst, n / 256);
+    check("iq_dequant_f16_staged");
 }
 void iq_dequant_bf16(int t, const void* src, int64_t n, uint16_t* dst, void* stream) {
     if (n % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_bf16: bad arguments\n"); std::exit(1); }

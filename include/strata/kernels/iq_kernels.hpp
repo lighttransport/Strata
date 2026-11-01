@@ -28,6 +28,8 @@ void iq_mmvq(int ggml_type, const void* w, const void* x_q8_1, float* y, int n_i
 /// Dequantize `n` contiguous values (n a multiple of 256) to fp16 / fp32; fp16 times `*scale` when given (device:
 /// an NVFP4 expert's s_down, read by the kernel itself so the source may be released right after it).
 void iq_dequant_f16(int ggml_type, const void* src, int64_t n, uint16_t* dst, void* stream, const float* scale = nullptr);
+/// The same values without a scale, decoded in shared memory and stored as coalesced 16-byte lines (8 warps per block).
+void iq_dequant_f16_staged(int ggml_type, const void* src, int64_t n, uint16_t* dst, void* stream);
 /// Direct FP32 dequantization rounded to BF16, without an intermediate FP16 image.
 void iq_dequant_bf16(int ggml_type, const void* src, int64_t n, uint16_t* dst, void* stream);
 void iq_dequant_f32(int ggml_type, const void* src, int64_t n, float* dst, void* stream);

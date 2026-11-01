@@ -900,7 +900,7 @@ struct Engine {
         ptick(pt_conv);
         const bool iq = type == 16 || type == 17 || type == 18 || type == 19 || type == 20 || type == 21 || type == 22 ||
                         type == 23 || type == 29;
-        if (iq) K::iq_dequant_f16(type, w, (int64_t) n_in * n_out, wscr, st);
+        if (iq) K::iq_dequant_f16_staged(type, w, (int64_t) n_in * n_out, wscr, st);
         else K::dequant_f16(type, w, 0, n_out, n_in, wscr, st);
         ptick(pt_deq);
         const float one = 1.f, zero = 0.f;
