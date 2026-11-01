@@ -2378,7 +2378,7 @@ int strata::minimax::run(int argc, char** argv) {
             if (v == "exact") { route_topk_opt = 4; miss_keep_opt = -1; }
             else if (v == "fast") route_topk_opt = 3;            // slight loss: ~30 tok/s
             else if (v == "turbo") route_topk_opt = 2;           // approximate: ~40 tok/s
-            else if (v == "max") { route_topk_opt = 4; miss_keep_opt = 0; }   // drops every expert that misses VRAM: ~47 tok/s
+            else if (v == "max") { route_topk_opt = 2; miss_keep_opt = 0; }   // top-2, and no expert that misses VRAM: ~50 tok/s
             else { std::fprintf(stderr, "strata-m3: --speed exact|fast|turbo|max\n"); return 2; }
         }
         else if (a == "--runs") runs = std::max(1, std::atoi(next().c_str()));

@@ -480,13 +480,15 @@ tasks' answers (about 230 tokens each); code answers speculate better than the p
 | top-2 (`topk=2`, `--speed turbo`) | **39.2** | 37 | 26 | 11 | 90 % |
 | top-2 + weight floor 0.4 (`topk=2 minw=0.4`) | 42.2 | 38 | 25 | 13 | 93 % |
 | keep one missed expert (`missk=1`) | 38.1 | 38 | 24 | 14 | 93 % |
-| drop every expert that misses VRAM (`missk=0`, `--speed max`) | **47.2** | 39 | 25 | 14 | 95 % |
-| missk=0 + resident stand-ins (`missk=0 sub=1`) | 43.1 | 36 of 43 done | - | - | slower, no better |
+| drop every expert that misses VRAM (`missk=0`) | 47.2 | 39 | 25 | 14 | 95 % |
+| missk=0 + resident stand-ins (`missk=0 sub=1`) | 42.8 | 36 | - | - | 88 %, slower |
+| top-3 + missk=0 (`topk=3 missk=0`) | 49.0 | 37 | - | - | 90 % |
+| **top-2 + missk=0 (`topk=2 missk=0`, `--speed max`)** | **50.6** | 39 | - | - | **95 %** |
 | top-1 (`topk=1`) | 51.3 | 32 | 21 | 11 | 78 % |
 
 Reading: the exact path fails 5 of the 46 tasks itself, so differences of one or two tasks are within what a single sample can show.
 With "at least 80 % of the exact path's passes" as the bar (the user's), top-3 is the 30+ tok/s setting (it keeps every easy task and
 passes 17 of 20 hard ones) and top-2, top-2 with a floor and `missk=0` are all above 35 tok/s with 90-95 % of the passes; top-1
 (51 tok/s) falls just below the bar at 78 %. Dropping the experts that would run on the CPU (`missk=0`) is the best trade at the
-top end: 47 tok/s for 95 % of the passes. Not measured: other languages, prompts much longer than these, free-form (multi-function)
+top end: 47 tok/s for 95 % of the passes, and 50.6 tok/s for the same 95 % when top-2 is applied as well (`--speed max`). Not measured: other languages, prompts much longer than these, free-form (multi-function)
 programs, sampling with temperature, and repeats of each setting.
