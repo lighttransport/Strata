@@ -390,3 +390,25 @@ so 35 cores cap the lane near 85 GB/s of compute and it already runs at 72. Pinn
 round. `STRATA_M3_IQ256=1` is worth +2-5 % end to end. Reaching 35 tok/s inside the gate would need the lane at ~120 GB/s (a
 decode kernel about 1.5-2x faster than ggml's AVX2 one, which three attempts did not produce) plus the chain and draft overhead
 cut by ~15 ms; neither was found in the time of this allocation.
+
+### Residency-aware pruning and cache-aware substitution (measured, same setup; draft 2, `STRATA_M3_IQ256=1`)
+
+Only experts that miss the VRAM cache cost CPU time, so these levers drop only missed experts (`missk=` keeps at most that many missed
+experts per token and layer, heaviest first, the heaviest expert of a token is never dropped; `missw=` is a weight floor; `sub=1/2`
+replaces a dropped expert by the best resident one among the router's next four ranks, with its own weight (1) or the dropped
+expert's weight (2)). KL and top-1 are on the 210-token / 487-token prompts, tok/s on the same prompts, 200 new tokens.
+
+| Setting | Dropped | KL short / code | Top-1 short / code | tok/s short / code | Gate |
+|---|---|---|---|---|---|
+| top-3 (uniform) | 25 % | 6.0e-3 / 9.1e-3 | 61, 63 /64 | 22.8 / 23.4 | pass |
+| missk=2 | 15-19 % | 6.6e-3 / 1.31e-2 | 61, 62 | 22.6 / 22.5 | fails (code) |
+| missk=2 + top-3 | 28-30 % | 7.1e-3 / 1.62e-2 | 61, 62 | 25.7 / 26.1 | fails (code) |
+| missk=2 + top-3 + sub=1 | 25-28 % | 5.9e-3 / 1.64e-2 | 63, 62 | 25.5 / 23.8 | fails (code) |
+| missk=1 | 38-43 % | 2.6e-2 / 4.7e-2 | 60, 59 | 32.1 / 28.2 | fails |
+| missk=1 + sub=1 | 25 % | 2.1e-2 / 4.8e-2 | 61, 58 | 32.2 / 29.6 | fails |
+| missk=0 (every missed expert dropped) | 55 % | 7.2e-2 / 5.5e-2 | 58, 58 | 38.5 / 31.7 | fails |
+| missk=0 + sub=1 | 37 % | 4.4e-2 / 5.9e-2 | 60, 55 | 33.7 / 34.0 | fails |
+
+Targeting the missed experts does not buy quality: a dropped missed expert is heavier than the global lightest one, so each saved
+CPU millisecond costs more KL than uniform top-3, and a resident stand-in recovers little of it. The speed/quality curve of routing
+levers is monotone: 35 tok/s sits at KL 0.04-0.06, 2.5-6x over the gate.

@@ -310,7 +310,7 @@ __global__ void k_gemv_f32_blk(const float* W, const float* x, float* y, int n_i
 /// The router for one token per block (E <= 512 experts, block 256): p = sigmoid(logit); the top K by p + bias (ties:
 /// the lower id), weights p normalized over the K (when norm) and times scale.
 __global__ void k_route(const float* lg, const float* bias, int32_t* ids, float* wts, int E, int K_, float scale,
-                        int norm) {
+                        int norm, int32_t* xids = nullptr, float* xwts = nullptr, int NX = 0) {
     __shared__ float p[kMaxExperts], sel[kMaxExperts];
     const int t = blockIdx.x;
     for (int e = threadIdx.x; e < E; e += blockDim.x) {
@@ -338,6 +338,19 @@ __global__ void k_route(const float* lg, const float* bias, int32_t* ids, float*
         float w = wts[t * K_ + k];
         if (norm) w /= sum;
         wts[t * K_ + k] = w * scale;
+    }
+    // the next-best candidates (cache-aware substitution), weighted as if they had been selected
+    for (int x = 0; x < NX; ++x) {
+        int bi = 0;
+        float best = -INFINITY;
+        for (int e = 0; e < E; ++e)
+            if (sel[e] > best) {
+                best = sel[e];
+                bi = e;
+            }
+        sel[bi] = -INFINITY;
+        xids[t * NX + x] = bi;
+        xwts[t * NX + x] = (norm ? p[bi] / sum : p[bi]) * scale;
     }
 }
 
@@ -949,6 +962,20 @@ struct Engine {
     // lossy decode levers (T <= kMaxWin only; the prompt's prefill stays exact): keep at most route_topk of the router's
     // experts per token, drop those below route_min_w times the token's largest weight, optionally rescale the rest
     int route_topk = 4;
+    // residency-aware lever (REPL keys missk= / missw=): only experts that are NOT resident in VRAM cost CPU time, so only
+    // those are dropped: per token keep at most miss_keep of the missed experts (heaviest first) and none lighter than
+    // miss_minw times the token's largest weight; resident experts are always kept.  -1 = off.
+    int sub_mode = 0;   // 1: a dropped missed expert is replaced by the best resident next-ranked expert, with that expert's own weight; 2: with the dropped expert's weight
+    int32_t *d_xids = nullptr, *p_xids = nullptr;
+    float *d_xwts = nullptr, *p_xwts = nullptr;
+    std::vector<int32_t> h_xids;
+    std::vector<float> h_xwts;
+    int miss_keep = -1;
+    float miss_minw = 0.f;
+    bool expert_resident(int layer, int e) const {
+        const int s = slot_of[(size_t) layer * m->n_expert + e];
+        return s >= 0 && (slot_pend.empty() || !slot_pend[(size_t) s]);
+    }
     // per-layer overrides of the two levers (REPL keys lay= / layfile=): -1 = the global value
     std::vector<int> lay_topk;
     std::vector<float> lay_minw;
@@ -1418,6 +1445,12 @@ struct Engine {
         scores = dalloc(T * (size_t) mm.idx_heads * nblk);
         logits = dalloc((size_t) kMaxWin * (size_t) mm.n_vocab);   // one row per token of a verify window
         ids = dalloc_t<int32_t>(T * (size_t) mm.top_k);
+        CK(cudaMalloc(&d_xids, kMaxWin * 4 * 4));
+        CK(cudaMalloc(&d_xwts, kMaxWin * 4 * 4));
+        CK(cudaHostAlloc((void**) &p_xids, kMaxWin * 4 * 4, 0));
+        CK(cudaHostAlloc((void**) &p_xwts, kMaxWin * 4 * 4, 0));
+        h_xids.assign(kMaxWin * 4, -1);
+        h_xwts.assign(kMaxWin * 4, 0.f);
         CK(cudaHostAlloc((void**) &p_ids, T * (size_t) mm.top_k * 4, 0));
         CK(cudaHostAlloc((void**) &p_wts, T * (size_t) mm.top_k * 4, 0));
         CK(cudaHostAlloc((void**) &p_arg, kMaxWin * 4, 0));
@@ -1706,12 +1739,35 @@ struct Engine {
             const float wmax = wt[order[0]];
             float before = 0.f, after = 0.f;
             for (int k = 0; k < Kp; ++k) before += wt[k];
+            int missed_kept = 0;
             for (int r = 0; r < Kp; ++r) {
                 const int k = order[r];
-                const bool keep = r < std::max(1, tk) && wt[k] >= mw * wmax;
+                bool keep = r < std::max(1, tk) && wt[k] >= mw * wmax;
+                if (keep && miss_keep >= 0 && r > 0 && !expert_resident(layer, id[k])) {   // the heaviest expert is never dropped
+                    if (missed_kept >= miss_keep || wt[k] < miss_minw * wmax) {
+                        keep = false;
+                        if (sub_mode > 0) {   // a resident stand-in: the best next-ranked expert that is on the GPU and not yet used
+                            for (int j = 0; j < 4; ++j) {
+                                const int cand = h_xids[(size_t) t * 4 + j];
+                                if (cand < 0 || !expert_resident(layer, cand)) continue;
+                                bool used_already = false;
+                                for (int q = 0; q < Kp; ++q) used_already |= id[q] == cand;
+                                if (used_already) continue;
+                                const float w_old = wt[k];
+                                id[k] = cand;
+                                wt[k] = sub_mode == 1 ? h_xwts[(size_t) t * 4 + j] : w_old;
+                                h_xids[(size_t) t * 4 + j] = -1;
+                                after += wt[k];
+                                ++route_total;
+                                goto substituted;
+                            }
+                        }
+                    } else ++missed_kept;
+                } else if (keep && miss_keep >= 0 && r == 0 && !expert_resident(layer, id[k])) ++missed_kept;
                 if (keep) after += wt[k];
                 else { id[k] = -1; wt[k] = 0.0f; ++route_dropped; }
                 ++route_total;
+                substituted:;
             }
             if (route_renorm && after > 0.0f)
                 for (int k = 0; k < Kp; ++k) wt[k] *= before / after;
@@ -1770,11 +1826,17 @@ struct Engine {
         }
         // the router
         f32mm(L.router, h, lg, N, E, T);
-        k_route<<<(unsigned) T, kThreads, 0, st>>>(lg, L.bias, ids, wts, E, Kp, m->w_scale, m->w_norm ? 1 : 0);
+        const bool want_x = sub_mode > 0 && miss_keep >= 0 && T <= kMaxWin;
+        k_route<<<(unsigned) T, kThreads, 0, st>>>(lg, L.bias, ids, wts, E, Kp, m->w_scale, m->w_norm ? 1 : 0, want_x ? d_xids : nullptr,
+                                                   want_x ? d_xwts : nullptr, want_x ? 4 : 0);
         h_ids.resize((size_t) T * Kp);
         h_wts.resize((size_t) T * Kp);
         CK(cudaMemcpyAsync(p_ids, ids, h_ids.size() * 4, cudaMemcpyDeviceToHost, st));
         CK(cudaMemcpyAsync(p_wts, wts, h_wts.size() * 4, cudaMemcpyDeviceToHost, st));
+        if (want_x) {
+            CK(cudaMemcpyAsync(p_xids, d_xids, (size_t) T * 4 * 4, cudaMemcpyDeviceToHost, st));
+            CK(cudaMemcpyAsync(p_xwts, d_xwts, (size_t) T * 4 * 4, cudaMemcpyDeviceToHost, st));
+        }
 #if defined(STRATA_M3_CPU_POOL)
         if (cpu_lane && T <= kMaxWin) CK(cudaMemcpyAsync(h_host, h, (size_t) T * N * 4, cudaMemcpyDeviceToHost, st));
 #endif
@@ -1784,7 +1846,11 @@ struct Engine {
         ph_sync += ms_since(t_sync0);
         std::memcpy(h_ids.data(), p_ids, h_ids.size() * 4);
         std::memcpy(h_wts.data(), p_wts, h_wts.size() * 4);
-        if (T <= kMaxWin && (route_topk < Kp || route_min_w > 0.0f || has_lay())) apply_route_filter(T, Kp, l);
+        if (want_x) {
+            std::memcpy(h_xids.data(), p_xids, (size_t) T * 4 * 4);
+            std::memcpy(h_xwts.data(), p_xwts, (size_t) T * 4 * 4);
+        }
+        if (T <= kMaxWin && (route_topk < Kp || route_min_w > 0.0f || has_lay() || miss_keep >= 0)) apply_route_filter(T, Kp, l);
         if (route_trace && T == 1) {
             std::fprintf(route_trace, "%lld %d", route_step, l);
             for (int32_t e : h_ids) std::fprintf(route_trace, " %d", e);
@@ -2436,6 +2502,8 @@ int strata::minimax::run(int argc, char** argv) {
     const int route_topk_saved = E.route_topk;
     const auto t0 = Clock::now();
     E.route_topk = E.top_k_model();   // the prompt's prefill stays exact
+    const int miss_keep_saved = E.miss_keep;
+    E.miss_keep = -1;
     const std::vector<int> lay_topk_saved = E.lay_topk;
     const std::vector<float> lay_minw_saved = E.lay_minw;
     E.lay_topk.clear();
@@ -2452,6 +2520,7 @@ int strata::minimax::run(int argc, char** argv) {
     E.route_topk = route_topk_saved;
     E.lay_topk = lay_topk_saved;
     E.lay_minw = lay_minw_saved;
+    E.miss_keep = miss_keep_saved;
     const double pp_ms = ms_since(t0);
     const long long pp_miss = E.misses;
     const double pp_copy = E.copy_bytes;
@@ -2677,6 +2746,9 @@ int strata::minimax::run(int argc, char** argv) {
             E.route_renorm = route_renorm_opt;
             E.lay_topk.clear();
             E.lay_minw.clear();
+            E.miss_keep = -1;
+            E.miss_minw = 0.f;
+            E.sub_mode = 0;
             std::string dump_path;
             bool ok = true;
             size_t at = 3;
@@ -2715,6 +2787,9 @@ int strata::minimax::run(int argc, char** argv) {
                         q = e2 + 1;
                     }
                 }
+                else if (k == "missk") E.miss_keep = std::atoi(v.c_str());
+                else if (k == "missw") E.miss_minw = (float) std::atof(v.c_str());
+                else if (k == "sub") E.sub_mode = std::atoi(v.c_str());
                 else if (k == "topk") E.route_topk = std::atoi(v.c_str());
                 else if (k == "minw") E.route_min_w = (float) std::atof(v.c_str());
                 else if (k == "renorm") E.route_renorm = std::atoi(v.c_str()) != 0;
