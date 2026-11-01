@@ -2171,6 +2171,18 @@ __global__ void dequant_flat_kernel(int ty, const void* __restrict__ vx, dst_t* 
         }
     }
 }
+// flat, staged: 8 warps per block, a warp decodes one superblock into shared memory and stores it as 16-byte lines
+template<typename dst_t>
+__global__ void __launch_bounds__(256) dequant_flat_stage_kernel(int ty, const void* __restrict__ vx, dst_t* __restrict__ y,
+                                                                 int64_t nsb) {
+    __shared__ __align__(16) dst_t stage[8][QK_K];
+    const int w = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const int64_t i = (int64_t) blockIdx.x * 8 + w;
+    if (i >= nsb) return;
+    dq_dispatch<dst_t>(ty, vx, i, stage[w], lane);
+    __syncwarp();
+    reinterpret_cast<uint4*>(y + i * QK_K)[lane] = reinterpret_cast<const uint4*>(stage[w])[lane];
+}
 // gate/up: superblock i of a role matrix (n_embd/256 per row) -> interleaved row 2r + parity
 __global__ void dequant_gu_kernel(int ty, const void* __restrict__ gate, const void* __restrict__ up, int64_t per_row,
                                   __half* __restrict__ y, const float* __restrict__ tail) {
@@ -3069,6 +3081,14 @@ void iq_mmvq(int t, const void* w, const void* x_q8_1, float* y, int n_in, int n
 
 void iq_dequant_f16(int t, const void* src, int64_t n, uint16_t* dst, void* stream, const float* scale) {
     if (n % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_f16: bad arguments\n"); std::exit(1); }
+    if (scale == nullptr) {
+        static const bool plain = std::getenv("STRATA_IQ_DEQUANT_PLAIN") != nullptr;   // A/B against the one-warp-per-block kernel
+        if (!plain) {
+            dequant_flat_stage_kernel<__half><<<(unsigned) ((n / 256 + 7) / 8), 256, 0, (cudaStream_t) stream>>>(t, src, (__half*) dst, n / 256);
+            check("iq_dequant_f16");
+            return;
+        }
+    }
     dequant_flat_kernel<__half><<<(unsigned) (n / 256), 32, 0, (cudaStream_t) stream>>>(t, src, (__half*) dst, scale);
     check("iq_dequant_f16");
 }

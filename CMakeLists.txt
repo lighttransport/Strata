@@ -296,8 +296,11 @@ if(STRATA_BUILD_TESTS)
   add_test(NAME gguf_split_test COMMAND gguf_split_test)
   # the model families (qwen4exp, qwen35moe): the guards, the geometry from metadata, the layout tables (synthetic)
   add_executable(model_family_test tests/core/model_family_test.cpp)
-  target_link_libraries(model_family_test PRIVATE strata_artifact)
+  target_link_libraries(model_family_test PRIVATE strata_artifact strata_host)
   add_test(NAME model_family_test COMMAND model_family_test)
+  add_executable(minimax_msa_host_test tests/core/minimax_msa_host_test.c)
+  target_link_libraries(minimax_msa_host_test PRIVATE strata_host)
+  add_test(NAME minimax_msa_host_test COMMAND minimax_msa_host_test)
   # how --batch cuts a prompt read into pieces (a layer split with no slot decoding must still reach a BYIELD)
   add_executable(batch_read_test tests/program/batch_read_test.cpp)
   target_include_directories(batch_read_test PRIVATE include)
@@ -349,9 +352,12 @@ target_link_libraries(strata-plan PRIVATE strata_plan)
 # read once through strata_env_init from main(), since C has no thread-safe function-local static for the
 # lambdas this replaces to lean on.
 enable_language(C)
-add_library(strata_host STATIC src/host/glm_fp4_worker.c src/host/glm_fp4_layout.c src/host/ds41_prefill_wire.c src/host/q3_layout.c src/host/glm_names.c src/host/glm_fp4.c src/host/glm_fp4_protocol.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_layer.c src/host/glm_fp4_cache.c src/host/glm_draft.c src/host/ds41f_names.c)
+add_library(strata_host STATIC src/host/glm_fp4_worker.c src/host/glm_fp4_layout.c src/host/ds41_prefill_wire.c src/host/q3_layout.c src/host/glm_names.c src/host/glm_fp4.c src/host/glm_fp4_protocol.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_layer.c src/host/glm_fp4_cache.c src/host/glm_draft.c src/host/ds41f_names.c src/host/minimax_msa.c)
 set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 target_include_directories(strata_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(UNIX)
+  target_link_libraries(strata_host PUBLIC m)
+endif()
 if(UNIX)
   # Optional simulator binding to the same C11 cache policy used by the worker.
   add_library(strata_glm_mixed_policy SHARED EXCLUDE_FROM_ALL src/host/glm_mixed.c)
@@ -508,6 +514,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_mailbox.cu src/kernels/cuda/glm_q23.cu src/kernels/cuda/glm_q8.cu src/kernels/cuda/exl3.cu
                           src/kernels/cuda/llvq_tetra.cu
                           src/kernels/cuda/ds41.cu
+                          src/kernels/cuda/minimax_msa.cu
                           src/kernels/cuda/qsa.cu
                           src/kernels/cuda/elementwise.cu
                           src/kernels/cuda/bf16_gemv.cu
@@ -890,6 +897,28 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   target_link_libraries(strata-q36 PRIVATE strata_qwen35 ${_strata_gpu_runtime_target})
   target_link_libraries(strata PRIVATE strata_qwen35)
   target_compile_definitions(strata PRIVATE STRATA_HAVE_QWEN35=1)
+  # MiniMax M3 / M3.1 Flash (GGUF architecture minimax-m3): src/minimax/m3_engine.cu, the same arrangement - a
+  # library that `strata` switches to for a minimax-m3 model, and strata-m3 on its own
+  add_library(strata_minimax STATIC src/minimax/m3_engine.cu)
+  target_include_directories(strata_minimax PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/minimax PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include PRIVATE ${_strata_gpu_include_directories})
+  target_link_libraries(strata_minimax PRIVATE strata_kernels strata_host strata_warnings ${_strata_gpu_blas_target} ${_strata_gpu_runtime_target})
+  if(STRATA_NATIVE_EXPERTS)
+    # the CPU lane for decode (experts missing from VRAM run on the CPU from the preloaded pack)
+    target_link_libraries(strata_minimax PRIVATE strata_kernels_cpu)
+    target_compile_definitions(strata_minimax PRIVATE STRATA_M3_CPU_POOL=1)
+    add_executable(m3_cpu_expert_test src/minimax/m3_cpu_expert_test.cpp)
+    target_include_directories(m3_cpu_expert_test PRIVATE third_party/ggml)
+    target_link_libraries(m3_cpu_expert_test PRIVATE strata_kernels_cpu Threads::Threads)
+    add_test(NAME m3_cpu_expert_test COMMAND m3_cpu_expert_test)
+    set_tests_properties(m3_cpu_expert_test PROPERTIES SKIP_RETURN_CODE 77)
+    add_executable(m3_cpu_bench src/minimax/m3_cpu_bench.cpp)
+    target_include_directories(m3_cpu_bench PRIVATE src/minimax)
+    target_link_libraries(m3_cpu_bench PRIVATE strata_kernels_cpu Threads::Threads)
+  endif()
+  add_executable(strata-m3 src/minimax/m3_main.cpp)
+  target_link_libraries(strata-m3 PRIVATE strata_minimax ${_strata_gpu_runtime_target})
+  target_link_libraries(strata PRIVATE strata_minimax)
+  target_compile_definitions(strata PRIVATE STRATA_HAVE_MINIMAX=1)
 
   if(STRATA_ENABLE_HIP)
     enable_testing()
@@ -1262,6 +1291,15 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   target_include_directories(qsa_parity PRIVATE ${_strata_gpu_include_directories})
   target_link_libraries(qsa_parity PRIVATE strata_kernels ${_strata_gpu_runtime_target})
   add_test(NAME qsa_parity COMMAND qsa_parity --selftest)
+
+  add_executable(minimax_msa_parity src/kernels/minimax_msa_parity.cpp)
+  target_include_directories(minimax_msa_parity PRIVATE ${_strata_gpu_include_directories})
+  target_link_libraries(minimax_msa_parity PRIVATE strata_kernels strata_host ${_strata_gpu_runtime_target})
+  add_executable(minimax_msa_bench src/kernels/minimax_msa_bench.cpp)
+  target_include_directories(minimax_msa_bench PRIVATE ${_strata_gpu_include_directories})
+  target_link_libraries(minimax_msa_bench PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+  add_test(NAME minimax_msa_parity COMMAND minimax_msa_parity)
+  set_tests_properties(minimax_msa_parity PROPERTIES SKIP_RETURN_CODE 77)
 
   # the QSA top-k the engine dispatches against the original kernel: identical ids on both sides of the register
   # kernel's reach, with tied and with equal scores (synthetic, no model)

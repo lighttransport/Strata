@@ -1,0 +1,360 @@
+# MiniMax M3.1 Flash: decode projection for one V100
+
+**Two kinds of numbers live here, and they are labelled.** The projection sections (from "What the projection uses"
+to "What this says about reaching 25+ tok/s") are a model: byte counts are exact (read from the GGUF headers), hardware
+constants were measured on this class of node with GLM, and three inputs are assumptions that the tables sweep. The
+measured sections ("What was measured", "Measured: the preloaded expert pack" and "Measured: the decode path, step by
+step") are runs of `strata-m3` on one Tesla V100 node. The projection predicted 12.3-19.6 tok/s for plain decode with
+CPU-lane experts; the measured path reached 16.0 (15.8-16.0 over five fresh runs, 210-token prompt), inside that range.
+
+## What was measured: the first smoke run
+
+`strata-m3` (`src/minimax/m3_engine.cu`), UD-Q2_K_XL (4 shards, 143.9 GB), one Tesla V100 PCIe 32 GB, 72 CPUs and
+181 GB of RAM in the allocation, CUDA 12.9.86, 8192 context, greedy, one run:
+
+| | |
+|---|---|
+| Dense weights on the GPU | 9.35 GiB, loaded in 38 s |
+| Expert slots in VRAM | 656 (23.3 MiB each, the largest expert), 14.96 GiB |
+| Prompt, 210 tokens | 179 s (1.17 tok/s) |
+| Decode, 64 tokens | 1823 s (**0.035 tok/s**, 28.5 s per token) |
+| Expert copies, whole run | 13493 misses, 5954 hits, 230.5 GiB copied in 1997 s of host time (0.115 GiB/s) |
+
+Tokenization matched llama.cpp on both smoke prompts (210 and 6960 tokens). The MSA kernels match the host
+reference on the V100. Token parity with llama.cpp was not obtained: the reference server loaded only after a patch
+and then produced nothing in 75 minutes.
+
+Two numbers from the counters are used below. The prompt copied 5083 experts, so decode had 13493 − 5083 = 8410
+misses over 63 steps × 57 layers × 4 experts = 14364 accesses: a **decode hit rate of 41.5 % at 656 slots (9.0 % of
+the 7296 experts)**. That is one prompt, 64 tokens, an LRU of mixed-size slots, and it counts experts, not bytes.
+The copy rate of 0.115 GiB/s is about a hundredth of PCIe's 12 GB/s, so the current "copy a missed expert from
+the mapped file" path is not PCIe-bound. A direct measurement on the same node, after the run, points at the file
+system (same V100 node, `dd` with `iflag=direct`, 16 MiB blocks, 144 GB model in four shards on shared storage):
+
+| Cold read | GB/s |
+|---|---|
+| 1 stream, 1 GiB | 0.40 and 0.43 (two offsets) |
+| 8 parallel streams, 4 GiB total | 0.42 |
+| 32 parallel streams, 16 GiB total | 0.42 |
+
+Host-to-device copies on the same V100 (`cudaMemcpyAsync`, 20 repetitions, 1-256 MiB): pinned 11.9-12.3 GB/s,
+pageable 4.8-5.5 GB/s. Pageable staging alone therefore does not explain 0.115 GiB/s.
+
+Cold reads reach about 0.42 GB/s on this node however many streams read, and the page cache held only 21 GB of the
+144 GB model when checked (`Cached` in `/proc/meminfo`), so most experts were not in RAM. The memory-mapped path got
+0.12 GB/s, about a third of what sequential reads give. This is consistent with the copy rate being the file system,
+but it is two short probes on one node, taken after the runs; it has not been shown that every slow copy was a cold
+read. Reading the whole 134 GB expert pack once into process memory at 0.42 GB/s would take about 5.3 minutes.
+
+## What the projection uses
+
+`tools/sim` is the GLM decode simulator; `minimax_m31` is a new model entry in it. Sources of every input:
+
+| Input | Value | Source |
+|---|---|---|
+| Layers, experts, top-k, rows | 60 layers, 3 dense, 128 experts, top-4, 1 shared expert, 3072 rows | GGUF metadata |
+| Routed expert size | 18.14 MB (layers 3-58), 24.48 MB (layer 59); 4.183 GB per token | GGUF tensor census, exact |
+| Dense bytes read per token | 9.200 GB (attention, F32 indexer, shared experts, 3 dense FFNs, head) | GGUF tensor census, exact |
+| Dense weights resident | 9579 MiB | census; the engine loaded 9.35 GiB |
+| H2D (pinned), device memory | 12.3 GB/s, 576 GB/s | measured on the GLM V100 benchmark node |
+| CPU expert flow | 81.25 GB/s, swept 50-120 | measured with GLM Q2 experts on that node; includes the arithmetic. Plain DRAM bandwidth and RAM speed were not measured |
+| GPU GEMV efficiency, resident-expert kernel | 0.80 of 576 GB/s, 250 GB/s | **assumed** |
+| GPU launch and attention costs | 44 kernels per layer, 40 µs attention per layer | **fitted on GLM**, not on MiniMax |
+| Window union of experts for speculation | GLM's measured 1.80x for 2 tokens | **GLM value**; M3.1 has 128 experts, so it probably grows faster |
+| VRAM tier hit rate | uniform 16 %, GLM curve 54 %, GLM curve scaled to the measured 41.5 % point: 56.5 % | **assumed**; one measured point |
+| DSpark draft head | 2.0 GB Q8_0 read per round, about 4.9 ms; acceptance 0.5-0.85 | **assumed**; no acceptance measured |
+
+The tier holds 1165 experts (16 % of 7296) in the projection because it assumes an engine built for decode (small
+prompt chunk, FP16 K/V). The measured engine kept F32 K/V and 8192-token activation buffers, which left 656.
+
+## Projection (tok/s)
+
+Full output: `docs/benchmarks/minimax_m31_sim_20261101/projection.txt`. All rows use CPU-lane experts: experts that are
+not in VRAM run on the CPU from RAM, overlapped with the GPU.
+
+**Plain decode** (no speculation, next-layer PCIe prefetch on):
+
+| GPU chain assumption | uniform routing (16 % hits) | curve-scaled (56.5 % hits) |
+|---|---|---|
+| as fitted on GLM | 12.3 | 16.0 |
+| graph-captured chain (25 kernels per layer, half the exposed launch cost) | 13.9 | 18.9 |
+| plus GEMV at 90 % of 576 GB/s and a 400 GB/s expert kernel | 14.4 | 19.6 |
+
+At the last row the CPU side takes 26.6 ms and the GPU side 30.6 ms per token, yet a token takes about 51 ms, because
+the attention and dense chain of each layer must finish before that layer's router runs; only the shared expert and
+the resident experts overlap the CPU. A faster CPU therefore stops helping early: at 56.5 % hits the last row
+plateaus at 23.3 tok/s for any CPU flow from 200 to 1000 GB/s (19.6 at 81 GB/s). The hit rate is the larger lever:
+at an 80 % hit rate the same row gives 24.8 tok/s at 81 GB/s and 26.9 at 200 GB/s or more. **At the hit rates
+assumed here (at most 56.5 %), plain decode stays below 25 tok/s under all three GPU-chain assumptions.** Whether
+routing can reach an 80 % hit rate with 16 % of the experts resident is unknown; the one measured point is 41.5 % at 9 %.
+
+**With the DSpark draft head** (last GPU-chain row; n = draft tokens per round, p = per-position acceptance):
+
+| | p = 0.50 | p = 0.70 | p = 0.85 |
+|---|---|---|---|
+| 56.5 % hits, n = 1 | 19.0 | 21.5 | 23.4 |
+| 56.5 % hits, n = 2 | 17.4 | 21.8 | **25.6** |
+| 56.5 % hits, n = 3 | 15.1 | 20.5 | **25.7** |
+| 16 % hits, n = 2 | 11.7 | 14.6 | 17.2 |
+
+With n = 2 and 56.5 % hits the projection reaches 25 tok/s at a per-position acceptance of about 0.83. With uniform
+routing it does not reach it at any acceptance. A draft that is accepted half the time is slower than no draft at all.
+
+**UD-IQ1_M pack** (121 GB file, 3.74 GB of experts per token, 1317 slots), last GPU-chain row: 20.6 tok/s plain; with
+two draft tokens 18.7 / 23.4 / 27.5 at acceptance 0.5 / 0.7 / 0.85.
+
+## What this says about reaching 25+ tok/s
+
+1. Streaming experts over PCIe cannot do it: 4.18 GB per token at 12.3 GB/s is 340 ms.
+2. The first thing to fix is the copy path (0.115 GiB/s, 0.035 tok/s). Every row above assumes experts are already in
+   RAM in a form the CPU kernels and the DMA engine read at full speed. With cold reads capped near 0.42 GB/s, that
+   means reading the pack into process memory once at load (about 5 minutes for 134 GB) instead of faulting it in
+   during decode, and not relying on the page cache to keep it.
+3. Past that, the serial GPU chain (about 29 ms of the 51 ms) limits plain decode, not the CPU. Speculation amortizes
+   that chain over several tokens; a smaller pack, a higher hit rate and a cheaper launch path each add a few tok/s.
+4. The projection reaches 25 tok/s only if favourable assumptions hold together: either speculation with
+   acceptance of about 0.83 or better at the curve-scaled hit rate, or an unusually high hit rate (about 80 %) without
+   speculation, and in both cases the optimistic GPU chain. Treat 25 tok/s as a target this projection says is
+   possible but not safe.
+
+## Measured: the preloaded expert pack
+
+`strata-m3 --preload-experts` (or `STRATA_M3_PRELOAD=1`; `--preload-threads N`, `--no-pin`) reads all routed experts
+once at load into one block of process memory with large sequential `pread`s, drops each range from the page cache,
+page-locks the block layer by layer, and serves a VRAM slot miss as one host-to-device copy from it. Without the flag
+the engine is unchanged. `STRATA_M3_PRELOAD_CHECK=1` byte-compares 48 random experts of the pack with the mapped file.
+It needs the pack (124.7 GiB) plus 12 GiB of free memory, and falls back to the mapped file with a message otherwise.
+
+Same short smoke prompt, same V100 node class, same greedy settings, UD-Q2_K_XL, 8192 context, one run each (the
+preloaded run had 646 expert slots instead of 656: 16.23 GiB of VRAM was free after load against 16.47 GiB, cause not isolated):
+
+| | mapped file | preloaded pack |
+|---|---|---|
+| Load: pack read | none | 124.7 GiB in 135 s (0.99 GB/s, 16 threads), page-locked in 14 s |
+| Prompt, 210 tokens | 179 s (1.17 tok/s) | 10.8 s (19.5 tok/s) |
+| Decode, 64 tokens | 1823 s (0.035 tok/s) | 16.5 s (**3.83 tok/s**, 261 ms per token) |
+| Greedy tokens | | all 64 identical to the mapped-file run |
+| Pack bytes | | 48 random experts, 0 mismatching parts |
+| Process memory | | 126 GiB peak resident |
+
+The pack reads at about 1.0 GB/s here, more than twice the 0.42 GB/s the direct-read probe measured on the earlier
+node, so that probe was not a hard limit for sequential buffered reads; the two numbers come from different nodes and
+different times, and the cap's cause is unknown. The first logit of the preloaded run differs from the mapped run in
+the second decimal (30.25 vs 30.31) with identical tokens; the cause is not isolated (the slot count differed, which
+should not change arithmetic).
+
+Decode is now bound by PCIe, as the arithmetic predicted: 133 misses per token x 18.4 MB is 2.4 GB, 200 ms at 12.3 GB/s,
+against 261 ms measured. That is still far from 25 tok/s. Getting further needs the CPU-lane experts of the projection
+rows above (misses computed from the pinned pack on the CPU, overlapped with the GPU), which are not implemented.
+
+## Measured: the decode path, step by step
+
+One V100 node (Tesla V100 PCIe 32 GB, 2x Xeon Gold 6240 with 4 NUMA nodes, 72 CPUs and 181 GB in the allocation, CUDA
+12.9.86), UD-Q2_K_XL, the 210-token smoke prompt, 64 greedy tokens, one process per row (the rows with "runs" repeat the
+request inside one process). Single sequence, no speculation, same weights and routing throughout. RAM speed was not
+measured. Every row's 64 tokens were compared with the first mapped-file run; all matched except the 12.4-12.6 row, which
+stayed identical for 32 tokens and then diverged (see the end of this section).
+
+| Step (each includes the ones above) | decode tok/s | what it did |
+|---|---|---|
+| expert misses read from the mapped GGUF | 0.035 | page faults at ~0.12 GB/s |
+| `--preload-experts`: pack in pinned RAM, one H2D copy per miss | 3.83 | PCIe-bound: ~133 misses x 18 MB per token |
+| `--cpu-experts`: misses computed on the CPU from the pack, overlapped with the GPU | 6.8-7.9 | 35 threads, ggml-cpu dots, the pack placed by first touch |
+| pack interleaved over the 4 NUMA nodes (`mbind`) | 11.0 | CPU lane 103 -> 44 ms/token; the benchmark measured 31 -> 65 GB/s |
+| two VRAM slot sizes (1019 slots of 17.3 MiB instead of 761 of 23.3), AVX warp-per-slot MSA kernels | 11.7 | hit rate 38.8 -> 45.7 %; MSA 14.1 -> 5.5 ms/token on the GPU |
+| router first (shared expert overlaps the CPU lane), pinned router staging, GPU argmax, indexer on a second stream, K/V sized to the request, embedding table in pinned RAM, 0.5 GiB reserve | 12.4-12.6 | 1101 slots |
+| frequency-gated admission (up to 2 misses per layer enter VRAM, only if used at least as often as the slot's owner) | 13.1-14.3 | hit 52.9 -> 54 %, admissions 51 -> 28 per token |
+| spin-wait stream sync, cache warmed from the prompt's own routing, never waiting on an in-flight admission copy | 14.6-15.9 (15.33 fresh, 14.56 and 15.86 on repeats; earlier builds of the same design 14.7-15.8) | the blocking sync wake-up cost ~250 us x 57 syncs, ~14 ms/token |
+| CPU-lane workers pinned to the 35 physical cores (default; `STRATA_M3_PIN=0` unpins), large-expert slot pool 24 -> 8 | 15.2-15.7 mean over five runs (15.72 pinned, 15.22 unpinned, same node) | less straggling at the lane's barriers |
+| the CPU lane's result and the step's token ids go through mapped pinned memory that the kernels read over PCIe instead of `cudaMemcpyAsync` | **16.02, 16.00, 15.79, 16.01, 16.01** (mean 15.97, min 15.79; five fresh runs) | on this GPU all H2D copies share one copy engine in issue order, so a 24 KB result queued behind a 17 MB admission copy waited up to 1.4 ms per layer; the run-to-run spread of the GPU-chain wait fell from 1060-1615 ms to 1121-1162 ms |
+
+Run-to-run spread on the same configuration was about 0.4-0.6 tok/s until the last row, where it fell to 0.2. The warm-up copies ~940 experts in 1.4 s at the end
+of the prefill; that time is not in the prompt figures above.
+
+Where a token went (a profiled build before the pinning and mapped-copy changes, 72.5 ms): waiting for the GPU chain up to each layer's router 28 ms
+(GPU timeline 24 ms: q/k/v matvecs 8.0, MSA 5.0, o-proj 4.4, router 2.4, rope/kv 1.4, norms 2.3), the CPU lane 34 ms
+(gate/up 20, down 12; ~0.31 ms per expert, at the benchmark's floor), attention enqueue on the host 3 ms, head 1 ms.
+
+**Long context.** The same engine on the 6960-token smoke prompt (55 blocks of 128, 16 selected per layer; a planted
+code word that the answer must quote), 8192-token capacity, `--chunk 512`, 47 greedy tokens (the model stops there):
+
+| build | decode tok/s | notes |
+|---|---|---|
+| first MSA kernels (before the rework) | 10.9-11.1 | the sparse-attention kernel took 410-450 us per layer call |
+| reworked MSA kernels (1024-thread blocks, 4 slots in flight per warp, warp-level block selection) | 13.1 | 182 us per layer call; the 47 tokens, which quote the planted code word correctly, are identical to the first mapped-file run |
+| + split-K sparse attention (a thread block per selected block, partial-softmax merge) | 13.5 | 147 us per layer call; the same 47 tokens |
+| + pinned workers and the mapped copies (the final tree) | **14.0** | the same 47 tokens; the mapped copies did not change the long-context figure (13.996 against 14.021 before) |
+
+Prefill at that length is slow with `--chunk 512`: 230 s (30 tok/s), because every 512-token chunk routes to nearly all
+128 experts of every layer, so the whole 125 GiB pack crosses PCIe about 14 times (1.4 TiB copied). A larger chunk
+needs more VRAM for activations and was not measured here.
+
+MSA kernel microbenchmark (`minimax_msa_bench`, 1 query, 64 query heads over 4 kv heads, 128-wide, top-16 of the blocks;
+CUDA events, 200 calls, microseconds per layer call; the host reference test `minimax_msa_parity` passes with all of them):
+
+| cached positions | block scores | block selection | sparse attention | total |
+|---|---|---|---|---|
+| 270 (3 blocks) before -> after | 17.5 -> 17.4 | 8.9 -> 6.8 | 58.0 -> 28.4 | 84.4 -> 52.6 |
+| 2048 (16 blocks) before -> after | 21.5 -> 21.4 | 41.2 -> 22.3 | 449.6 -> 102.8 | 512.3 -> 146.5 |
+| 7000 (55 blocks) before -> after | 22.3 -> 23.5 | 43.9 -> 25.5 | 408.7 -> 98.2 | 475.0 -> 147.2 |
+
+The sparse-attention row is the split-K version: each selected block of keys is its own thread block with a local
+softmax, and a merge kernel combines the partials (133 us with one block per query head, 98 us split). Three attempts
+were measured and dropped: unrolling 8 slots per warp (164 us, register spills); a block per (query, kv head) that
+serves all 16 query heads of a group from one K/V read (2100 us: only 4 blocks on an 80-SM GPU); and the same grouping
+combined with the split (94 us at 7000 positions but 85 us instead of 29 at 270: 16 warp reductions per key and 64
+accumulator registers outweigh the traffic saved).
+
+Pinning and the AVX2 row kernel, five runs each on one node (tok/s): unpinned 14.93, 14.65, 15.44, 15.28, 15.81; pinned
+15.75, 15.74, 15.98, 15.74, 15.32; AVX2 rows 15.10, 15.40, 14.20, 15.89, 15.68; both 15.14, 15.28, 15.24, 16.02, 14.34.
+The AVX2 rows (`STRATA_M3_IQ256=1`, matching the ggml path to 2e-6) gave no gain and stay opt-in.
+
+What was tried and did not help: the AVX-512 i-quant kernel (47 GB/s against ggml's 63 on this CPU), the AVX2
+multi-token kernel (+5-8 %, not adopted), more than 70 CPU threads (no gain past ~16-35), admitting every miss
+(more hits but the compute stream waited on copy events: 13.1 tok/s at a 56 % hit rate before the wait was removed).
+`nsys` crashed on this process with and without a local temp directory, so GPU timings come from CUDA events.
+
+**The lossless bar used here.** It was set explicitly: equivalence at quantization-noise level, measured as teacher-forced
+top-1 agreement and KL against the all-GPU path, not bit-identical free-running text. Bit-identical output in every cache
+state would need canonical kernels (the CPU and GPU lanes rounding identically for IQ2_XS, IQ3_XXS and IQ4_XS, with a
+matching `expf`); that was judged out of scope. **How "lossless" holds here.** Nothing approximate is used: no skipped or substituted experts, no reduced-precision
+weights, no draft model. The CPU lane and the GPU lane evaluate the same quantized weights but quantize the activation
+differently (Q8_K on the CPU, q8_1 on the GPU), as llama.cpp's two backends do, so results are not bit-identical across
+cache states. Teacher-forced over the 64 baseline tokens against the all-GPU path: top-1 agreed on 63 of 64 steps, mean
+KL 7.6e-4, max |dlogit| 1.05 (the single disagreement is a step whose top-1/top-2 logits differ by 0.17); four builds of the final
+design agree on all 64 steps (mean KL 5.6e-4, 9.9e-4, 5.9e-4 and 6.1e-4, max 7.8e-3 down to 4.5e-3 and up to 1.7e-2,
+mean of the per-step max |dlogit| 0.40-0.42, max 1.19-1.25). Two all-GPU
+runs differed from each other by KL 9.1e-5 and max |dlogit| 0.79. Greedy text can therefore diverge at a near-tie: the 12.4-12.6 row, and a free-running repeat of the final build, generated "write a function" where the baseline had
+"provide the function" at token 32.
+
+## What is not predicted, and what is still owed
+
+- The projection is not refit to the measured path. Its GPU attention chain and hit rates were assumptions; the measured
+  path now gives the real ones (a per-layer GPU timeline above, hit rates of 46-54 % at 1100-1200 slots, and a routing
+  trace from `STRATA_M3_ROUTE_TRACE` that `tools/minimax_cache_policy_sim.py` replays). Feeding them back into
+  `tools/sim` is not done.
+- Long context (6960 tokens, 14.0 tok/s) was accepted as the best-effort result. Not tried: fusing block scores + selection,
+  128-thread split blocks, a cheaper grouped K/V read, a CUDA graph for the attention chain (estimated +0.4 to +1.0 tok/s),
+  and an FP16 K/V cache (estimated +0.7 to +1.2 tok/s, but a rounding step beyond the lossless bar that was set).
+- 25 tok/s was a projection target and is not reached: the measured path is 16.0 tok/s (15.8-16.0) at a 210-token
+  prompt and 14.0 at 6960 tokens, below 15 at that length: the remaining ~9 ms per token against the short prompt is
+  147 us of MSA kernels per layer (against 53 us), the K/V caches taking VRAM from expert slots (hit rate 46 % against
+  49-54 %), and the larger indexer-key scan, plain (non-speculative) decode. The DSpark draft head is not implemented; no acceptance rate or
+  draft-head timing has been measured on MiniMax.
+- One prompt (plus the long one) was used for the decode numbers, 64 tokens each, on one node. The cache policies were
+  tuned on a single 63-step routing trace; the frequency gate's gain over LRU may differ on other text.
+- Not measured on this node: host memory bandwidth in isolation, RAM speed, and whether the file-system read rate is per
+  node or shared with other jobs (0.42 GB/s in one probe, 1.0 GB/s while loading the pack on another node).
+- Prefill is not optimized or projected: 20 tok/s at 210 tokens and 30 tok/s at 6960 with `--chunk 512`, plus
+  135-150 s to load the pack and ~1.4 s to warm the cache from the prompt's routing.
+- Free-running greedy text of the 12.4-12.6 tok/s configuration and of one final-build run diverged from the baseline at
+  token 32 (a 0.17-logit near-tie); the other configurations matched all 64 tokens. Greedy output is not guaranteed
+  identical across cache states (see "How lossless holds here").
+- Lever-by-lever forecasts in this simulator have been off by several tok/s in both directions on GLM
+  (`docs/GLM_RUNNER_SIM.md`).
+
+## Reproduce
+
+```bash
+# the engine (CUDA build; needs ~137 GiB of free RAM for --preload-experts, a GPU with ~32 GB, token ids from the GGUF's tokenizer)
+strata-m3 --model FIRST_SHARD.gguf --tokens-file prompt.ids --max-new 64 --max-context 8192 --chunk 512 \
+    --preload-experts --cpu-experts          # STRATA_M3_PROF=2 prints the per-part timeline, STRATA_M3_ROUTE_TRACE=f the routes
+python3 tools/minimax_m31_sim.py                       # the tables above
+python3 tools/test_sim_minimax.py                      # census bytes, invariants (no GPU, no model)
+build-dir/m3_cpu_expert_test                           # the CPU expert path against ggml's dequantizers (no GPU, no model)
+python3 tools/minimax_cache_policy_sim.py trace.txt    # cache admission policies on a STRATA_M3_ROUTE_TRACE file
+# one configuration through the CLI; it uses the GLM-fitted hit curve, so it equals the "as fitted on GLM" row for that curve (15.75 tok/s)
+python3 tools/sim/glm_sim.py --model minimax_m31 estimate --hw tools/sim/data/hw_v100_m31_node.json \
+    --pack minimax_m31_ud_q2_k_xl --speculation none --mtp 0 --context 8192 --placement cpu --threads 35 \
+    --tier-policy lru --pcie-prefetch 1 --prefill-scratch-mib 512 --split-verify 0 --decode-cache-mib -1
+# new census from other GGUF files (headers only):
+python3 tools/minimax_sim_census.py FIRST_SHARD.gguf --name NAME --output tools/sim/data/minimax-m31-census-NAME.json
+```
+
+## Speculative decode and lossy levers (measured, one V100, UD-Q2_K_XL, 124.7 GiB pack in RAM)
+
+Single runs unless noted; short prompt 210 tokens x 64 new, "code" prompt 487 tokens x 200 new. Quality is teacher-forced
+against the unmodified path (64 steps). The K/V cache in FP16 (`--kv-f16`) gave KL 8.0e-4 and top-1 64/64, with no speed change at
+short context. The window (verify) path matches single-token decode: KL 5.2e-4, top-1 64/64.
+
+| Setting | Decode tok/s | Mean KL | Top-1 |
+|---|---|---|---|
+| none (short / code prompt) | 15.96 / 16.4 | - | - |
+| top-3 router | 18.2 | 3.9e-3 | 62/64 |
+| drop experts below 0.25 x max weight | 17.0 | 3.7e-3 | 63/64 |
+| top-3 + 0.25 threshold (short / code) | 18.9 / 20.1 | - | - |
+| top-2 (code) | 23.1 | 3.3e-2 | 60/64 |
+| top-2 + 0.4 threshold (code) | 24.0 | 3.2e-2 | 60/64 |
+| top-1 (code) | 29.5 | 1.1e-1 | 56/64 |
+| renormalized weights | worse KL than not renormalizing | | |
+
+Long prompt (6960 tokens, FP16 K/V): 14.2 plain, 16.2 with top-3, 16.5 with top-3 + 0.25 threshold.
+
+N-gram (prompt lookup) speculation does not pay: 15-22 % of drafts accepted (1.2-1.3 tokens per step, also on a code-edit
+prompt) and a 3-row verify step costs about 93 ms against about 62 ms per plain token, so it runs at 10.7-12.8 tok/s.
+The GPU chain is 21.3 ms per step (CUDA-event timeline, top-2); the rest of a step is the CPU expert lane.
+Prefill is bound by expert copies over PCIe: 30.6 tok/s at 6960 tokens, about 21 at 210.
+
+### DSpark draft head (`--dspark FILE --spec dspark --draft D`), measured
+
+The released DSpark head (5 layers, block 7, Q8_0, 2.1 GB on the GPU) is ported in `src/minimax/m3_engine.cu`: the target's
+hidden states at the inputs of layers 4, 18, 32, 46, 60 are fused (`fc` + RMS norm) into the head's K/V cache for every
+committed token; a draft is one pass over the block [last token, mask ...], the target's lm_head, then the Markov bias
+chained by argmax. Verification is the exact window path, greedy accept. Same node, FP16 K/V, single runs, 200 new tokens
+(120 for the first two rows of the code prompt).
+
+| Prompt | Routing | Draft tokens | Accepted | Tokens/step | Decode tok/s | Without head |
+|---|---|---|---|---|---|---|
+| code, 487 tokens | exact (top-4) | 2 | 70 % | 2.41 | 18.4 | 16.2 |
+| code | top-3, 0.25 threshold | 3 | 63 % | 2.90 | 23.1 | 20.1 |
+| code | top-2, 0.4 threshold | 3 | 63 % | 2.90 | 30.1 | 23.9 |
+| short, 210 tokens | exact | 2 | 83 % | 2.67 | 18.5 | 16.0 |
+| short | top-3, 0.25 threshold | 3 | 63 % | 2.90 | 21.7 | 18.9 |
+| short | top-2, 0.4 threshold | 3 | 73 % | 3.17 | 31.6 | 23.4 |
+
+Top-1 routing with 2 drafts reached 39.9 tok/s (code, 120 tokens, 83 % accepted). The speculative output equals the greedy
+output of the same (lossy) routing: the quality of each row is that of its routing setting (top-3 + 0.25: KL 4e-3; top-2
++ 0.4: KL 3.2e-2, top-1 agreement 60/64 on the short prompt). Not measured: the long (6960-token) prompt with the head,
+sampling (temperature > 0), and acceptance on prompts other than these two.
+
+Long prompt (6960 tokens, FP16 K/V, the head loaded; the answer ends at 47 tokens, so 15-17 verify steps per row and the figures
+are noisy): top-2 + 0.4 threshold 20.5 plain, 23.9 with 3 drafts (71 % accepted, 3.13 tokens/step); top-3 + 0.25 threshold 19.5
+with 3 drafts; exact routing 17.4 with 2 drafts (88 % accepted, 2.76 tokens/step).
+
+## Prefill with FP16 tensor-core GEMMs (`--pf-gemm`, opt-in), measured
+
+6960-token prompt, one V100, UD-Q2_K_XL pack in RAM, single runs (the prompt's routing is exact in all rows):
+
+| Path | Chunk | Prefill tok/s | Time | Expert copies |
+|---|---|---|---|---|
+| q8_1 column-group matvecs (default) | 512 | 30.6 | 227 s | 83,029 (1420 GiB) |
+| FP16 GEMM | 512 | 35.1 | 198 s | 82,990 |
+| FP16 GEMM | 2048 | 73.3 | 95 s | 26,035 (445 GiB) |
+| FP16 GEMM | 4096 | 102.3 | 68 s | 13,503 (231 GiB) |
+
+Short prompt (210 tokens): 20.4 (default) to 22.3 tok/s (FP16 GEMM): the pack's PCIe traffic dominates. Quality of the GEMM path
+(teacher-forced 64 steps against the default path): KL 1.2-1.6e-3, top-1 63-64/64. The larger chunk helps because each chunk
+streams almost the whole pack once, so the copy volume per token falls with the chunk.
+
+### Prefill, further steps (all opt-in, measured on the same node and prompt)
+
+A 6960-token prompt in one 7168-token chunk, FP16 K/V, single runs, prefill tok/s (time). `--pf-gemm` is the FP16 GEMM path
+above; the rows add one change each, in this order:
+
+| Change | Prefill tok/s | Time |
+|---|---|---|
+| FP16 GEMM, chunk 4096 (two chunks) | 102 | 68 s |
+| one chunk (7168): the pack streams once | 153 | 45 s |
+| grouped sparse attention (one block per query and KV head) | 114 at chunk 4096 | 61 s |
+| tensor-core sparse attention (WMMA, 16 heads x 128-key blocks) | 253 | 27.5 s |
+| `--pf-prefetch`: next layer's experts copied while this layer computes | 384 | 18.1 s |
+| staged, coalesced i-quant dequantization | 446-455 | 15.3-15.6 s |
+| tensor-core block scores | 480-484 | 14.4-14.5 s |
+| one FP16 conversion per shared input | 488-493 | 14.1-14.3 s |
+
+Profile of the 45 s row (device time between syncs): sparse attention 21.5 s, expert copy waits 10.5 s, expert GEMMs 9.2 s,
+block scores 1.6 s, other attention 1.7 s. In the 18 s row cuBLAS runs at about 70 TFLOP/s (385 TFLOP in 5.4 s); the dequantization
+was 4.6 s before the staged kernel and 1.7 s after. Quality against the default path (teacher-forced 64 steps, short prompt): KL
+1.1-1.3e-3, top-1 63-64/64 for every row, which is the level of FP16 K/V alone. Short prompts stay bound by streaming the pack:
+210 tokens 22.8 tok/s, 487 tokens 38.6 tok/s. Not done: the 128 experts of the last layer (large slots, 8 of them) still copy
+in line, about 0.25 s; prompts longer than the chunk need one pass over the pack per chunk.

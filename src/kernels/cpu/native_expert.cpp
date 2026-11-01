@@ -250,6 +250,40 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
                     int r0, int r1, const uint8_t* separate_up, const uint8_t* scale_blob) {
     if (f.q3_expanded_down) native_q3_expanded_check(f);
     if (f.nvfp4_k32) native_k32_check(f);
+    if (f.swiglu_alpha > 0) {   // swigluoai: ggml-cpu's own dot per row, then the activation (opt-in; see NativeFmt)
+        if (f.gu_type == kLlvqType || f.q23_layout || f.nvfp4_k32 || f.tail_off || separate_up)
+            throw std::invalid_argument("swigluoai experts take plain GGML rows");
+        const ggml_vec_dot_t dot = traits(f.gu_type)->vec_dot;
+        const int n = (int) f.n_embd;
+        const float limit = f.swiglu_limit > 0 ? f.swiglu_limit : INFINITY;
+        if (f.iq256_rows && nt <= 8 && cpu_avx2_ok() && iq256_supported(f.gu_type)) {
+            thread_local float up[8][kNativeFF];
+            float* upp[8];
+            for (int t = 0; t < nt; ++t) upp[t] = up[t];
+            iq256_rows(f.gu_type, blob, f.gu_row, n, act, nt, ff, r0, r1);
+            iq256_rows(f.gu_type, blob + f.up_off, f.gu_row, n, act, nt, upp, r0, r1);
+            for (int t = 0; t < nt; ++t)
+                for (int r = r0; r < r1; ++r) {
+                    const float g = std::fmin(ff[t][r], limit);
+                    const float uu = std::fmax(-limit, std::fmin(up[t][r], limit));
+                    ff[t][r] = g / (1.f + std::exp(-f.swiglu_alpha * g)) * (1.f + uu);
+                }
+            return;
+        }
+        for (int r = r0; r < r1; ++r) {
+            const uint8_t* gr = blob + (size_t) r * f.gu_row;
+            const uint8_t* ur = blob + f.up_off + (size_t) r * f.gu_row;
+            for (int t = 0; t < nt; ++t) {
+                float g = 0.f, u = 0.f;
+                dot(n, &g, 0, gr, 0, act[t], 0, 1);
+                dot(n, &u, 0, ur, 0, act[t], 0, 1);
+                g = std::fmin(g, limit);
+                u = std::fmax(-limit, std::fmin(u, limit));
+                ff[t][r] = g / (1.f + std::exp(-f.swiglu_alpha * g)) * (1.f + u);
+            }
+        }
+        return;
+    }
     if (f.gu_type == kLlvqType) {
         llvq_gu_rows(blob, separate_up ? separate_up : blob + f.up_off, act, nt, ff, r0, r1, f.swiglu_limit);
         return;
@@ -391,6 +425,10 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
                       int r0, int r1, const uint8_t* separate_down, const uint8_t* scale_blob) {
     if (f.q3_expanded_down) native_q3_expanded_check(f);
     if (f.nvfp4_k32) native_k32_check(f);
+    if (f.swiglu_alpha > 0 && f.iq256_rows && cpu_avx2_ok() && iq256_supported(f.d_type) && !separate_down && f.d_type != kLlvqType) {
+        iq256_rows(f.d_type, blob + f.down_off, f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);   // MiniMax decode lane, opt-in
+        return;
+    }
     if (f.q3_expanded_down) {
         q3k_expanded_rows(separate_down?separate_down:(blob?blob+f.down_off:nullptr),f.d_row,int(f.n_ff),hq,nt,out,r0,r1);
         return;

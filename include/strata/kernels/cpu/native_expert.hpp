@@ -46,6 +46,13 @@ struct NativeFmt {
     bool canon = false;               ///< canonical Q2_K/Q3_K arithmetic (canon_expert.hpp): the bits the GPU tier computes
     float gate_skip = 0;              ///< canonical mode: units with |silu(gate)| below this contribute zero (lossy, opt-in)
     float swiglu_limit = 0;           ///< 0 preserves the Qwen contract; GLM uses 10
+    /// > 0: MiniMax's "swigluoai" for the gate/up rows (ggml-cpu dots, then g = min(g, swiglu_limit),
+    /// u = clamp(u, -swiglu_limit, swiglu_limit), out = g * sigmoid(swiglu_alpha * g) * (1 + u)).  0 (the default)
+    /// keeps every other model's silu(g) * u path exactly as it was.
+    float swiglu_alpha = 0;
+    /// With swiglu_alpha > 0 only: take the gate/up/down rows from the AVX2 multi-token kernels (iq256_rows) instead of
+    /// ggml's vec_dot.  The same arithmetic up to float summation order; opt-in.
+    bool iq256_rows = false;
     /// IQ1_S (type 19) gate/up and down rows on the AVX-2 multi-token kernel from one token on (iq_avx2.cpp Fmt32<19>)
     /// instead of ggml-cpu's dot, whose BMI2 pdep decode is microcoded on Zen 1/2. Set by the DeepSeek-V4.1 loader;
     /// STRATA_IQ1S_256=1 sets it for every model. Off: a model already running IQ1_S experts keeps ggml's rounding.
