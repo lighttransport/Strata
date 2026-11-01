@@ -12,6 +12,7 @@
 #include "gguf_fixture.hpp"
 
 #include "strata/core/family_layout.hpp"
+#include "strata/core/model.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -209,6 +210,86 @@ int main(int argc, char** argv) {
         check(e.find("Qwen3.6-35B-A3B") != std::string::npos && e.find("does not run it yet") != std::string::npos,
               "the engine guard refuses Qwen3.6: recognised, not supported yet");
         check(strata::check_engine_architecture(b).empty(), "the engine guard runs qwen4exp");
+        const std::string mp = "minimax-m3.";
+        std::vector<Kv> mkv = {fixture::str("general.architecture", "minimax-m3"),
+            fixture::u32(mp + "block_count", 60), fixture::u32(mp + "embedding_length", 6144),
+            fixture::u32(mp + "context_length", 1048576), fixture::u32(mp + "attention.head_count", 64),
+            fixture::u32(mp + "attention.head_count_kv", 4), fixture::u32(mp + "attention.key_length", 128),
+            fixture::u32(mp + "attention.value_length", 128), fixture::u32(mp + "expert_count", 128),
+            fixture::u32(mp + "expert_used_count", 4), fixture::u32(mp + "leading_dense_block_count", 3),
+            fixture::u32(mp + "expert_feed_forward_length", 3072), fixture::u32(mp + "expert_shared_count", 1),
+            fixture::u32(mp + "attention.indexer.head_count", 4), fixture::u32(mp + "attention.indexer.key_length", 128),
+            fixture::u32(mp + "attention.indexer.top_k", 16), fixture::u32(mp + "attention.indexer.block_size", 128),
+            fixture::u32(mp + "attention.indexer.local_blocks", 1)};
+        const fs::path mm = d.path / "minimax.gguf";
+        fixture::write(mm, mkv, {});
+        const strata::GgufFile mf(mm.string());
+        check(strata::model_family(mf) == strata::ModelFamily::MiniMaxM3 && strata::check_architecture(mf).empty(),
+              "MiniMax M3.1 architecture and geometry are recognized");
+        check(strata::check_engine_architecture(mf).find("inference engine is not available") != std::string::npos,
+              "MiniMax is refused until its inference engine is linked");
+        const strata::GgufModel mm_model({mm.string()});
+        check(strata::check_minimax_m3_indexers(mm_model).find("missing blk.0.indexer.q_proj.weight") != std::string::npos,
+              "MiniMax preflight requires MSA indexers on all 60 layers");
+        {
+            // The descriptor reads the rest of the released metadata (values from the UD-Q2_K_XL GGUF).
+            std::vector<Kv> dkv = mkv;
+            dkv.push_back(fixture::u32(mp + "vocab_size", 200064));
+            dkv.push_back(fixture::u32(mp + "feed_forward_length", 12288));
+            dkv.push_back(fixture::u32(mp + "rope.dimension_count", 64));
+            dkv.push_back(fixture::f32(mp + "rope.freq_base", 1.0e7f));
+            dkv.push_back(fixture::f32(mp + "attention.layer_norm_rms_epsilon", 1.0e-6f));
+            dkv.push_back(fixture::u32(mp + "expert_gating_func", 2));
+            dkv.push_back(fixture::f32(mp + "expert_weights_scale", 2.0f));
+            dkv.push_back(fixture::boolean(mp + "expert_weights_norm", true));
+            const fs::path md = d.path / "minimax-desc.gguf";
+            fixture::write(md, dkv, {});
+            bool read_ok = false;
+            strata::core::ModelDescriptor m;
+            try { m = strata::core::ModelDescriptor::read(strata::GgufFile(md.string())); read_ok = true; }
+            catch (const std::exception& e) { std::printf("  descriptor: %s\n", e.what()); }
+            check(read_ok, "MiniMax descriptor reads the released metadata");
+            bool layers_ok = m.layers.size() == 60;
+            for (size_t l = 0; layers_ok && l < m.layers.size(); ++l) {
+                const auto& L = m.layers[l];
+                const bool dense = l < 3;
+                layers_ok = L.mixer == strata::core::MixerKind::Msa &&
+                            L.ffn == (dense ? strata::core::FfnKind::Dense : strata::core::FfnKind::Moe) &&
+                            L.intermediate == (dense ? 12288 : 3072) && L.swiglu_limit == 7.0f &&
+                            L.shared_swiglu_limit == 7.0f && L.swiglu_alpha == 1.702f;
+            }
+            check(layers_ok, "MiniMax layers: MSA on all 60, dense FFN 12288 on 0-2, MoE 3072 on 3-59, swigluoai 1.702/7");
+            check(m.residual == strata::core::ResidualKind::Plain && m.hidden == 6144 && m.vocab == 200064 &&
+                      m.attention_heads == 64 && m.kv_heads == 4 && m.head_dim == 128 && m.rope_dim == 64,
+                  "MiniMax attention: plain residual, 64/4 x 128, rope 64");
+            check(m.index_heads == 4 && m.index_dim == 128 && m.index_top_k == 16 && m.index_block_size == 128 &&
+                      m.index_local_blocks == 1 && m.leading_dense_layers == 3,
+                  "MiniMax MSA indexer: 4 x 128, top-16 blocks of 128, 1 local block");
+            check(m.experts == 128 && m.top_k == 4 && m.shared_experts == 1 && m.shared_intermediate == 3072 &&
+                      m.gating_function == 2 && m.normalize_expert_weights && m.expert_scale == 2.0f &&
+                      m.rms_epsilon == 1.0e-6f,
+                  "MiniMax MoE: 128 experts top-4, 1 shared, sigmoid, normalized, scale 2");
+            std::vector<Kv> lkv = dkv;
+            lkv.push_back(fixture::f32(mp + "swiglu_limit", 10.0f));
+            const fs::path ml = d.path / "minimax-limit.gguf";
+            fixture::write(ml, lkv, {});
+            const auto lm = strata::core::ModelDescriptor::read(strata::GgufFile(ml.string()));
+            check(lm.layers.at(3).swiglu_limit == 10.0f, "MiniMax stored swiglu_limit overrides the default");
+            std::vector<Kv> skv = dkv;
+            for (auto& k : skv)
+                if (k.key == mp + "expert_gating_func") k.u = 1;
+            const fs::path ms = d.path / "minimax-softmax.gguf";
+            fixture::write(ms, skv, {});
+            bool refused = false;
+            try { (void)strata::core::ModelDescriptor::read(strata::GgufFile(ms.string())); }
+            catch (const std::exception&) { refused = true; }
+            check(refused, "MiniMax descriptor refuses a non-sigmoid router");
+        }
+        mkv.erase(mkv.begin() + 2);
+        const fs::path miss_m = d.path / "minimax-missing.gguf";
+        fixture::write(miss_m, mkv, {});
+        check(strata::check_architecture(strata::GgufFile(miss_m.string())).find("minimax-m3.embedding_length") != std::string::npos,
+              "MiniMax missing geometry is refused with the key named");
         std::vector<Kv> kv = metadata("qwen35moe", kQwen36, 8);
         for (auto it = kv.begin(); it != kv.end(); ++it)
             if (it->key == "qwen35moe.ssm.time_step_rank") { kv.erase(it); break; }

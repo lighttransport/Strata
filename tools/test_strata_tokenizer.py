@@ -78,6 +78,27 @@ class ByteCache(unittest.TestCase):
         self.assertEqual(a.token_bytes(0), b"\x00")
         self.assertEqual(b.token_bytes(0), b"\xff")
 
+
+class Normalization(unittest.TestCase):
+    def test_nfc_is_opt_in_and_matches_precomposed_text(self):
+        decomposed = "e\u0301"
+        precomposed = "\u00e9"
+        legacy = toy()
+        normalized = ST.Tokenizer(legacy.tokens, [], normalize_nfc=True)
+        self.assertNotEqual(legacy.encode(decomposed), legacy.encode(precomposed))
+        self.assertEqual(normalized.encode(decomposed), normalized.encode(precomposed))
+        self.assertEqual(normalized.decode(normalized.encode(decomposed)), precomposed)
+
+    def test_minimax_pretokenizer_uses_unicode_case_boundaries(self):
+        t = ST.Tokenizer(toy().tokens, [], pre="minimax-m2")
+        split = lambda s: [m.group(0) for m in t._re.finditer(s)]
+        self.assertEqual(split("HelloWorld"), ["Hello", "World"])
+        self.assertEqual(split("ПриветМир"), ["Привет", "Мир"])
+        self.assertEqual(split("1234"), ["123", "4"])
+        self.assertEqual(split("can't"), ["can't"])
+        with self.assertRaisesRegex(ValueError, "unsupported byte-level BPE"):
+            ST.Tokenizer(toy().tokens, [], pre="unknown-model")
+
     def test_shared_tokenizer_concurrent_first_decode(self):
         import threading
         from concurrent.futures import ThreadPoolExecutor

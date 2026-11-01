@@ -225,7 +225,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
         if hw.fixed_weight_pack and cfg.pack != hw.fixed_weight_pack:
             raise ValueError("fixed-weight census does not match selected pack")
         fixed = hw.fixed_weight_bytes.get(str(layer), model.layer_fixed_bytes(layer)) * dense_scale
-        shared_bytes = hw.fixed_weight_bytes.get("shared:" + str(layer), FIXED_BYTES["shared_expert"]) * dense_scale
+        shared_bytes = hw.fixed_weight_bytes.get("shared:" + str(layer), model.layer_shared_bytes(layer)) * dense_scale
         if layer < g.dense_layers:
             t = sum(kernels.gpu_gemv_ms(hw, fixed, rows * w, params) + kernels.gpu_launch_ms(hw, params)
                     for w in widths)

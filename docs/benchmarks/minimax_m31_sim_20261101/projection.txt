@@ -1,0 +1,44 @@
+VRAM expert tier for a decode-oriented engine: 1165 experts (20384 MiB, 16.0 % of 7296)
+measured decode hit at 656 slots (9.0 %): 41.5 %  (GLM curve there: 39.7 %)
+hit assumptions: {'uniform routing': '16.0 %', 'GLM-fitted LRU curve': '54.1 %', 'curve scaled to the measured M3.1 point': '56.5 %'}
+
+Decode tok/s, no speculation (CPU flow 81.2 GB/s):
+  CPU-lane experts             uniform routing                            hit  16.0 %   11.82 tok/s  (CPU  50.1 ms, GPU  37.6 ms, exposed  27.5; cpu+gpu)
+  CPU-lane experts             GLM-fitted LRU curve                       hit  54.1 %   15.29 tok/s  (CPU  30.5 ms, GPU  44.4 ms, exposed  28.0; cpu+gpu)
+  CPU-lane experts             curve scaled to the measured M3.1 point    hit  56.5 %   15.58 tok/s  (CPU  29.2 ms, GPU  44.9 ms, exposed  28.0; cpu+gpu)
+  + next-layer PCIe prefetch   uniform routing                            hit  16.0 %   12.33 tok/s  (CPU  44.9 ms, GPU  39.3 ms, exposed  29.2; cpu+gpu)
+  + next-layer PCIe prefetch   GLM-fitted LRU curve                       hit  54.1 %   15.75 tok/s  (CPU  27.6 ms, GPU  45.4 ms, exposed  28.9; cpu+gpu)
+  + next-layer PCIe prefetch   curve scaled to the measured M3.1 point    hit  56.5 %   16.03 tok/s  (CPU  26.6 ms, GPU  45.7 ms, exposed  28.9; cpu+gpu)
+
+GPU chain assumptions, plain decode, prefetch on (columns: uniform routing / curve-scaled hit):
+  as fitted on GLM                                                        12.33 /  16.03 tok/s  (GPU  45.7 ms, CPU  26.6 ms)
+  graph-captured chain (25 kernels/layer, half the exposed launch cost)   13.94 /  18.87 tok/s  (GPU  36.5 ms, CPU  26.6 ms)
+  + GEMV 90 % of 576 GB/s and 400 GB/s expert kernel                      14.40 /  19.60 tok/s  (GPU  30.6 ms, CPU  26.6 ms)
+
+DSpark speculation on the last profile (draft head 2.0 GB Q8_0 read per round ~ 4.9 ms, assumed):
+  tok/s  rows: draft tokens n; columns: per-position acceptance p; hit = curve-scaled / uniform
+  curve-scaled hit
+    n \ p      0.50   0.70   0.85
+    1         19.0   21.5   23.4
+    2         17.4   21.8   25.6
+    3         15.1   20.5   25.7
+    4         13.4   19.2   25.7
+  uniform routing
+    n \ p      0.50   0.70   0.85
+    1         13.1   14.9   16.2
+    2         11.7   14.6   17.2
+    3          9.9   13.4   16.8
+    4          8.7   12.4   16.6
+
+What 25 tok/s needs on the last profile (prefetch on):
+  draft n=1, curve-scaled hit: per-position acceptance >= 0.97
+  draft n=1, uniform routing: per-position acceptance >= unreachable
+  draft n=2, curve-scaled hit: per-position acceptance >= 0.83
+  draft n=2, uniform routing: per-position acceptance >= unreachable
+  draft n=3, curve-scaled hit: per-position acceptance >= 0.83
+  draft n=3, uniform routing: per-position acceptance >= unreachable
+
+UD-IQ1_M pack (3.74 GB/token of experts), last profile, curve-scaled hit, prefetch, plain decode:
+  1317 slots: 20.63 tok/s (CPU 24.2 ms, GPU 29.8 ms)
+  with DSpark speculation, n=2 draft tokens (per-position acceptance 0.5 / 0.7 / 0.85):
+    18.7  23.4  27.5 tok/s

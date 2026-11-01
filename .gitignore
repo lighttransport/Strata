@@ -69,6 +69,7 @@ build-vision-cuda12.bat
 
 # Local coding-agent handoff; keep out of version control.
 /resume.md
+/resume-m31f.md
 
 # Local GPU operator tooling and raw runs; publish generic measurement summaries.
 /slurm-gpu/

@@ -15,9 +15,9 @@
 
 namespace strata::core {
 
-enum class MixerKind { Gdn, Qsa, Kda, SparseMla, Csa };   // Csa: DeepSeek-V4.1's compressed sparse attention
+enum class MixerKind { Gdn, Qsa, Kda, SparseMla, Csa, Msa };   // Msa: MiniMax Sparse Attention
 enum class FfnKind { Dense, Moe };
-enum class ResidualKind { Gated, Mhc };
+enum class ResidualKind { Gated, Mhc, Plain };
 
 struct LayerDescriptor {
     MixerKind mixer;
@@ -25,15 +25,19 @@ struct LayerDescriptor {
     int64_t intermediate;
     float swiglu_limit = 0;
     float shared_swiglu_limit = 0;
+    // 0: SwiGLU (silu(gate) * up, clamped by swiglu_limit when set). > 0: MiniMax's "swigluoai"
+    // (min(gate, limit) * sigmoid(alpha * min(gate, limit)) * (1 + clamp(up, -limit, limit))).
+    float swiglu_alpha = 0;
 };
 
 struct ModelDescriptor {
     std::string architecture;
     int64_t hidden = 0, vocab = 0, context = 0;
     int64_t experts = 0, top_k = 0, streams = 0;
-    int64_t attention_heads = 0, kv_rank = 0, q_rank = 0;
+    int64_t attention_heads = 0, kv_heads = 0, head_dim = 0, kv_rank = 0, q_rank = 0;
     int64_t linear_heads = 0, linear_dim = 0, conv_kernel = 0;
     int64_t index_heads = 0, index_dim = 0, index_pool = 0, index_top_k = 0;
+    int64_t index_block_size = 0, index_local_blocks = 0, leading_dense_layers = 0;
     int64_t sinkhorn_iterations = 0;
     int64_t rope_dim = 0, expert_groups = 1, selected_groups = 1, gating_function = 0;
     int64_t shared_intermediate = 0, shared_experts = 0;
@@ -90,7 +94,8 @@ struct ModelDescriptor {
         // Some converters (REAP-pruned GLM-5.3 GGUFs) spell the GLM architecture with a hyphen; its keys use it.
         const std::string p = m.architecture + ".";
         if (m.architecture == "glm5-next") m.architecture = "glm5next";
-        if (m.architecture != "glm5next" && m.architecture != "qwen4exp" && m.architecture != "deepseek41")
+        if (m.architecture != "glm5next" && m.architecture != "qwen4exp" &&
+            m.architecture != "deepseek41" && m.architecture != "minimax-m3")
             throw std::runtime_error("model: unsupported architecture " + m.architecture);
         const int64_t blocks = integer(p + "block_count");
         m.hidden = integer(p + "embedding_length");
@@ -113,6 +118,57 @@ struct ModelDescriptor {
             m.has_ngram = true;
             for (int64_t l = 0; l < blocks; ++l)
                 m.layers.push_back({l % 4 == 3 ? MixerKind::Qsa : MixerKind::Gdn, FfnKind::Moe, 640});
+            return m;
+        }
+        if (m.architecture == "minimax-m3") {
+            const std::string error = check_architecture_minimax_m3(file);
+            if (!error.empty()) throw std::runtime_error("MiniMax M3.1: " + error);
+            m.kv_heads = integer(p + "attention.head_count_kv");
+            m.head_dim = integer(p + "attention.key_length");
+            m.rope_dim = integer(p + "rope.dimension_count");
+            m.rms_epsilon = real(p + "attention.layer_norm_rms_epsilon");
+            m.experts = integer(p + "expert_count");
+            m.top_k = integer(p + "expert_used_count");
+            m.shared_experts = integer(p + "expert_shared_count");
+            m.shared_intermediate = integer(p + "expert_feed_forward_length");
+            m.expert_scale = real(p + "expert_weights_scale");
+            m.gating_function = integer(p + "expert_gating_func");
+            const auto *normalized = file.get(p + "expert_weights_norm");
+            if (!normalized || normalized->type != MetaType::BOOL)
+                throw std::runtime_error("MiniMax M3.1: missing or invalid " + p + "expert_weights_norm");
+            m.normalize_expert_weights = normalized->u != 0;
+            m.index_heads = integer(p + "attention.indexer.head_count");
+            m.index_dim = integer(p + "attention.indexer.key_length");
+            m.index_top_k = integer(p + "attention.indexer.top_k");
+            m.index_block_size = integer(p + "attention.indexer.block_size");
+            m.index_local_blocks = integer(p + "attention.indexer.local_blocks");
+            m.leading_dense_layers = integer(p + "leading_dense_block_count");
+            const int64_t dense_ff = integer(p + "feed_forward_length");
+            const int64_t moe_ff = integer(p + "expert_feed_forward_length");
+            // The released GGUFs store neither swiglu_limit nor swiglu_alpha; the HF text config gives
+            // hidden_act=swigluoai with swiglu_alpha=1.702 and swiglu_limit=7.0. A stored key overrides them.
+            auto optional_real = [&](const std::string &key, float fallback) {
+                const auto *v = file.get(key);
+                if (!v) return fallback;
+                if (v->type != MetaType::F32 && v->type != MetaType::F64)
+                    throw std::runtime_error("MiniMax M3.1: invalid " + key);
+                return real(key);
+            };
+            const float limit = optional_real(p + "swiglu_limit", 7.0f);
+            const float alpha = optional_real(p + "swiglu_alpha", 1.702f);
+            if (!(limit > 0.0f) || !(alpha > 0.0f))
+                throw std::runtime_error("MiniMax M3.1: swiglu_limit and swiglu_alpha must be positive");
+            if (m.kv_heads != 4 || m.index_heads != m.kv_heads || m.rope_dim < 2 || m.rope_dim > m.head_dim ||
+                m.rope_dim % 2 != 0 || m.gating_function != 2 || !m.normalize_expert_weights ||
+                m.leading_dense_layers != 3 || dense_ff < 1 || moe_ff < 1 || m.shared_experts != 1 ||
+                !(m.expert_scale > 0.0f) || !(m.rms_epsilon > 0.0f))
+                throw std::runtime_error("MiniMax M3.1: unsupported attention, MoE or leading dense-layer geometry");
+            m.residual = ResidualKind::Plain;
+            for (int64_t l = 0; l < blocks; ++l) {
+                const bool dense = l < m.leading_dense_layers;
+                m.layers.push_back({MixerKind::Msa, dense ? FfnKind::Dense : FfnKind::Moe,
+                                    dense ? dense_ff : moe_ff, limit, limit, alpha});
+            }
             return m;
         }
         if (m.architecture == "deepseek41") {
@@ -334,6 +390,8 @@ class ModelArtifact {
             auto file = std::make_unique<GgufFile>(paths[i].string());
             if (i == 0) {
                 descriptor_ = ModelDescriptor::read(*file);
+                if (descriptor_.architecture == "minimax-m3")
+                    throw std::runtime_error("model: MiniMax M3.1 geometry is recognized, but no MSA model runtime is linked yet");
                 if (const auto *v = file->get("split.tensors.count"))
                     declared_tensors = v->u;
             }

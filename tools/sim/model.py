@@ -17,6 +17,7 @@ BLOCK_BYTES = {
     "F32": (1, 4), "F16": (1, 2), "BF16": (1, 2),
     "Q8_0": (32, 34), "Q4_K": (256, 144), "Q5_K": (256, 176), "Q6_K": (256, 210),
     "Q2_K": (256, 84), "Q3_K": (256, 110), "IQ2_XS": (256, 74), "IQ3_XXS": (256, 98), "IQ4_XS": (256, 136),
+    "IQ2_XXS": (256, 66), "IQ1_M": (256, 56),   # ggml block sizes; used by the MiniMax UD-IQ1_M pack
     "EXL3": (1, 0.25153),  # 6.035 MiB per expert / 3 x 4096 x 2048 elements (bytes-only format)
     "NVFP4": (16, 9),      # E2M1 codes + one E4M3 scale per 16 (FP4-Local experts with the CSF32 scales expanded)
 }
@@ -28,6 +29,7 @@ KERNEL_EFFICIENCY = {
     "Q2_K": 0.63, "Q3_K": 0.63, "Q4_K": 0.63, "Q5_K": 0.6, "Q6_K": 0.6, "Q8_0": 0.7,
     "IQ2_XS": 0.30, "IQ3_XXS": 0.31, "IQ4_XS": 0.45, "EXL3": 0.0,
     "NVFP4": 0.45,   # hypothesis: no 1950X measurement of this kernel family in this table
+    "IQ2_XXS": 0.30, "IQ1_M": 0.25,   # hypotheses: IQ2_XXS taken equal to IQ2_XS; IQ1_M has no CPU measurement
 }
 
 
@@ -226,10 +228,17 @@ def from_gguf(paths, name="gguf"):
     return Pack(name, experts=experts, formats=table, description=f"from {', '.join(map(str, paths))}")
 
 
+def layer_shared_bytes(layer):
+    """Bytes of the shared expert of `layer` (inside layer_fixed_bytes)."""
+    return FIXED_BYTES.get(f"S{layer}", FIXED_BYTES["shared_expert"])
+
+
 def dense_gpu_bytes_per_token(geometry=None):
     """Fixed-weight bytes the GPU streams for one token: dense layers, MoE layer mixers, head."""
     geometry = geometry or GEOMETRY
     f = FIXED_BYTES
+    if "L0" in f:
+        return sum(layer_fixed_bytes(l, geometry) for l in range(geometry.layers)) + f["lm_head"]
     kda_moe = geometry.moe_layers - len(geometry.mla_layers)
     return (geometry.dense_layers * f["dense_layer"] + kda_moe * f["kda_moe_layer"]
             + len(geometry.mla_layers) * f["mla_layer"] + f["blk11_extra"] + f["lm_head"])
@@ -238,6 +247,8 @@ def dense_gpu_bytes_per_token(geometry=None):
 def layer_fixed_bytes(layer, geometry=None):
     geometry = geometry or GEOMETRY
     f = FIXED_BYTES
+    if f"L{layer}" in f:   # a model with an exact per-layer census (MiniMax)
+        return f[f"L{layer}"]
     if layer < geometry.dense_layers:
         return f["dense_layer"]
     base = f["mla_layer"] if layer in geometry.mla_layers else f["kda_moe_layer"]
@@ -362,6 +373,57 @@ MIMO_PACKS.update(_register("mimo_flash", MIMO_FLASH_GEOMETRY, _attention_params
                             9 * 4 * 320 * 2, "mimof", ((256, ""), (192, "_reap25"), (128, "_reap50")), "MiMo-V2.6-Flash"))
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# MiniMax-M3.1-Flash (`minimax-m3`): 60 layers, 3 leading dense FFN layers (12288), then 57 MoE layers with 128 routed
+# experts of 3072 rows (top-4) and one shared expert; GQA 64 q / 4 kv heads x 128 with MiniMax Sparse Attention (an
+# indexer of 4 heads x 128 on every layer, top-16 blocks of 128 tokens); vocab 200064; no MTP block in the weights
+# (speculation is the separate DSpark draft head). Everything below the GEOMETRY comes from the tensor census of the
+# split GGUF files (tools/minimax_sim_census.py, headers only), so the byte counts are exact for those files.
+MINIMAX_M31_GEOMETRY = Geometry(layers=60, dense_layers=3, hidden=6144, dense_ff=12288, expert_ff=3072, experts=128,
+                                top_k=4, shared_experts=1, vocab=200064, mla_layers=tuple(range(3, 60)), mtp_layers=0)
+# K and V in FP16 (2 x 4 x 128 x 2 B) plus the indexer key in F32 (128 x 4 B), per position per layer
+MINIMAX_M31_STATE_BYTES_PER_TOKEN = 60 * (2 * 4 * 128 * 2 + 128 * 4)
+MINIMAX_PACKS = {}
+
+
+def _register_minimax(path):
+    data = json.loads(pathlib.Path(path).read_text())
+    g = MINIMAX_M31_GEOMETRY
+    f = data["fixed"]
+    layer = {int(k): v for k, v in f["layer"].items()}
+    shared = {int(k): v for k, v in f["shared"].items()}
+    moe_mean = sum(layer[l] for l in g.moe_layer_ids()) // g.moe_layers
+    fixed = dict(total=data["bytes"]["main_fixed"], token_embd=f["token_embd"], dense_layer=layer[0],
+                 kda_moe_layer=moe_mean, mla_layer=moe_mean, blk11_extra=0,
+                 shared_expert=sum(shared.values()) // len(shared), router=g.experts * g.hidden * 4, mtp_dense=0,
+                 lm_head=f["lm_head"])
+    fixed.update({f"L{l}": v for l, v in layer.items()})
+    fixed.update({f"S{l}": v for l, v in shared.items()})
+    resident_mib = (sum(layer.values()) + f["lm_head"] + f["token_embd"] + f["output_norm"]) / 2 ** 20
+    dense = dict(orig=dict(vram_mib=resident_mib, bytes_scale=1.0, lossless=True))
+    dense["q8"] = dense["q4"] = dense["orig"]   # no repack: the GGUF blocks are used as they are
+    vram = dict(dense_q8=resident_mib, dense=resident_mib, mtp_dense_q8=0.0, mtp_dense=0.0, draft_bank=0.0,
+                state_fixed=0.0, state_per_token=MINIMAX_M31_STATE_BYTES_PER_TOKEN / 2 ** 20, verify_slot=0.0,
+                staging_slot=0.0, staging_slots=0, prefetch_group=0.0, misc=300.0, exl3_dense=resident_mib)
+    formats = {int(l): tuple(row[p]["format"] for p in ("gate", "up", "down")) for l, row in data["layers"].items()}
+    result = Pack(data["name"], data["experts"], formats, description="GGUF census (%s)" % data["source"],
+                  dense_vram_mib=resident_mib, geometry=g)
+    if result.routed_total_bytes() != data["bytes"]["main_routed"]:
+        raise ValueError("MiniMax census does not match supported tensor block geometry")
+    MINIMAX_PACKS[result.name] = result
+    return result, fixed, vram, dense
+
+
+# one model entry per quantization (their dense tensors differ slightly): `minimax_m31` is UD-Q2_K_XL,
+# `minimax_m31_ud_iq1_m` the smaller UD-IQ1_M
+MINIMAX_MODELS = {}
+for _path in sorted((pathlib.Path(__file__).parent / "data").glob("minimax-m31-census-*.json")):
+    _pack, _fixed, _vram, _dense = _register_minimax(_path)
+    _key = "minimax_m31" if _path.stem.endswith("ud-q2_k_xl") else "minimax_m31_" + _path.stem.split("census-")[1].replace("-", "_")
+    MINIMAX_MODELS[_key] = _pack.name
+    MODELS[_key] = dict(geometry=MINIMAX_M31_GEOMETRY, fixed=_fixed, vram=_vram, dense=_dense, packs={_pack.name: _pack})
+
+
 ACTIVE_MODEL = "flash"
 
 
@@ -381,5 +443,8 @@ def use_model(name):
 
 
 def packs_for(name):
-    return [k for k, v in PACKS.items() if (v.geometry.hidden == 6144) == (name == "glm53")] if name == "glm53" else \
-        [k for k in PACKS if not k.startswith("glm53")]
+    if name in MINIMAX_MODELS:
+        return [MINIMAX_MODELS[name]]
+    if name == "glm53":
+        return [k for k, v in PACKS.items() if v.geometry.hidden == 6144 and k not in MINIMAX_PACKS]
+    return [k for k in PACKS if not k.startswith("glm53") and k not in MINIMAX_PACKS]

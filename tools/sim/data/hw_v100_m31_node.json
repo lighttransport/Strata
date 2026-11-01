@@ -1,0 +1,57 @@
+{
+ "name": "v100_m31_node",
+ "cpu": {
+  "name": "2x Intel Xeon Gold 6240",
+  "cores": 36,
+  "ghz": 2.6,
+  "numa_nodes": 4,
+  "gflops": 0.0,
+  "simd": "avx512",
+  "reserve_cores": 1
+ },
+ "memory": {
+  "gib": 181.0,
+  "dram_gbps": 81.25,
+  "per_core_gbps": 8.0,
+  "page_cache_gib": 0.0
+ },
+ "gpu": {
+  "name": "Tesla V100 PCIe 32GB",
+  "count": 1,
+  "vram_mib": 32494,
+  "bandwidth_gbps": 576.0,
+  "tflops": 50.0,
+  "gemv_efficiency": 0.8,
+  "tier_gbps": 250.0,
+  "launch_us": 4.0,
+  "desktop_mib": 0.0
+ },
+ "pcie": {
+  "gen": 3,
+  "lanes": 16,
+  "h2d_gbps": 12.3,
+  "d2h_gbps": 0.0,
+  "latency_us": 20.0
+ },
+ "disk": {
+  "read_gbps": 2.0,
+  "fetch_gbps": 2.0
+ },
+ "link": {
+  "name": "none",
+  "rtt_us": 0.0,
+  "gbps": 0.0,
+  "exposed_us": 0.0
+ },
+ "remote": {
+  "name": "none",
+  "expert_gbps": 0.0,
+  "ram_gib": 0.0
+ },
+ "workers": [],
+ "runtime_vram": {},
+ "fixed_weight_bytes": {},
+ "fixed_weight_pack": "",
+ "heterogeneous": {},
+ "notes": "MiniMax M3.1 smoke node (job 700317). MEASURED on this class of node with GLM (docs/benchmarks/v100s_runner_sim_20261016): pinned H2D 12.3 GB/s, device memory probe 576 GB/s, effective CPU expert flow 81.25 GB/s (includes arithmetic, stored as dram_gbps because plain DRAM bandwidth and RAM speed were not measured). MEASURED on M3.1: usable VRAM 32494 MiB (cudaMemGetInfo). ASSUMED: gemv_efficiency 0.80, tier_gbps 250, launch_us 4. MEASURED on this node (V100 PCIe): pageable H2D 4.8-5.5 GB/s, pinned 11.9-12.3 GB/s; cold file reads 0.42 GB/s."
+}

@@ -1,0 +1,284 @@
+{
+ "measured_anchor": {
+  "slots": 656,
+  "decode_steps": 63,
+  "misses_total": 13493,
+  "prompt_copies": 5083,
+  "decode_ms_per_token": 28490.8421875,
+  "decode_hit": 0.4145084934558618
+ },
+ "label": "model projection, not measured on MiniMax",
+ "tier": {
+  "slots": 1165,
+  "tier_mib": 20383.667763157897,
+  "coverage": 0.15967653508771928,
+  "measured_point_curve_value": 0.3968398493094189,
+  "scale": 1.044523361696639,
+  "hits": {
+   "uniform routing": 0.15967653508771928,
+   "GLM-fitted LRU curve": 0.5407516496393905,
+   "curve scaled to the measured M3.1 point": 0.5648277309243392
+  }
+ },
+ "scenarios": [
+  {
+   "scenario": "CPU-lane experts",
+   "hit": "uniform routing",
+   "hit_share": 0.15967653508771928,
+   "tok_s": 11.820494546164332,
+   "cpu_ms": 50.10276655676114,
+   "gpu_ms": 37.632489351052655,
+   "gpu_exposed_ms": 27.541227916666685,
+   "step_ms": 84.59882927017576,
+   "bottleneck": "cpu+gpu",
+   "cpu_gb": 3.515099782736838
+  },
+  {
+   "scenario": "CPU-lane experts",
+   "hit": "GLM-fitted LRU curve",
+   "hit_share": 0.5407516496393905,
+   "tok_s": 15.287203844650659,
+   "cpu_ms": 30.48369793636873,
+   "gpu_ms": 44.443112283269066,
+   "gpu_exposed_ms": 27.97565354725553,
+   "step_ms": 65.41418628037218,
+   "bottleneck": "cpu+gpu",
+   "cpu_gb": 1.9210504573299565
+  },
+  {
+   "scenario": "CPU-lane experts",
+   "hit": "curve scaled to the measured M3.1 point",
+   "hit_share": 0.5648277309243392,
+   "tok_s": 15.57581138252554,
+   "cpu_ms": 29.244177766191047,
+   "gpu_ms": 44.87340307124161,
+   "gpu_exposed_ms": 28.00310027992044,
+   "step_ms": 64.20211284285949,
+   "bottleneck": "cpu+gpu",
+   "cpu_gb": 1.8203394435030256
+  },
+  {
+   "scenario": "+ next-layer PCIe prefetch",
+   "hit": "uniform routing",
+   "hit_share": 0.15967653508771928,
+   "tok_s": 12.328614066295875,
+   "cpu_ms": 44.930086804066825,
+   "gpu_ms": 39.318457921022166,
+   "gpu_exposed_ms": 29.22719648663622,
+   "step_ms": 81.11211808745097,
+   "bottleneck": "cpu+gpu",
+   "cpu_gb": 3.0936076402444597
+  },
+  {
+   "scenario": "+ next-layer PCIe prefetch",
+   "hit": "GLM-fitted LRU curve",
+   "hit_share": 0.5407516496393905,
+   "tok_s": 15.74790777750959,
+   "cpu_ms": 27.64860547367804,
+   "gpu_ms": 45.364517333643576,
+   "gpu_exposed_ms": 28.897058597630025,
+   "step_ms": 63.50049886805613,
+   "bottleneck": "cpu+gpu",
+   "cpu_gb": 1.6906991947363417
+  },
+  {
+   "scenario": "+ next-layer PCIe prefetch",
+   "hit": "curve scaled to the measured M3.1 point",
+   "hit_share": 0.5648277309243392,
+   "tok_s": 16.028530672538075,
+   "cpu_ms": 26.557714942623765,
+   "gpu_ms": 45.74650348890099,
+   "gpu_exposed_ms": 28.876200697579808,
+   "step_ms": 62.388750436951476,
+   "bottleneck": "cpu+gpu",
+   "cpu_gb": 1.6020643390881784
+  }
+ ],
+ "profiles": [
+  {
+   "profile": "as fitted on GLM",
+   "tok_s": [
+    12.328614066295875,
+    16.028530672538075
+   ],
+   "gpu_ms": [
+    39.318457921022166,
+    45.74650348890099
+   ],
+   "cpu_ms": [
+    44.930086804066825,
+    26.557714942623765
+   ]
+  },
+  {
+   "profile": "graph-captured chain (25 kernels/layer, half the exposed launch cost)",
+   "tok_s": [
+    13.943866827546273,
+    18.87050571548947
+   ],
+   "gpu_ms": [
+    30.048457921022198,
+    36.47650348890103
+   ],
+   "cpu_ms": [
+    44.930086804066825,
+    26.557714942623765
+   ]
+  },
+  {
+   "profile": "+ GEMV 90 % of 576 GB/s and 400 GB/s expert kernel",
+   "tok_s": [
+    14.401459297257311,
+    19.600592625115674
+   ],
+   "gpu_ms": [
+    26.362765002722206,
+    30.553495618866602
+   ],
+   "cpu_ms": [
+    44.930086804066825,
+    26.557714942623765
+   ]
+  }
+ ],
+ "speculation": [
+  {
+   "hit": "curve-scaled hit",
+   "n": 1,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    19.007040698966872,
+    21.541312792162454,
+    23.44201686205914
+   ]
+  },
+  {
+   "hit": "curve-scaled hit",
+   "n": 2,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    17.44895228907005,
+    21.83611743603623,
+    25.64995986493297
+   ]
+  },
+  {
+   "hit": "curve-scaled hit",
+   "n": 3,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    15.14454747070999,
+    20.459273996431147,
+    25.738663244720648
+   ]
+  },
+  {
+   "hit": "curve-scaled hit",
+   "n": 4,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    13.431490589892519,
+    19.224189189590167,
+    25.709649412003266
+   ]
+  },
+  {
+   "hit": "uniform routing",
+   "n": 1,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    13.146245998381414,
+    14.8990787981656,
+    16.213703398003744
+   ]
+  },
+  {
+   "hit": "uniform routing",
+   "n": 2,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    11.70448903234325,
+    14.647331989046695,
+    17.205598877544574
+   ]
+  },
+  {
+   "hit": "uniform routing",
+   "n": 3,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    9.885918129829543,
+    13.355216332191057,
+    16.801447392249635
+   ]
+  },
+  {
+   "hit": "uniform routing",
+   "n": 4,
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    8.697480816297805,
+    12.448507897638939,
+    16.648128594372928
+   ]
+  }
+ ],
+ "needs": {
+  "p_needed_n1_curve-scaled hit": 0.9729531069006043,
+  "p_needed_n1_uniform routing": null,
+  "p_needed_n2_curve-scaled hit": 0.825637154263859,
+  "p_needed_n2_uniform routing": null,
+  "p_needed_n3_curve-scaled hit": 0.830948489921866,
+  "p_needed_n3_uniform routing": null
+ },
+ "iq1_m": {
+  "slots": 1317,
+  "tok_s": 20.63236677663434,
+  "cpu_ms": 24.162760118973136,
+  "gpu_ms": 29.829211850724807,
+  "speculation_n2": {
+   "p": [
+    0.5,
+    0.7,
+    0.85
+   ],
+   "tok_s": [
+    18.694416912314118,
+    23.394727450267382,
+    27.480792861101754
+   ]
+  }
+ }
+}

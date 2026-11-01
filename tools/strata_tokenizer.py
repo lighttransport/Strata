@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import pathlib
 import sys
+import unicodedata
 
 import regex
 
@@ -72,12 +73,29 @@ GLM4_PATTERN = (
     r"|\s*[\r\n]+|\s+(?!\S)|\s+"
 )
 
+# MiniMax M2/M3 uses the Unicode case-property form from tokenizer.json.
+# Keep the properties here: llama.cpp's regex-engine adaptation uses ASCII
+# case ranges, which would merge case boundaries in scripts such as Cyrillic.
+MINIMAX_M2_PATTERN = (
+    r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*"
+    r"[\p{Ll}\p{Lm}\p{Lo}\p{M}]+"
+    r"(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?"
+    r"|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+"
+    r"[\p{Ll}\p{Lm}\p{Lo}\p{M}]*"
+    r"(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?"
+    r"|\p{N}{1,3}"
+    r"| ?[^\s\p{L}\p{N}]+[\r\n/]*"
+    r"|\s*[\r\n]+|\s+(?!\S)|\s+"
+)
+
 
 class Tokenizer:
     def __init__(self, tokens: list[str], merges: list[str], token_types: list[int] | None = None,
-                 pre: str = "qwen35", special_ids: dict[str, int] | None = None):
+                 pre: str = "qwen35", special_ids: dict[str, int] | None = None,
+                 normalize_nfc: bool = False):
         self.tokens = tokens
         self.pre = pre
+        self.normalize_nfc = normalize_nfc
         self.token_types = token_types
         self.special_ids = special_ids or {}
         self.ids = {t: i for i, t in enumerate(tokens)}
@@ -95,7 +113,10 @@ class Tokenizer:
             if parts[0] not in self.ids or parts[1] not in self.ids:
                 raise ValueError("merge %d names a token outside the vocabulary: %r" % (i, m))
             self.ranks[(parts[0], parts[1])] = i
-        self._re = regex.compile(GLM4_PATTERN if pre in ("glm4", "chatglm-bpe") else QWEN35_PATTERN)
+        if pre not in ("qwen35", "glm4", "chatglm-bpe", "minimax-m2"):
+            raise ValueError("unsupported byte-level BPE pre-tokenizer: %r" % pre)
+        self._re = regex.compile(GLM4_PATTERN if pre in ("glm4", "chatglm-bpe") else
+                                 MINIMAX_M2_PATTERN if pre == "minimax-m2" else QWEN35_PATTERN)
 
         # The literals matched directly instead of being run through BPE.  GGUF token types: 3 = CONTROL,
         # 4 = USER_DEFINED.  The two classes behave DIFFERENTLY and llama.cpp's own tokenizer settled which:
@@ -148,7 +169,8 @@ class Tokenizer:
                    if k.startswith("tokenizer.ggml.") and k.endswith("_token_id")}
         return cls(list(md["tokenizer.ggml.tokens"]), list(md["tokenizer.ggml.merges"]),
                    list(md.get("tokenizer.ggml.token_type") or []) or None,
-                   md.get("tokenizer.ggml.pre", "qwen35"), special)
+                   md.get("tokenizer.ggml.pre", "qwen35"), special,
+                   bool(md.get("tokenizer.ggml.normalizer.nfc", False)))
 
     # -------------------------------------------------------------- the algorithm
     def _bpe(self, word: str) -> list[str]:
@@ -290,6 +312,8 @@ class Tokenizer:
         `plain`: (start, end) spans of `text` that are ordinary text even where they spell a literal - a
         `</think>` quoted in a message (#537) - and are tokenized with the text around them.
         """
+        if self.normalize_nfc:
+            text = unicodedata.normalize("NFC", text)
         return self._encode_matching(text, self._special_re if parse_special else self._always_re, plain)
 
     def token_bytes(self, i: int) -> bytes:
@@ -321,14 +345,17 @@ def extract(gguf_path, out_dir) -> dict:
     cfg = {
         "model": "gpt2",
         "pre": tk.pre,
+        "normalizer_nfc": tk.normalize_nfc,
         "vocab_size": len(tk.tokens),
         "n_merges": len(tk.ranks),
         "special_ids": tk.special_ids,
         "add_bos_token": False,
         # The pattern is SHIPPED, not recomputed by the reader: it is transcribed from llama.cpp for the
         # declared `pre` type, and a C++ port that re-derived it would be free to get `\p{M}` wrong again.
-        "pre_pattern": QWEN35_PATTERN,
-        "pre_pattern_source": ".ref/llama.cpp src/llama-vocab.cpp L396 (LLAMA_VOCAB_PRE_TYPE_QWEN35)",
+        "pre_pattern": MINIMAX_M2_PATTERN if tk.pre == "minimax-m2" else
+                       GLM4_PATTERN if tk.pre in ("glm4", "chatglm-bpe") else QWEN35_PATTERN,
+        "pre_pattern_source": "MiniMax tokenizer.json Unicode case-property pattern" if tk.pre == "minimax-m2" else
+                              ".ref/llama.cpp src/llama-vocab.cpp L396 (LLAMA_VOCAB_PRE_TYPE_QWEN35)",
     }
     (out / "vocab.json").write_text(json.dumps(tk.ids, ensure_ascii=False), encoding="utf-8")
     (out / "merges.txt").write_text("\n".join("%s %s" % k for k, _ in
