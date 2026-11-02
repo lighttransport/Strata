@@ -188,7 +188,8 @@ __global__ void k_gather_q8(const uint8_t* src, uint8_t* dst, int bytes, RowIdx 
 /// The resident experts of a layer, each with its own output rows (job j's entry i = row i of eo + j * eo_stride): the adds into
 /// `moe` in job order, entry order within a job - the same sequence of operations on every element as the one-job-at-a-time
 /// k_scatter_add_i calls (a token is in a job at most once)
-constexpr int kJobMax = 16;
+constexpr int kJobMax = 16;   // jobs one k_scatter_jobs launch adds (its argument struct is passed by value)
+constexpr int kJobCap = 64;   // top_k x kMaxWin: every distinct expert a window layer can need
 struct JobList { int n; int nt[kJobMax]; int tok[kJobMax][kMaxWin]; float w[kJobMax][kMaxWin]; const float* eo[kJobMax]; };
 __global__ void k_scatter_jobs(float* moe, int N, JobList jl) {
     const int t = blockIdx.x;
@@ -969,7 +970,7 @@ struct Engine {
     bool p2p_direct = strata_env_truthy_default("STRATA_M3_GPU1_DIRECT", 0) != 0;   // kernels read the peer's memory over PCIe instead of copy-engine copies (needs peer access; measured slower: 60.9 against 63.4 tok/s in max-mode)
     std::vector<cudaEvent_t> g1ev;   // STRATA_M3_PROF>=3: start / end events of the second GPU's first stream per window layer
     long long g1_layers = 0, g1_jobs = 0;
-    bool gpu1_admit = strata_env_truthy_default("STRATA_M3_GPU1_ADMIT", 0) != 0;   // admissions may take second-GPU slots (default off: only the warm-up fills them; with admissions an exact-routing run of one prompt fell from 26.6 to 20.7 tok/s)
+    int gpu1_admit = strata_env_int_or("STRATA_M3_GPU1_ADMIT", 2);   // at most this many admissions per layer onto second-GPU slots (0: only the warm-up fills them; 2 measured best, docs/MINIMAX_M31_SIM.md)
     bool on_dev1(int s) const { return s >= n_slots; }
     /// Has the admission copy into slot s finished?  A second-GPU slot's event is queried from that GPU's context.
     bool slot_copy_done(int s) {
@@ -1164,10 +1165,10 @@ struct Engine {
                     CK(cudaEventCreateWithFlags(&sev[i], cudaEventDisableTiming));
                 }
                 CK(cudaEventCreateWithFlags(&ev_efork, cudaEventDisableTiming));
-                CK(cudaMalloc(&jq8, (size_t) kJobMax * K::native_q8_1_bytes(m->N * kMaxWin, 1)));
-                CK(cudaMalloc(&jqf, (size_t) kJobMax * K::native_q8_1_bytes(m->FF * kMaxWin, 1)));
-                CK(cudaMalloc((void**) &jgu, (size_t) kJobMax * kMaxWin * 2 * m->FF * 4));
-                CK(cudaMalloc((void**) &jeo, (size_t) kJobMax * kMaxWin * m->N * 4));
+                CK(cudaMalloc(&jq8, (size_t) kJobCap * K::native_q8_1_bytes(m->N * kMaxWin, 1)));
+                CK(cudaMalloc(&jqf, (size_t) kJobCap * K::native_q8_1_bytes(m->FF * kMaxWin, 1)));
+                CK(cudaMalloc((void**) &jgu, (size_t) kJobCap * kMaxWin * 2 * m->FF * 4));
+                CK(cudaMalloc((void**) &jeo, (size_t) kJobCap * kMaxWin * m->N * 4));
                 std::fprintf(stderr, "strata-m3: resident experts of a window layer on %d side streams\n", exp_streams);
             }
         }
@@ -1203,7 +1204,7 @@ struct Engine {
         (void) cudaGetLastError();
         const int N = m->N, FF = m->FF;
         const size_t qbN = K::native_q8_1_bytes(N * kMaxWin, 1), qbF = K::native_q8_1_bytes(FF * kMaxWin, 1);
-        const size_t scratch = qbN + (size_t) kJobMax * (qbN + qbF) + (size_t) kJobMax * kMaxWin * (2 * (size_t) FF + N) * 4;
+        const size_t scratch = qbN + (size_t) kJobCap * (qbN + qbF) + (size_t) kJobCap * kMaxWin * (2 * (size_t) FF + N) * 4;
         size_t fr = 0, tot = 0;
         CK(cudaMemGetInfo(&fr, &tot));
         const size_t reserve = (size_t) 768 << 20;
@@ -1219,10 +1220,10 @@ struct Engine {
             CK(cudaEventCreateWithFlags(&sev1[i], cudaEventDisableTiming));
         }
         CK(cudaMalloc(&q8h1, qbN));
-        CK(cudaMalloc(&jq81, (size_t) kJobMax * qbN));
-        CK(cudaMalloc(&jqf1, (size_t) kJobMax * qbF));
-        CK(cudaMalloc((void**) &jgu1, (size_t) kJobMax * kMaxWin * 2 * FF * 4));
-        CK(cudaMalloc((void**) &jeo1, (size_t) kJobMax * kMaxWin * N * 4));
+        CK(cudaMalloc(&jq81, (size_t) kJobCap * qbN));
+        CK(cudaMalloc(&jqf1, (size_t) kJobCap * qbF));
+        CK(cudaMalloc((void**) &jgu1, (size_t) kJobCap * kMaxWin * 2 * FF * 4));
+        CK(cudaMalloc((void**) &jeo1, (size_t) kJobCap * kMaxWin * N * 4));
         slot_ev.resize((size_t) (n_slots + n_dev1), nullptr);
         for (int i = 0; i < n_dev1; ++i) CK(cudaEventCreateWithFlags(&slot_ev[(size_t) (n_slots + i)], cudaEventDisableTiming));
         owner.resize((size_t) (n_slots + n_dev1), -1);
@@ -1502,15 +1503,17 @@ struct Engine {
         lwl(2);
         bool any_dev1 = false;
         for (const Job& jb : gpu_jobs) any_dev1 |= on_dev1(slot_of[(size_t) (l * E + jb.e)]);
-        if (q8h_ready && (gpu_jobs.size() >= 2 || any_dev1) && gpu_jobs.size() <= (size_t) kJobMax) {
+        if (q8h_ready && (gpu_jobs.size() >= 2 || any_dev1) && gpu_jobs.size() <= (size_t) kJobCap) {
             const size_t qbN = K::native_q8_1_bytes(N * kMaxWin, 1), qbF = K::native_q8_1_bytes(FF * kMaxWin, 1);
             bool woke[4] = {}, woke1[4] = {}, used1[4] = {};
             int n0 = 0, n1 = 0;
             auto mmv_on = [&](cudaStream_t sj, int type, const void* w, int n_in, int n_out, float* out, int nt, const void* qq) {
                 K::native_mmvq(type, w, qq, out, n_in, n_out, nt, sj);
             };
-            JobList jl{};
+            JobList jls[kJobCap / kJobMax] = {};
             for (size_t jx = 0; jx < gpu_jobs.size(); ++jx) {
+                JobList& jl = jls[jx / kJobMax];
+                const size_t jc = jx % kJobMax;   // slot in this launch's list
                 const Job& jb = gpu_jobs[jx];
                 const bool d1 = on_dev1(slot_of[(size_t) (l * E + jb.e)]);
                 const uint8_t* w = expert(l, jb.e);
@@ -1539,9 +1542,9 @@ struct Engine {
                     if (!p2p_direct) CK(cudaMemcpyPeerAsync(jeo + jx * (size_t) kMaxWin * N, dev0, eoj, dev1, (size_t) jb.nt * N * 4, sj));
                     used1[si1] = true;
                     CK(cudaSetDevice(dev0));
-                    jl.nt[jx] = jb.nt;
-                    jl.eo[jx] = p2p_direct ? eoj : jeo + jx * (size_t) kMaxWin * N;   // direct: the accumulate kernel reads the second GPU's rows
-                    for (int i = 0; i < jb.nt; ++i) { jl.tok[jx][i] = jb.tok[i]; jl.w[jx][i] = jb.w[i]; }
+                    jl.nt[jc] = jb.nt;
+                    jl.eo[jc] = p2p_direct ? eoj : jeo + jx * (size_t) kMaxWin * N;   // direct: the accumulate kernel reads the second GPU's rows
+                    for (int i = 0; i < jb.nt; ++i) { jl.tok[jc][i] = jb.tok[i]; jl.w[jc][i] = jb.w[i]; }
                     gpu_experts += jb.nt;
                     gpu1_experts += jb.nt;
                     ++g1_jobs;
@@ -1558,12 +1561,11 @@ struct Engine {
                 mmv_on(sj, L.gu_type, w, N, 2 * FF, guj, jb.nt, q8j);
                 K::native_swiglu_oai_quantize_q8_1(guj, guj + FF, 2 * (long) FF, qfj, FF, jb.nt, m->alpha, m->limit, sj);
                 mmv_on(sj, L.d_type, w + 2 * L.gsz, FF, N, eoj, jb.nt, qfj);
-                jl.nt[jx] = jb.nt;
-                jl.eo[jx] = eoj;
-                for (int i = 0; i < jb.nt; ++i) { jl.tok[jx][i] = jb.tok[i]; jl.w[jx][i] = jb.w[i]; }
+                jl.nt[jc] = jb.nt;
+                jl.eo[jc] = eoj;
+                for (int i = 0; i < jb.nt; ++i) { jl.tok[jc][i] = jb.tok[i]; jl.w[jc][i] = jb.w[i]; }
                 gpu_experts += jb.nt;
             }
-            jl.n = (int) gpu_jobs.size();
             for (int si = 0; si < exp_streams; ++si) {
                 if (woke[si]) { CK(cudaEventRecord(sev[si], sst[si])); CK(cudaStreamWaitEvent(st, sev[si], 0)); }
                 if (used1[si]) {
@@ -1576,7 +1578,10 @@ struct Engine {
                     CK(cudaStreamWaitEvent(st, sev1[si], 0));
                 }
             }
-            k_scatter_jobs<<<(unsigned) T, 256, 0, st>>>(moe, N, jl);
+            for (size_t c = 0; c * kJobMax < gpu_jobs.size(); ++c) {   // the adds into moe in job order, kJobMax jobs a launch
+                jls[c].n = (int) std::min<size_t>(kJobMax, gpu_jobs.size() - c * kJobMax);
+                k_scatter_jobs<<<(unsigned) T, 256, 0, st>>>(moe, N, jls[c]);
+            }
         } else
         for (const Job& jb : gpu_jobs) {
             const uint8_t* w = expert(l, jb.e);
@@ -1609,11 +1614,11 @@ struct Engine {
         const auto t_adm0 = Clock::now();
         if (!miss.empty() && admit_per_layer > 0) {
             CK(cudaEventRecord(ev_st, st));
-            int done = 0;
+            int done = 0, done1 = 0;
             for (const Job& jb : miss) {
                 if (done >= admit_per_layer) break;
                 if (jb.inflight) continue;
-                const int s = victim(L, dev1 >= 0 && gpu1_admit);
+                const int s = victim(L, dev1 >= 0 && done1 < gpu1_admit);
                 if (used[(size_t) s] > layer_clock0) break;
                 const int key = l * E + jb.e;
                 if (admit_freq && owner[(size_t) s] >= 0 && use_count[(size_t) key] < use_count[(size_t) owner[(size_t) s]]) continue;
@@ -1621,6 +1626,7 @@ struct Engine {
                 owner[(size_t) s] = key;
                 slot_of[(size_t) key] = s;
                 used[(size_t) s] = ++clock;
+                if (on_dev1(s)) ++done1;
                 if (on_dev1(s)) {   // the second GPU's copy stream, after the work queued so far (it may still read this slot)
                     CK(cudaSetDevice(dev1));
                     CK(cudaStreamWaitEvent(cst1, ev_st, 0));

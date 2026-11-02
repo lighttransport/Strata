@@ -563,19 +563,26 @@ kernels as on GPU 0) and copies their output rows back into the job's rows on GP
 The prefill and the one-token step never use GPU 1's slots (an expert resident there counts as a CPU miss in the one-token step).
 Peer access works between the two cards (copies: 28 KB 4.3 us, 100 KB 11 us, 200 KB 21 us; pinned host-to-device 12.3 GB/s on each).
 
-| (200 tokens exact, 300 tokens max; tok/s, dijkstra / lru_cache) | one GPU | two GPUs |
-|---|---|---|
-| exact routing | 27.8 / 26.6 (hit rate 53 %) | 30.0 / 25.7 (hit rate 70-73 %; second-GPU admissions off, the default) |
-| exact routing, admissions onto GPU 1 on | | 30.0 / 20.7 (hit rate 79 %) |
-| `--speed max` (`topk=2 missk=0`) | 57.3 / 56.0 (hit rate 83 %) | 63.4 / 59.4 (hit rate 92-93 %; `STRATA_M3_GPU1_ADMIT=1`; the lru_cache run is 261 tokens, a different answer) |
+Admissions onto GPU 1 take at most `STRATA_M3_GPU1_ADMIT` (default 2) experts per layer. Measured with the final code, two runs each, mean tok/s
+(dijkstra / lru_cache; 200 tokens, max-mode 300 and 261 tokens, the lru_cache answer differs in length between runs on one and two GPUs):
 
-46-task C++ benchmark, `--speed max` settings, `STRATA_M3_GPU1=1 STRATA_M3_GPU1_ADMIT=1`: 37 of 46 passes at 63.1 tok/s mean (one GPU: 36 of 46 at 56.8 / 56.9 tok/s in two runs; the exact path 41 of 46 at 25.5).
+| mode | one GPU | two GPUs | hit rate one -> two GPUs |
+|---|---|---|---|
+| exact routing | 27.0 / 25.8 | 38.8 / 38.7 (+44 % / +50 %) | 53 -> 76-78 % |
+| `--speed fast` (top-3) | 32.9 / 33.3 | 46.7 / 46.8 (+42 % / +40 %) | 58 -> 81-83 % |
+| `--speed max` (top-2, `missk=0`) | 56.7 / 55.5 | 62.7 / 59.3 (+11 % / +7 %) | 83 -> 92-93 % |
+
+The 46-task C++ benchmark, two GPUs: exact routing 41 of 46 passes at 37.6 tok/s mean (one GPU: 41 at 25.5); `--speed max` settings 38 of 46 at
+62.7 tok/s mean (one GPU: 36 and 36 of 46 at 56.8 and 56.9). With admissions off (`STRATA_M3_GPU1_ADMIT=0`, only the warm-up fills GPU 1) exact
+routing gives 34.6 / 35.3 and `--speed fast` 41.8 / 41.0 tok/s; one admission a layer: 38.2 / 38.1 and 46.4 / 43.5; two: 38.6 / 38.7 and 46.4 / 46.7.
 The simulator predicted 79.7 % at 2800 slots (52.4 % at 1100) for the exact-routing code trace; the engine reached 78.8 %.
-Tokens differ from the one-GPU run in exact routing: the CPU lane and the GPU round differently, so moving an expert between them changes the
-last bits; the one-GPU runs with the same placement are token-identical. A teacher-forced KL comparison and the 46-task benchmark are the quality checks.
-Open: with admissions onto GPU 1 one prompt (lru_cache) loses 22 % while another gains; the cause is not found. Not the copy engines: moving
-both transfers through mapped pinned host memory (59.3 against 63.4 tok/s in max-mode) or having the kernels read the peer's memory directly
-(`STRATA_M3_GPU1_DIRECT=1`: 60.9 max-mode, 29.2 / 21.6 exact) was no better, and the lru_cache loss stayed. Not the cross-device event query.
-The second GPU's job chain takes 0.38 ms per window layer (events on its first stream) while the layer waits 1.8 ms for it (0.27 ms and
-1.0 ms with admissions off), so the extra wait is before the chain starts or after it ends, not in its kernels. Next: events on the main
-stream around the fork and the join, and `nsys` with both GPUs. Not measured: `--speed fast`, the T = 1 step on GPU 1, more than two GPUs.
+Tokens differ from the one-GPU run in exact routing: the CPU lane and the GPU round differently, so moving an expert between them changes the last
+bits (the benchmark's 41 of 46 is the same as on one GPU). The one-GPU default path's generated tokens are unchanged by all of this (hashes of four
+prompts equal the earlier runs). Peer access works between the two cards (copies: 28 KB 4.3 us, 100 KB 11 us, 200 KB 21 us; pinned host-to-device
+12.3 GB/s on each).
+
+Found on the way: a window layer with more than 16 distinct experts (4 tokens of exact routing often have more) overflowed the job list of the
+side-stream path and fell back to the sequential loop, which queues every expert on GPU 0, so an expert resident on GPU 1 was read over PCIe by
+GPU 0's kernels: one prompt lost 22 % with admissions on. The capacity is now 64 jobs (top_k x window) and the ordered accumulate runs in launches
+of 16 jobs. Not the cause, and not kept: copy-engine transfers replaced by mapped pinned host memory (slower, 59.3 against 63.4 tok/s in max-mode)
+or by direct peer reads (`STRATA_M3_GPU1_DIRECT=1`, 60.9). Not measured: the T = 1 step on GPU 1 (an expert resident there runs on the CPU in that step), more than two GPUs.
