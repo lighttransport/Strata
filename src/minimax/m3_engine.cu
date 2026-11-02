@@ -2326,6 +2326,11 @@ std::string read_file(const std::string& path) {
 }  // namespace
 
 int strata::minimax::run(int argc, char** argv) {
+    // Dense multi-column matvec (verify windows of 2-8 rows): one row per thread block and the transposed warp reduction give
+    // the same results as the library defaults and decode 4-6 % faster in the engine (docs/MINIMAX_M31_SIM.md); the user's
+    // environment still wins (STRATA_NO_MMVQ_ROWS2=0 / STRATA_TSUM=0 restore the library defaults).
+    setenv("STRATA_NO_MMVQ_ROWS2", "1", 0);
+    setenv("STRATA_TSUM", "1", 0);
     std::string model, tokens, dump_logits, force_file;
     int ctx = 8192, chunk = 0, n_gen = 32, prefault_threads = 32;
     double expert_vram = -1.0;

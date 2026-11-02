@@ -505,3 +505,13 @@ floor with 7 columns. Tried and neutral: cache admission 1-8 experts per layer (
 run; LRU admits 5-10 times more, empties the CPU lane by 40 % and is slower, 43.9 against 46.8 tok/s), and the confidence floor
 (means over four tasks: 0.4 -> 47.9, 0.55 -> 49.2, 0.7 -> 48.1 tok/s; within the run-to-run spread). Note the REPL keeps `admit=` and
 `policy=` between requests: set them in every request of a sweep.
+
+### Dense multi-column matvec: one row per block and the transposed reduction (measured 2026-11-02)
+
+`dense_mmvq_bench` (new, `src/kernels/dense_mmvq_bench.cpp`) times the dense MMVQ kernels on MiniMax shapes for 1-8 columns. At 5-8
+columns the kernels are limited by per-column instruction cost (25 % occupancy, 111 registers), not by bandwidth. Two existing knobs,
+`STRATA_NO_MMVQ_ROWS2=1` (one row per thread block) and `STRATA_TSUM=1` (transposed warp reduction), run 15-20 % faster there with
+bitwise the same sums. strata-m3 now sets both by default; the environment still wins (`=0` restores the library defaults).
+Engine A/B on one V100 (max-mode routing `topk=2 missk=0`, `--dspark --kv-f16`, 300 tokens, mean of 3 runs, old / new tok/s):
+dijkstra 49.8 / 52.3, lru_cache 48.9 / 51.3, knapsack 46.2 / 48.4, eval_expr 53.1 / 56.0 (+5 %). Exact routing with speculation,
+200 tokens on two prompts: the generated token ids are identical with and without the knobs. Not measured: other GPUs.
