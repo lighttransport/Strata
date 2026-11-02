@@ -576,8 +576,13 @@ The 46-task C++ benchmark, two GPUs: exact routing 41 of 46 passes at 37.6 tok/s
 62.7 tok/s mean (one GPU: 36 and 36 of 46 at 56.8 and 56.9). With admissions off (`STRATA_M3_GPU1_ADMIT=0`, only the warm-up fills GPU 1) exact
 routing gives 34.6 / 35.3 and `--speed fast` 41.8 / 41.0 tok/s; one admission a layer: 38.2 / 38.1 and 46.4 / 43.5; two: 38.6 / 38.7 and 46.4 / 46.7.
 The simulator predicted 79.7 % at 2800 slots (52.4 % at 1100) for the exact-routing code trace; the engine reached 78.8 %.
-Tokens differ from the one-GPU run in exact routing: the CPU lane and the GPU round differently, so moving an expert between them changes the last
-bits (the benchmark's 41 of 46 is the same as on one GPU). The one-GPU default path's generated tokens are unchanged by all of this (hashes of four
+Exactness of the second GPU (`STRATA_M3_GPU1_CHECK=1`, debug and slow: every second-GPU job is also run on GPU 0 from the host copy of the expert and
+the output rows compared bit for bit): 20,487 jobs (6,610 on dijkstra, 13,877 on lru_cache; exact routing, speculation on), 0 differ. A second-GPU
+expert is computed bit for bit as on GPU 0. Tokens still differ from a one-GPU run in exact routing because the two runs place different experts on the
+CPU lane (a different cache), and the CPU lane and the GPU round differently in the last bits. Teacher-forced 64 steps against the exact references
+(`sw/*-exact.f32`), short / code prompts: one GPU KL 4.7e-4 / 6.0e-4, top-1 64/64 and 64/64; two GPUs KL 6.3e-4 / 7.8e-4, top-1 63/64 and 64/64;
+two GPUs against one GPU KL 7.1e-4 / 6.2e-4, top-1 63/64 and 64/64 (the gate is KL <= 0.01 and top-1 >= 95 %). The 46-task benchmark's 41 of 46 in exact
+routing equals the one-GPU result. The one-GPU default path's generated tokens are unchanged by all of this (hashes of four
 prompts equal the earlier runs). Peer access works between the two cards (copies: 28 KB 4.3 us, 100 KB 11 us, 200 KB 21 us; pinned host-to-device
 12.3 GB/s on each).
 

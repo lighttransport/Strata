@@ -967,6 +967,10 @@ struct Engine {
     void *q8h1 = nullptr, *jq81 = nullptr, *jqf1 = nullptr;
     float *jgu1 = nullptr, *jeo1 = nullptr;
     long long gpu1_experts = 0;
+    // STRATA_M3_GPU1_CHECK=1 (debug, slow): every second-GPU job is also run on GPU 0 from the host copy of the expert, and the output rows compared bit for bit
+    bool gpu1_check = strata_env_truthy_one("STRATA_M3_GPU1_CHECK") != 0;
+    uint8_t* chk_slot = nullptr; void *chk_q8 = nullptr, *chk_qf = nullptr; float *chk_gu = nullptr, *chk_eo = nullptr;
+    long long chk_jobs = 0, chk_bad = 0;
     bool p2p_direct = strata_env_truthy_default("STRATA_M3_GPU1_DIRECT", 0) != 0;   // kernels read the peer's memory over PCIe instead of copy-engine copies (needs peer access; measured slower: 60.9 against 63.4 tok/s in max-mode)
     std::vector<cudaEvent_t> g1ev;   // STRATA_M3_PROF>=3: start / end events of the second GPU's first stream per window layer
     long long g1_layers = 0, g1_jobs = 0;
@@ -1231,6 +1235,13 @@ struct Engine {
         slot_pend.resize((size_t) (n_slots + n_dev1), 0);
         CK(cudaSetDevice(dev0));
         CK(cudaEventCreateWithFlags(&ev_p, cudaEventDisableTiming));   // recorded on the main stream, waited on by the second GPU's
+        if (gpu1_check) {
+            CK(cudaMalloc(&chk_slot, slot_bytes));
+            CK(cudaMalloc(&chk_q8, qbN));
+            CK(cudaMalloc(&chk_qf, qbF));
+            CK(cudaMalloc((void**) &chk_gu, (size_t) kMaxWin * 2 * FF * 4));
+            CK(cudaMalloc((void**) &chk_eo, (size_t) kMaxWin * N * 4));
+        }
         dev1 = d;
         if (!(can01 && can10)) p2p_direct = false;
         std::fprintf(stderr, "strata-m3: second GPU %d: %d expert slots of %.1f MiB (%.2f GiB), peer access %d/%d\n", d, n_dev1,
@@ -1576,6 +1587,27 @@ struct Engine {
                     CK(cudaEventRecord(sev1[si], sst1[si]));
                     CK(cudaSetDevice(dev0));
                     CK(cudaStreamWaitEvent(st, sev1[si], 0));
+                }
+            }
+            if (gpu1_check && any_dev1) {
+                CK(cudaStreamSynchronize(st));
+                std::vector<float> ra((size_t) kMaxWin * N), rb((size_t) kMaxWin * N);
+                for (size_t jx = 0; jx < gpu_jobs.size(); ++jx) {
+                    const Job& jb = gpu_jobs[jx];
+                    if (!on_dev1(slot_of[(size_t) (l * E + jb.e)])) continue;
+                    RowIdx ix{};
+                    ix.n = jb.nt;
+                    for (int i = 0; i < jb.nt; ++i) { ix.t[i] = jb.tok[i]; ix.w[i] = jb.w[i]; }
+                    CK(cudaMemcpyAsync(chk_slot, L.pack + (size_t) jb.e * (2 * L.gsz + L.dsz), 2 * L.gsz + L.dsz, cudaMemcpyHostToDevice, st));
+                    k_gather_q8<<<(unsigned) jb.nt, 256, 0, st>>>(static_cast<const uint8_t*>(q8h), static_cast<uint8_t*>(chk_q8), (int) K::native_q8_1_bytes(N, 1), ix);
+                    mmv_on(st, L.gu_type, chk_slot, N, 2 * FF, chk_gu, jb.nt, chk_q8);
+                    K::native_swiglu_oai_quantize_q8_1(chk_gu, chk_gu + FF, 2 * (long) FF, chk_qf, FF, jb.nt, m->alpha, m->limit, st);
+                    mmv_on(st, L.d_type, chk_slot + 2 * L.gsz, FF, N, chk_eo, jb.nt, chk_qf);
+                    CK(cudaStreamSynchronize(st));
+                    CK(cudaMemcpy(ra.data(), chk_eo, (size_t) jb.nt * N * 4, cudaMemcpyDeviceToHost));
+                    CK(cudaMemcpy(rb.data(), jeo + jx * (size_t) kMaxWin * N, (size_t) jb.nt * N * 4, cudaMemcpyDeviceToHost));
+                    ++chk_jobs;
+                    if (std::memcmp(ra.data(), rb.data(), (size_t) jb.nt * N * 4) != 0) ++chk_bad;
                 }
             }
             for (size_t c = 0; c * kJobMax < gpu_jobs.size(); ++c) {   // the adds into moe in job order, kJobMax jobs a launch
@@ -3090,6 +3122,8 @@ int strata::minimax::run(int argc, char** argv) {
         for (size_t i = 0; i + 1 < E.g1ev.size(); i += 2) { float ms = 0; if (cudaEventElapsedTime(&ms, E.g1ev[i], E.g1ev[i + 1]) == cudaSuccess) { tot += ms; ++n; } }
         std::printf("M3_GPU1_CHAIN first second-GPU stream per window layer: %.3f ms over %d layers (%lld jobs in all)\n", n ? tot / n : 0.0, n, E.g1_jobs);
     }
+    if (E.cpu_lane && E.dev1 >= 0 && E.gpu1_check)
+        std::printf("M3_GPU1_CHECK %lld second-GPU jobs recomputed on GPU 0, %lld differ bitwise\n", E.chk_jobs, E.chk_bad);
     if (E.cpu_lane && E.dev1 >= 0)
         std::printf("M3_GPU1 %d slots on the second GPU, %lld of the GPU expert uses ran there\n", E.n_dev1, E.gpu1_experts);
     if (E.cpu_lane)
