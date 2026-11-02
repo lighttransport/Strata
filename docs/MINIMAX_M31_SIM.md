@@ -553,3 +553,26 @@ output rows, and one kernel adds the jobs into `moe` in the original job order, 
 | 4 | 57.3 / 56.1 | - |
 
 With the stream default at 4 only the max-mode rows were measured at 4 (not the exact-routing rows); the CPU lane is the longer side in exact routing.
+
+### A second V100 as extra expert cache (`STRATA_M3_GPU1=1`, opt-in; measured 2026-11-03, two V100 PCIe on different sockets)
+
+GPU 0 keeps everything it had (dense weights, K/V, draft head, prefill, its own slots). GPU 1 holds only expert slots (1800 of 17.3 MiB, so
+2.9k slots in total instead of 1.1k) and its own copy stream; the warm-up after the prefill fills it with the experts the prompt used most. A
+decode-window layer sends the q8_1 image of `h` to GPU 1 by peer copy, runs the experts resident there on GPU 1's side streams (the same
+kernels as on GPU 0) and copies their output rows back into the job's rows on GPU 0; the ordered accumulate adds all jobs in the original order.
+The prefill and the one-token step never use GPU 1's slots (an expert resident there counts as a CPU miss in the one-token step).
+Peer access works between the two cards (copies: 28 KB 4.3 us, 100 KB 11 us, 200 KB 21 us; pinned host-to-device 12.3 GB/s on each).
+
+| (200 tokens exact, 300 tokens max; tok/s, dijkstra / lru_cache) | one GPU | two GPUs |
+|---|---|---|
+| exact routing | 27.8 / 26.6 (hit rate 53 %) | 30.0 / 25.7 (hit rate 70-73 %; second-GPU admissions off, the default) |
+| exact routing, admissions onto GPU 1 on | | 30.0 / 20.7 (hit rate 79 %) |
+| `--speed max` (`topk=2 missk=0`) | 57.3 / 56.0 (hit rate 83 %) | 63.4 / 59.4 (hit rate 92-93 %; `STRATA_M3_GPU1_ADMIT=1`; the lru_cache run is 261 tokens, a different answer) |
+
+46-task C++ benchmark, `--speed max` settings, `STRATA_M3_GPU1=1 STRATA_M3_GPU1_ADMIT=1`: 37 of 46 passes at 63.1 tok/s mean (one GPU: 36 of 46 at 56.8 / 56.9 tok/s in two runs; the exact path 41 of 46 at 25.5).
+The simulator predicted 79.7 % at 2800 slots (52.4 % at 1100) for the exact-routing code trace; the engine reached 78.8 %.
+Tokens differ from the one-GPU run in exact routing: the CPU lane and the GPU round differently, so moving an expert between them changes the
+last bits; the one-GPU runs with the same placement are token-identical. A teacher-forced KL comparison and the 46-task benchmark are the quality checks.
+Open: with admissions onto GPU 1 one prompt (lru_cache) loses 22 % while another gains; the cause is not found (not the peer copies: a version
+that moves both transfers through mapped pinned memory was slower, 59.3 against 63.4 tok/s in max-mode, and the lru_cache loss stayed; not the
+cross-device event query). Not measured: `--speed fast`, the T = 1 step on GPU 1, more than two GPUs.

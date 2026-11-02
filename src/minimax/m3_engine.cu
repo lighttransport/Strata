@@ -189,14 +189,14 @@ __global__ void k_gather_q8(const uint8_t* src, uint8_t* dst, int bytes, RowIdx 
 /// `moe` in job order, entry order within a job - the same sequence of operations on every element as the one-job-at-a-time
 /// k_scatter_add_i calls (a token is in a job at most once)
 constexpr int kJobMax = 16;
-struct JobList { int n; int nt[kJobMax]; int tok[kJobMax][kMaxWin]; float w[kJobMax][kMaxWin]; };
-__global__ void k_scatter_jobs(float* moe, const float* eo, int N, long eo_stride, JobList jl) {
+struct JobList { int n; int nt[kJobMax]; int tok[kJobMax][kMaxWin]; float w[kJobMax][kMaxWin]; const float* eo[kJobMax]; };
+__global__ void k_scatter_jobs(float* moe, int N, JobList jl) {
     const int t = blockIdx.x;
     for (int e = threadIdx.x; e < N; e += blockDim.x) {
         float acc = moe[(size_t) t * N + e];
         for (int j = 0; j < jl.n; ++j)
             for (int i = 0; i < jl.nt[j]; ++i)
-                if (jl.tok[j][i] == t) acc += jl.w[j][i] * eo[(size_t) j * eo_stride + (size_t) i * N + e];
+                if (jl.tok[j][i] == t) acc += jl.w[j][i] * jl.eo[j][(size_t) i * N + e];
         moe[(size_t) t * N + e] = acc;
     }
 }
@@ -956,16 +956,42 @@ struct Engine {
     // all wasted 22 % of the slot memory, so a small slot fits the common experts and a few large slots serve the others.
     size_t slot_bytes = 0, slot_bytes_big = 0;   // strides of the two classes
     int n_slots = 0, n_small = 0;
+    // STRATA_M3_GPU1=<device index>: a second GPU holds extra expert slots (indices n_slots .. n_slots + n_dev1 - 1, small class only).
+    // Decode windows run the experts resident there on that GPU (q8_1 image of h by peer copy, results by peer copy into the job's
+    // rows); the prefill, the T == 1 step and the large-class layers never use them.
+    int dev1 = -1, n_dev1 = 0, dev0 = 0;
+    uint8_t* slots1 = nullptr;
+    cudaStream_t cst1 = nullptr, sst1[4] = {};
+    cudaEvent_t ev_p = nullptr, sev1[4] = {};
+    void *q8h1 = nullptr, *jq81 = nullptr, *jqf1 = nullptr;
+    float *jgu1 = nullptr, *jeo1 = nullptr;
+    long long gpu1_experts = 0;
+    bool gpu1_admit = strata_env_truthy_default("STRATA_M3_GPU1_ADMIT", 0) != 0;   // admissions may take second-GPU slots (default off: only the warm-up fills them; with admissions an exact-routing run of one prompt fell from 26.6 to 20.7 tok/s)
+    bool on_dev1(int s) const { return s >= n_slots; }
+    /// Has the admission copy into slot s finished?  A second-GPU slot's event is queried from that GPU's context.
+    bool slot_copy_done(int s) {
+        cudaError_t r;
+        if (on_dev1(s)) { (void) cudaSetDevice(dev1); r = cudaEventQuery(slot_ev[(size_t) s]); (void) cudaSetDevice(dev0); }
+        else r = cudaEventQuery(slot_ev[(size_t) s]);
+        return r == cudaSuccess;
+    }
     size_t blob_of(const Layer& y) const { return 2 * y.gsz + y.dsz; }
     bool big_layer(const Layer& y) const { return blob_of(y) + 4096 > slot_bytes; }
     uint8_t* slot_ptr(int s) const {
+        if (s >= n_slots) return slots1 + (size_t) (s - n_slots) * slot_bytes;
         return s < n_small ? slots + (size_t) s * slot_bytes
                            : slots + (size_t) n_small * slot_bytes + (size_t) (s - n_small) * slot_bytes_big;
     }
     /// The least recently used slot of the class that fits this layer's experts.
-    int victim(const Layer& y) const {
+    /// `any`: the second GPU's slots too (decode-window admission and the warm-up only).
+    int victim(const Layer& y, bool any = false) const {
         const int lo = big_layer(y) ? n_small : 0, hi = big_layer(y) ? n_slots : n_small;
-        return lo + (int) (std::min_element(used.begin() + lo, used.begin() + hi) - (used.begin() + lo));
+        int best = lo + (int) (std::min_element(used.begin() + lo, used.begin() + hi) - (used.begin() + lo));
+        if (any && n_dev1 > 0 && !big_layer(y)) {
+            const int b1 = n_slots + (int) (std::min_element(used.begin() + n_slots, used.begin() + n_slots + n_dev1) - (used.begin() + n_slots));
+            if (used[(size_t) b1] < used[(size_t) best]) best = b1;
+        }
+        return best;
     }
     std::vector<int> slot_of;            // [layer * n_expert + e] -> slot or -1
     std::vector<int> owner;              // [slot] -> key or -1
@@ -1068,6 +1094,7 @@ struct Engine {
     cudaStream_t sst[4] = {};
     cudaEvent_t sev[4] = {}, ev_efork = nullptr;
     void* jq8 = nullptr; void* jqf = nullptr; float* jgu = nullptr; float* jeo = nullptr;
+    bool in_window_lane = false;   // expert() is being called by the decode-window lane (second-GPU slots allowed)
     bool q8h_ready = false;   // ffn has already quantized h into q8h (and recorded ev_efork) for this layer
     float* gu2 = nullptr;              // [kMaxWin][2 FF]: one expert's gate and up from a single matvec
     bool fuse_exp = strata_env_truthy_one("STRATA_M3_NO_FUSE_EXPERT") == 0 && K::native_swiglu_oai_quantize_exact();   // 5 kernels per resident expert instead of 8 (bitwise the same)
@@ -1146,9 +1173,63 @@ struct Engine {
         outb.assign(entries * m->N, 0.f);
         actb.assign(kMaxWin * C::kNativeActBytes, 0);
         hqb.assign(entries * C::kNativeHBytes, 0);
+        init_gpu1();
         cpu_lane = true;
         std::fprintf(stderr, "strata-m3: CPU lane on: %d threads, admit up to %d missed expert(s) per layer into VRAM (%s)\n",
                      par->size(), admit_per_layer, admit_freq ? "frequency-gated" : "every miss, LRU");
+    }
+
+    /// STRATA_M3_GPU1: the second GPU's expert slots, streams, events and per-job scratch.
+    void init_gpu1() {
+        const char* v = std::getenv("STRATA_M3_GPU1");
+        if (!v || !v[0]) return;
+        const int d = std::atoi(v);
+        int nd = 0;
+        CK(cudaGetDeviceCount(&nd));
+        CK(cudaGetDevice(&dev0));
+        if (d <= 0 || d >= nd || d == dev0 || exp_streams <= 0 || !fuse_exp || slot_pend.empty()) {
+            std::fprintf(stderr, "strata-m3: STRATA_M3_GPU1=%s ignored (needs a second device, the CPU lane, STRATA_M3_EXP_STREAMS > 0 and the fused experts)\n", v);
+            return;
+        }
+        int can01 = 0, can10 = 0;
+        CK(cudaDeviceCanAccessPeer(&can01, dev0, d));
+        CK(cudaDeviceCanAccessPeer(&can10, d, dev0));
+        if (can01) (void) cudaDeviceEnablePeerAccess(d, 0);
+        CK(cudaSetDevice(d));
+        if (can10) (void) cudaDeviceEnablePeerAccess(dev0, 0);
+        (void) cudaGetLastError();
+        const int N = m->N, FF = m->FF;
+        const size_t qbN = K::native_q8_1_bytes(N * kMaxWin, 1), qbF = K::native_q8_1_bytes(FF * kMaxWin, 1);
+        const size_t scratch = qbN + (size_t) kJobMax * (qbN + qbF) + (size_t) kJobMax * kMaxWin * (2 * (size_t) FF + N) * 4;
+        size_t fr = 0, tot = 0;
+        CK(cudaMemGetInfo(&fr, &tot));
+        const size_t reserve = (size_t) 768 << 20;
+        const size_t budget = fr > reserve + scratch ? fr - reserve - scratch : 0;
+        const int total = m->n_layers * m->n_expert;
+        n_dev1 = (int) std::min<size_t>((size_t) total, budget / slot_bytes);
+        if (n_dev1 <= 0) { CK(cudaSetDevice(dev0)); n_dev1 = 0; return; }
+        CK(cudaMalloc(&slots1, (size_t) n_dev1 * slot_bytes));
+        CK(cudaMemset(slots1, 0, (size_t) n_dev1 * slot_bytes));
+        CK(cudaStreamCreateWithFlags(&cst1, cudaStreamNonBlocking));
+        for (int i = 0; i < exp_streams; ++i) {
+            CK(cudaStreamCreateWithFlags(&sst1[i], cudaStreamNonBlocking));
+            CK(cudaEventCreateWithFlags(&sev1[i], cudaEventDisableTiming));
+        }
+        CK(cudaMalloc(&q8h1, qbN));
+        CK(cudaMalloc(&jq81, (size_t) kJobMax * qbN));
+        CK(cudaMalloc(&jqf1, (size_t) kJobMax * qbF));
+        CK(cudaMalloc((void**) &jgu1, (size_t) kJobMax * kMaxWin * 2 * FF * 4));
+        CK(cudaMalloc((void**) &jeo1, (size_t) kJobMax * kMaxWin * N * 4));
+        slot_ev.resize((size_t) (n_slots + n_dev1), nullptr);
+        for (int i = 0; i < n_dev1; ++i) CK(cudaEventCreateWithFlags(&slot_ev[(size_t) (n_slots + i)], cudaEventDisableTiming));
+        owner.resize((size_t) (n_slots + n_dev1), -1);
+        used.resize((size_t) (n_slots + n_dev1), 0);
+        slot_pend.resize((size_t) (n_slots + n_dev1), 0);
+        CK(cudaSetDevice(dev0));
+        CK(cudaEventCreateWithFlags(&ev_p, cudaEventDisableTiming));   // recorded on the main stream, waited on by the second GPU's
+        dev1 = d;
+        std::fprintf(stderr, "strata-m3: second GPU %d: %d expert slots of %.1f MiB (%.2f GiB), peer access %d/%d\n", d, n_dev1,
+                     (double) slot_bytes / (1 << 20), (double) n_dev1 * (double) slot_bytes / (1 << 30), can01, can10);
     }
 
     /// After the prefill: fill the small-class slots with the experts the prompt used most (per-layer routing counts
@@ -1163,20 +1244,25 @@ struct Engine {
             for (int e = 0; e < E; ++e)
                 if (pf_count[(size_t) l * E + e]) cand.emplace_back(pf_count[(size_t) l * E + e], l * E + e);
         }
-        const size_t want = std::min<size_t>((size_t) n_small, cand.size());
+        const size_t want = std::min<size_t>((size_t) (n_small + n_dev1), cand.size());
         std::partial_sort(cand.begin(), cand.begin() + (long) want, cand.end(),
                           [](const auto& a, const auto& b) { return a.first != b.first ? a.first > b.first : a.second < b.second; });
         std::vector<char> target((size_t) m->n_layers * E, 0);
         for (size_t i = 0; i < want; ++i) target[(size_t) cand[i].second] = 1;
         // victims: small-class slots whose owner is not a target (empty first, then least recently used)
-        std::vector<int> victims;
+        std::vector<int> victims, victims1;
         for (int s = 0; s < n_small; ++s)
             if (owner[(size_t) s] < 0 || !target[(size_t) owner[(size_t) s]]) victims.push_back(s);
+        for (int s = n_slots; s < n_slots + n_dev1; ++s)
+            if (owner[(size_t) s] < 0 || !target[(size_t) owner[(size_t) s]]) victims1.push_back(s);
         std::sort(victims.begin(), victims.end(), [&](int a, int b) { return used[(size_t) a] < used[(size_t) b]; });
+        std::sort(victims1.begin(), victims1.end(), [&](int a, int b) { return used[(size_t) a] < used[(size_t) b]; });
+        victims.insert(victims.begin(), victims1.begin(), victims1.end());   // the coldest targets (placed first) go to the second GPU
         const auto t0 = Clock::now();
         size_t next_victim = 0, copied = 0;
         CK(cudaStreamSynchronize(st));
         CK(cudaStreamSynchronize(cst));   // admission copies of an earlier run may still be in flight
+        if (dev1 >= 0) { CK(cudaSetDevice(dev1)); CK(cudaStreamSynchronize(cst1)); CK(cudaSetDevice(dev0)); }
         for (size_t i = want; i-- > 0;) {   // coldest target first, so the hottest end up most recently used
             const int key = cand[i].second;
             if (slot_of[(size_t) key] >= 0) {
@@ -1192,10 +1278,17 @@ struct Engine {
             slot_of[(size_t) key] = s;
             used[(size_t) s] = ++clock;
             slot_pend[(size_t) s] = 0;
-            CK(cudaMemcpyAsync(slot_ptr(s), y.pack + (size_t) e * (2 * y.gsz + y.dsz), 2 * y.gsz + y.dsz, cudaMemcpyHostToDevice, st));
+            if (on_dev1(s)) {
+                CK(cudaSetDevice(dev1));
+                CK(cudaMemcpyAsync(slot_ptr(s), y.pack + (size_t) e * (2 * y.gsz + y.dsz), 2 * y.gsz + y.dsz, cudaMemcpyHostToDevice, cst1));
+                CK(cudaSetDevice(dev0));
+            } else {
+                CK(cudaMemcpyAsync(slot_ptr(s), y.pack + (size_t) e * (2 * y.gsz + y.dsz), 2 * y.gsz + y.dsz, cudaMemcpyHostToDevice, st));
+            }
             ++copied;
         }
         CK(cudaStreamSynchronize(st));
+        if (dev1 >= 0) { CK(cudaSetDevice(dev1)); CK(cudaStreamSynchronize(cst1)); CK(cudaSetDevice(dev0)); }
         // the gate's prior: the prompt's frequency of each expert times the decode horizon, times `prior`
         if (pf_tokens > 0)
             for (size_t k = 0; k < pf_count.size(); ++k)
@@ -1225,7 +1318,7 @@ struct Engine {
             if (sl >= 0 && slot_pend[(size_t) sl]) {
                 // an admission copy still running on the copy stream: waiting for it would stall the compute stream
                 // behind every copy queued before it, so the CPU takes this expert now and the slot serves later tokens
-                if (cudaEventQuery(slot_ev[(size_t) sl]) == cudaSuccess) slot_pend[(size_t) sl] = 0;
+                if (slot_copy_done(sl)) slot_pend[(size_t) sl] = 0;
                 else {
                     (void) cudaGetLastError();
                     Pick q = p;
@@ -1236,6 +1329,12 @@ struct Engine {
             }
             if (sl < 0) {
                 miss.push_back(p);
+                continue;
+            }
+            if (on_dev1(sl)) {   // on the second GPU: this step runs it on the CPU
+                Pick q = p;
+                q.inflight = true;
+                miss.push_back(q);
                 continue;
             }
             const uint8_t* w = expert(l, p.e);   // a hit: touches the LRU clock
@@ -1344,6 +1443,7 @@ struct Engine {
                 }
             std::sort(jobs.begin(), jobs.end(), [](const Job& a, const Job& b) { return a.e < b.e; });
         }
+        in_window_lane = true;
         const unsigned long long layer_clock0 = clock;
         std::vector<Job> miss, gpu_jobs;
         const auto t_pre0 = Clock::now();
@@ -1354,7 +1454,7 @@ struct Engine {
             const int key = l * E + jb.e;
             const int sl = slot_of[(size_t) key];
             if (sl >= 0 && slot_pend[(size_t) sl]) {
-                if (cudaEventQuery(slot_ev[(size_t) sl]) == cudaSuccess) slot_pend[(size_t) sl] = 0;
+                if (slot_copy_done(sl)) slot_pend[(size_t) sl] = 0;
                 else {
                     (void) cudaGetLastError();
                     Job q = jb;
@@ -1364,6 +1464,7 @@ struct Engine {
                 }
             }
             if (sl < 0) { miss.push_back(jb); continue; }
+            if (on_dev1(sl) && !(dev1 >= 0 && q8h_ready)) { Job q = jb; q.inflight = true; miss.push_back(q); continue; }
             gpu_jobs.push_back(jb);
         }
         lwl(1);
@@ -1395,22 +1496,49 @@ struct Engine {
             par->start(nj * gu_chunks, gu_fn);
         }
         lwl(2);
-        if (q8h_ready && gpu_jobs.size() >= 2 && gpu_jobs.size() <= (size_t) kJobMax) {
+        bool any_dev1 = false;
+        for (const Job& jb : gpu_jobs) any_dev1 |= on_dev1(slot_of[(size_t) (l * E + jb.e)]);
+        if (q8h_ready && (gpu_jobs.size() >= 2 || any_dev1) && gpu_jobs.size() <= (size_t) kJobMax) {
             const size_t qbN = K::native_q8_1_bytes(N * kMaxWin, 1), qbF = K::native_q8_1_bytes(FF * kMaxWin, 1);
-            bool woke[4] = {};
+            bool woke[4] = {}, woke1[4] = {}, used1[4] = {};
+            int n0 = 0, n1 = 0;
             auto mmv_on = [&](cudaStream_t sj, int type, const void* w, int n_in, int n_out, float* out, int nt, const void* qq) {
                 K::native_mmvq(type, w, qq, out, n_in, n_out, nt, sj);
             };
             JobList jl{};
             for (size_t jx = 0; jx < gpu_jobs.size(); ++jx) {
                 const Job& jb = gpu_jobs[jx];
-                const int si = (int) (jx % (size_t) exp_streams);
-                cudaStream_t sj = sst[si];
-                if (!woke[si]) { CK(cudaStreamWaitEvent(sj, ev_efork, 0)); woke[si] = true; }
+                const bool d1 = on_dev1(slot_of[(size_t) (l * E + jb.e)]);
                 const uint8_t* w = expert(l, jb.e);
                 RowIdx ix{};
                 ix.n = jb.nt;
                 for (int i = 0; i < jb.nt; ++i) { ix.t[i] = jb.tok[i]; ix.w[i] = jb.w[i]; }
+                if (d1) {   // on the second GPU: its own streams, scratch and copy of the image; the output rows come back by peer copy
+                    const int si1 = n1++ % exp_streams;
+                    CK(cudaSetDevice(dev1));
+                    cudaStream_t sj = sst1[si1];
+                    if (!woke1[si1]) { CK(cudaStreamWaitEvent(sj, ev_p, 0)); woke1[si1] = true; }
+                    uint8_t* q8j = static_cast<uint8_t*>(jq81) + jx * qbN;
+                    uint8_t* qfj = static_cast<uint8_t*>(jqf1) + jx * qbF;
+                    float* guj = jgu1 + jx * (size_t) kMaxWin * 2 * FF;
+                    float* eoj = jeo1 + jx * (size_t) kMaxWin * N;
+                    k_gather_q8<<<(unsigned) jb.nt, 256, 0, sj>>>(static_cast<const uint8_t*>(q8h1), q8j, (int) K::native_q8_1_bytes(N, 1), ix);
+                    mmv_on(sj, L.gu_type, w, N, 2 * FF, guj, jb.nt, q8j);
+                    K::native_swiglu_oai_quantize_q8_1(guj, guj + FF, 2 * (long) FF, qfj, FF, jb.nt, m->alpha, m->limit, sj);
+                    mmv_on(sj, L.d_type, w + 2 * L.gsz, FF, N, eoj, jb.nt, qfj);
+                    CK(cudaMemcpyPeerAsync(jeo + jx * (size_t) kMaxWin * N, dev0, eoj, dev1, (size_t) jb.nt * N * 4, sj));
+                    used1[si1] = true;
+                    CK(cudaSetDevice(dev0));
+                    jl.nt[jx] = jb.nt;
+                    jl.eo[jx] = jeo + jx * (size_t) kMaxWin * N;
+                    for (int i = 0; i < jb.nt; ++i) { jl.tok[jx][i] = jb.tok[i]; jl.w[jx][i] = jb.w[i]; }
+                    gpu_experts += jb.nt;
+                    gpu1_experts += jb.nt;
+                    continue;
+                }
+                const int si = n0++ % exp_streams;
+                cudaStream_t sj = sst[si];
+                if (!woke[si]) { CK(cudaStreamWaitEvent(sj, ev_efork, 0)); woke[si] = true; }
                 uint8_t* q8j = static_cast<uint8_t*>(jq8) + jx * qbN;
                 uint8_t* qfj = static_cast<uint8_t*>(jqf) + jx * qbF;
                 float* guj = jgu + jx * (size_t) kMaxWin * 2 * FF;
@@ -1420,13 +1548,21 @@ struct Engine {
                 K::native_swiglu_oai_quantize_q8_1(guj, guj + FF, 2 * (long) FF, qfj, FF, jb.nt, m->alpha, m->limit, sj);
                 mmv_on(sj, L.d_type, w + 2 * L.gsz, FF, N, eoj, jb.nt, qfj);
                 jl.nt[jx] = jb.nt;
+                jl.eo[jx] = eoj;
                 for (int i = 0; i < jb.nt; ++i) { jl.tok[jx][i] = jb.tok[i]; jl.w[jx][i] = jb.w[i]; }
                 gpu_experts += jb.nt;
             }
             jl.n = (int) gpu_jobs.size();
-            for (int si = 0; si < exp_streams; ++si)
+            for (int si = 0; si < exp_streams; ++si) {
                 if (woke[si]) { CK(cudaEventRecord(sev[si], sst[si])); CK(cudaStreamWaitEvent(st, sev[si], 0)); }
-            k_scatter_jobs<<<(unsigned) T, 256, 0, st>>>(moe, jeo, N, (long) kMaxWin * N, jl);
+                if (used1[si]) {
+                    CK(cudaSetDevice(dev1));
+                    CK(cudaEventRecord(sev1[si], sst1[si]));
+                    CK(cudaSetDevice(dev0));
+                    CK(cudaStreamWaitEvent(st, sev1[si], 0));
+                }
+            }
+            k_scatter_jobs<<<(unsigned) T, 256, 0, st>>>(moe, N, jl);
         } else
         for (const Job& jb : gpu_jobs) {
             const uint8_t* w = expert(l, jb.e);
@@ -1463,7 +1599,7 @@ struct Engine {
             for (const Job& jb : miss) {
                 if (done >= admit_per_layer) break;
                 if (jb.inflight) continue;
-                const int s = victim(L);
+                const int s = victim(L, dev1 >= 0 && gpu1_admit);
                 if (used[(size_t) s] > layer_clock0) break;
                 const int key = l * E + jb.e;
                 if (admit_freq && owner[(size_t) s] >= 0 && use_count[(size_t) key] < use_count[(size_t) owner[(size_t) s]]) continue;
@@ -1471,9 +1607,17 @@ struct Engine {
                 owner[(size_t) s] = key;
                 slot_of[(size_t) key] = s;
                 used[(size_t) s] = ++clock;
+                if (on_dev1(s)) {   // the second GPU's copy stream, after the work queued so far (it may still read this slot)
+                    CK(cudaSetDevice(dev1));
+                    CK(cudaStreamWaitEvent(cst1, ev_st, 0));
+                    CK(cudaMemcpyAsync(slot_ptr(s), L.pack + (size_t) jb.e * (2 * L.gsz + L.dsz), 2 * L.gsz + L.dsz, cudaMemcpyHostToDevice, cst1));
+                    CK(cudaEventRecord(slot_ev[(size_t) s], cst1));
+                    CK(cudaSetDevice(dev0));
+                } else {
                 CK(cudaStreamWaitEvent(cst, ev_st, 0));
                 CK(cudaMemcpyAsync(slot_ptr(s), L.pack + (size_t) jb.e * (2 * L.gsz + L.dsz), 2 * L.gsz + L.dsz, cudaMemcpyHostToDevice, cst));
                 CK(cudaEventRecord(slot_ev[(size_t) s], cst));
+                }
                 slot_pend[(size_t) s] = 1;
                 copy_bytes += (double) (2 * L.gsz + L.dsz);
                 ++admitted;
@@ -1514,6 +1658,7 @@ struct Engine {
         }
         cpu_wall_ms += ms_since(t0);
         k_add<<<grid1((int64_t) T * N), kThreads, 0, st>>>(x, moe, (int64_t) T * N);
+        in_window_lane = false;
     }
 #endif
 
@@ -1677,6 +1822,11 @@ struct Engine {
         const int key = l * m->n_expert + e;
         int s = slot_of[(size_t) key];
         ++clock;
+        if (s >= n_slots && !in_window_lane) {   // a second-GPU slot cannot serve this caller: free it, take the miss path
+            owner[(size_t) s] = -1;
+            slot_of[(size_t) key] = -1;
+            s = -1;
+        }
         if (s >= 0) {
             ++hits;
             used[(size_t) s] = clock;
@@ -1992,6 +2142,10 @@ struct Engine {
             if (exp_streams > 0 && fuse_exp && T >= 2) {   // the experts' common input image, then the fork: they run beside the shared expert
                 K::native_quantize_q8_1(h, q8h, N * T, 1, st);
                 CK(cudaEventRecord(ev_efork, st));
+                if (dev1 >= 0) {   // the second GPU's copy of the image, while the shared expert runs
+                    CK(cudaMemcpyPeerAsync(q8h1, dev1, q8h, dev0, K::native_q8_1_bytes(N * T, 1), st));
+                    CK(cudaEventRecord(ev_p, st));
+                }
                 q8h_ready = true;
             }
             shared_expert();   // queued behind the router's results, running while the CPU lane works
@@ -2911,6 +3065,8 @@ int strata::minimax::run(int argc, char** argv) {
                     (double) m.pack_bytes / (1 << 30), m.pack_read_s, (double) m.pack_bytes / 1e9 / m.pack_read_s,
                     (double) m.pack_pinned / (1 << 30), m.pack_pin_s);
 #if defined(STRATA_M3_CPU_POOL)
+    if (E.cpu_lane && E.dev1 >= 0)
+        std::printf("M3_GPU1 %d slots on the second GPU, %lld of the GPU expert uses ran there\n", E.n_dev1, E.gpu1_experts);
     if (E.cpu_lane)
         std::printf("M3_CPU experts on the CPU %lld, on the GPU %lld, admitted to VRAM %lld, CPU lane wall %.1f ms\n"
                     "M3_PHASES ms over the run: wait-for-GPU-chain %.1f | gpu-enqueue %.1f | admit %.1f | cpu: quant %.1f "
