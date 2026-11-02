@@ -515,3 +515,28 @@ bitwise the same sums. strata-m3 now sets both by default; the environment still
 Engine A/B on one V100 (max-mode routing `topk=2 missk=0`, `--dspark --kv-f16`, 300 tokens, mean of 3 runs, old / new tok/s):
 dijkstra 49.8 / 52.3, lru_cache 48.9 / 51.3, knapsack 46.2 / 48.4, eval_expr 53.1 / 56.0 (+5 %). Exact routing with speculation,
 200 tokens on two prompts: the generated token ids are identical with and without the knobs. Not measured: other GPUs.
+
+### Where the rest of a `--speed max` step goes, and what was tried on it (measured 2026-11-03, one V100)
+
+Per verify step (79 steps, `topk=2 missk=0`, dijkstra prompt, 300 tokens, 50.3 tok/s, 75 ms a step; `STRATA_M3_PROF=3` and `=4`):
+attention part of the 57 layers up to the router 28.1 ms; after the router (shared expert 7.2, resident experts 18.6, wait for the CPU
+0.1 ms per layer = 5.7, combine 3.1) 35 ms; the draft pass, head and host work between steps 11 ms. After the router the GPU, not the CPU
+lane, is the longer side: the CPU result is ready 0.1 ms after the GPU has finished the resident experts. Host time of one window layer
+(`M3_LANE_HOST`): filter + shared expert 0.014 ms, jobs + classify 0.003, CPU quantize + start 0.020, queueing the GPU experts 0.063,
+gate/up join 0.122, quantize-h + down 0.100, accumulate + add 0.010 (sum 0.335 ms).
+
+| Change | Result | Kept |
+|---|---|---|
+| Resident experts as 5 kernels instead of 8: gate and up as one matvec of 2 FF rows, the activation's q8_1 rows copied from the layer's one image, SwiGLU fused with its quantization (`STRATA_M3_NO_FUSE_EXPERT=1` restores the 8) | max-mode 55.1 / 54.0 tok/s against 53.5 / 52.5 (+3.2 % / +2.8 %, dijkstra / lru_cache, 2 runs each); generated tokens identical; exact routing 27.12 against 27.15 (the CPU lane dominates there) | yes, default |
+| CPU gate/up phase started on the workers before the GPU experts are queued (`Par::start` / `finish`) | 50.3 -> 51.0 tok/s (one run each), tokens identical | yes |
+| DSpark Markov kernel: 17 16-byte loads per vocabulary row instead of 256 byte loads | Markov + argmax + confidence part of the draft pass 2.31 -> 1.48 ms, draft pass 9.7 -> 8.9 ms, tokens identical | yes |
+| Dense matvec, activation-sum (dot2) removed (wrong results, upper bound only) | 0-2 % at 1-5 columns, up to 7 % at 6 | no |
+| Dense matvec, minimum blocks per SM 4 -> 6 / 8 | q: 138 -> 136 / 133 us at 8 columns, at most 4 % | no |
+| Dense matvec on tensor cores (WMMA 32x8x16, fp16 dequantized weights, Q5_K) | correct (relative error 4e-4) but flat at 115 us for 1-8 columns against 50 us (1 column) and 125-136 us (7-8) for the dp4a kernel | no |
+
+Estimated, not built: splitting a window into two half-windows so one half's CPU experts overlap the other half's GPU work would hide the
+CPU lane but doubles the launches and re-reads the dense weights (about +15 ms of GPU time against 16.7 ms hidden). A draft head
+restricted to 16K-32K frequent tokens would save about 3.5 ms a step; tokens of the benchmark answers are covered 98.1 % (16K) and
+99.2 % (32K) by a list made from this repository's code and docs, so the loss in acceptance is about the same size as the gain.
+The fused SwiGLU + quantize kernel computes the activation with libdevice `expf` and IEEE operations on purpose: `native_mmvq.cu` is
+built with `--use_fast_math`, and the first version (plain `expf`, `/`) changed the generated tokens on 2 of 4 prompts.

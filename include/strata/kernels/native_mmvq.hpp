@@ -46,6 +46,14 @@ void native_quantize_q8_1(const float* x, void* x_q8_1, int n_in, int ncols,
 void native_swiglu_quantize_q8_1(const float* gate, const float* up, void* x_q8_1,
                                  int n_in, int ncols, void* stream);
 
+/// k_swiglu_oai (g = min(gate, limit), u = clamp(up, -limit, limit), g / (1 + exp(-alpha g)) * (1 + u), IEEE arithmetic)
+/// fused with native_quantize_q8_1 of the result: gate[col * ld + k] and up[col * ld + k], `ncols` columns of n_in, bit for
+/// bit the two kernels in a row.  ld lets gate and up be the two halves of one [ncols][2 FF] matvec output.  CUDA only
+/// (native_swiglu_oai_quantize_exact() is false elsewhere and the call throws).
+bool native_swiglu_oai_quantize_exact() noexcept;
+void native_swiglu_oai_quantize_q8_1(const float* gate, const float* up, long ld, void* x_q8_1, int n_in, int ncols,
+                                     float alpha, float limit, void* stream);
+
 void native_q5_k_mmvq(const void* weights, const void* x_q8_1, float* y,
                       int n_in, int n_out, int ncols, void* stream);
 

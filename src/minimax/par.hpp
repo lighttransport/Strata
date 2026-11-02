@@ -51,6 +51,13 @@ public:
     int size() const { return (int) threads_.size() + 1; }
     void run(int n, const std::function<void(int)>& fn) {
         if (n <= 0) return;
+        start(n, fn);
+        finish();
+    }
+    /// start(n, fn) hands the batch to the workers and returns at once (the caller may do other work, e.g. enqueue GPU
+    /// kernels); finish() joins in on the remaining indices and returns when all are done.  `fn` must outlive finish().
+    void start(int n, const std::function<void(int)>& fn) {
+        if (n <= 0) { pend_n_ = 0; return; }
         uint64_t g;
         {
             std::lock_guard<std::mutex> lk(mu_);
@@ -60,9 +67,16 @@ public:
             head_.store(g << 32);
             remaining_.store(n);
         }
+        pend_g_ = g;
+        pend_n_ = n;
+        pend_fn_ = &fn;
         cv_.notify_all();
-        work(g, n, fn);
+    }
+    void finish() {
+        if (pend_n_ <= 0) return;
+        work(pend_g_, pend_n_, *pend_fn_);
         while (remaining_.load(std::memory_order_acquire) > 0) std::this_thread::yield();
+        pend_n_ = 0;
     }
 
 private:
@@ -109,4 +123,7 @@ private:
     bool stop_ = false;
     std::atomic<uint64_t> head_{0};
     std::atomic<int> remaining_{0};
+    uint64_t pend_g_ = 0;
+    int pend_n_ = 0;
+    const std::function<void(int)>* pend_fn_ = nullptr;
 };

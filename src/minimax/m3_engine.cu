@@ -178,6 +178,13 @@ __global__ void k_gather_rows_i(const float* src, float* dst, int n, RowIdx ix) 
     float* d = dst + (size_t) blockIdx.x * n;
     for (int j = threadIdx.x; j < n; j += blockDim.x) d[j] = s[j];
 }
+/// the q8_1 images of rows ix.t[i] of src (rows of `bytes` bytes, a multiple of 4) back to back into dst: the quantization is per 32 values,
+/// so these are the bytes quantizing the gathered float rows would write
+__global__ void k_gather_q8(const uint8_t* src, uint8_t* dst, int bytes, RowIdx ix) {
+    const uint32_t* s = reinterpret_cast<const uint32_t*>(src + (size_t) ix.t[blockIdx.x] * bytes);
+    uint32_t* d = reinterpret_cast<uint32_t*>(dst + (size_t) blockIdx.x * bytes);
+    for (int j = threadIdx.x; j < bytes / 4; j += blockDim.x) d[j] = s[j];
+}
 /// out rows ix.t[i] += ix.w[i] * src row i
 __global__ void k_scatter_add_i(float* out, const float* src, int n, RowIdx ix) {
     float* d = out + (size_t) ix.t[blockIdx.x] * n;
@@ -997,8 +1004,10 @@ struct Engine {
     double ph_sync = 0;   // host time waiting for the GPU chain up to the router (per run)
     double ph_fwd = 0, ph_emb = 0, ph_attn_enq = 0, ph_head = 0;   // decode (T == 1) wall time of forward() and its parts
     // STRATA_M3_PROF=2: GPU-timeline durations between marks (CUDA events), resolved after each layer's router sync
-    bool prof_gpu = false, prof_all = false;   // prof_all (STRATA_M3_PROF=3): also the layers of verify windows
+    bool prof_gpu = false, prof_all = false, prof_draft = false;   // prof_all (STRATA_M3_PROF=3): also the layers of verify windows
     long long gcalls = 0;
+    double lw[10] = {};   // STRATA_M3_PROF>=3: host ms per stage of the window layer: filter+shared / jobs+classify / cpu quant+start / gpu enqueue / admit / gu join / quant-h+down / accumulate+add
+    long long lw_n = 0;
     std::vector<cudaEvent_t> gev;
     std::vector<const char*> gname;
     int gn = 0;
@@ -1038,6 +1047,8 @@ struct Engine {
     std::vector<cudaEvent_t> slot_ev;
     std::vector<char> slot_pend;
     float *h_host = nullptr, *cpu_out_host = nullptr, *cpu_out_dev = nullptr;
+    float* gu2 = nullptr;              // [kMaxWin][2 FF]: one expert's gate and up from a single matvec
+    bool fuse_exp = strata_env_truthy_one("STRATA_M3_NO_FUSE_EXPERT") == 0 && K::native_swiglu_oai_quantize_exact();   // 5 kernels per resident expert instead of 8 (bitwise the same)
     void* q8h = nullptr;               // q8_1 image of the normed hidden, kept apart from q8 (the intermediates)
     std::vector<float> ffb, outb;      // [top_k][FF], [top_k][N]
     std::vector<uint8_t> actb, hqb;
@@ -1091,6 +1102,7 @@ struct Engine {
         CK(cudaHostAlloc((void**) &cpu_out_host, (size_t) kMaxWin * m->N * 4, cudaHostAllocMapped));
         CK(cudaHostGetDevicePointer((void**) &cpu_out_dev, cpu_out_host, 0));
         CK(cudaMalloc(&q8h, K::native_q8_1_bytes(m->N * kMaxWin, 1)));
+        CK(cudaMalloc(&gu2, (size_t) kMaxWin * 2 * m->FF * 4));
         const size_t entries = (size_t) m->top_k * kMaxWin;   // (token, expert) pairs of a window
         ffb.assign(entries * m->FF, 0.f);
         outb.assign(entries * m->N, 0.f);
@@ -1295,10 +1307,12 @@ struct Engine {
             std::sort(jobs.begin(), jobs.end(), [](const Job& a, const Job& b) { return a.e < b.e; });
         }
         const unsigned long long layer_clock0 = clock;
-        std::vector<Job> miss;
+        std::vector<Job> miss, gpu_jobs;
         const auto t_pre0 = Clock::now();
+        auto lwt = Clock::now();
+        auto lwl = [&](int k) { const auto n = Clock::now(); lw[k] += std::chrono::duration<double, std::milli>(n - lwt).count(); lwt = n; };
         K::native_quantize_q8_1(h, q8h, N * T, 1, st);   // the T rows' q8_1 images, back to back
-        for (const Job& jb : jobs) {
+        for (const Job& jb : jobs) {   // which experts run where (no GPU work is queued yet)
             const int key = l * E + jb.e;
             const int sl = slot_of[(size_t) key];
             if (sl >= 0 && slot_pend[(size_t) sl]) {
@@ -1312,21 +1326,65 @@ struct Engine {
                 }
             }
             if (sl < 0) { miss.push_back(jb); continue; }
+            gpu_jobs.push_back(jb);
+        }
+        lwl(1);
+        // The CPU lane's gate/up phase starts on the workers first: queueing the resident experts' kernels (about 8 launches
+        // per expert) takes the host thread as long as that phase, and used to run before it.  The CPU path and the sums are
+        // unchanged: the same chunks, the same order of the adds into `moe`.
+        const C::NativeFmt& f = nfmt[(size_t) l];
+        const int nj = (int) miss.size();
+        std::vector<int> ent0((size_t) nj + 1, 0);
+        constexpr int kRowsGu = 32, kRowsDown = 96;
+        const int gu_chunks = (FF + kRowsGu - 1) / kRowsGu, dn_chunks = (N + kRowsDown - 1) / kRowsDown;
+        std::function<void(int)> gu_fn;
+        const auto t0 = Clock::now();
+        if (!miss.empty()) {
+            for (int t = 0; t < T; ++t) C::native_quant_act(f, h_host + (size_t) t * N, actb.data() + (size_t) t * C::kNativeActBytes);
+            // entries: one per (job, token slot), in job order
+            for (int j = 0; j < nj; ++j) ent0[(size_t) j + 1] = ent0[(size_t) j] + miss[(size_t) j].nt;
+            gu_fn = [&](int i) {
+                const int j = i / gu_chunks, c = i % gu_chunks;
+                const Job& jb = miss[(size_t) j];
+                const void* actp[kMaxWin];
+                float* ffp[kMaxWin];
+                for (int k = 0; k < jb.nt; ++k) {
+                    actp[k] = actb.data() + (size_t) jb.tok[k] * C::kNativeActBytes;
+                    ffp[k] = ffb.data() + (size_t) (ent0[(size_t) j] + k) * FF;
+                }
+                C::native_gu_rows(f, L.pack + (size_t) jb.e * (2 * L.gsz + L.dsz), actp, jb.nt, ffp, c * kRowsGu, std::min(FF, (c + 1) * kRowsGu));
+            };
+            par->start(nj * gu_chunks, gu_fn);
+        }
+        lwl(2);
+        for (const Job& jb : gpu_jobs) {
             const uint8_t* w = expert(l, jb.e);
             RowIdx ix{};
             ix.n = jb.nt;
             for (int i = 0; i < jb.nt; ++i) { ix.t[i] = jb.tok[i]; ix.w[i] = jb.w[i]; }
-            k_gather_rows_i<<<(unsigned) jb.nt, kThreads, 0, st>>>(h, eh, N, ix);
-            quant(eh, N, jb.nt);
-            mmv(L.gu_type, w, N, FF, g, jb.nt);
-            mmv(L.gu_type, w + L.gsz, N, FF, u, jb.nt);
-            swiglu(g, u, g, (int64_t) jb.nt * FF);
-            quant(g, FF, jb.nt);
+            if (fuse_exp) {
+                // the gate and up matrices are adjacent in the blob: one matvec of 2 FF rows (every row's arithmetic is its own), the
+                // q8_1 image of the token rows is copied from the one made at the start of the layer, and the activation is fused with
+                // its quantization: 5 kernels where the plain path below queues 8, the same bytes
+                k_gather_q8<<<(unsigned) jb.nt, 256, 0, st>>>(static_cast<const uint8_t*>(q8h), static_cast<uint8_t*>(q8),
+                                                             (int) K::native_q8_1_bytes(N, 1), ix);
+                mmv(L.gu_type, w, N, 2 * FF, gu2, jb.nt);
+                K::native_swiglu_oai_quantize_q8_1(gu2, gu2 + FF, 2 * (long) FF, q8, FF, jb.nt, m->alpha, m->limit, st);
+            } else {
+                k_gather_rows_i<<<(unsigned) jb.nt, kThreads, 0, st>>>(h, eh, N, ix);
+                quant(eh, N, jb.nt);
+                mmv(L.gu_type, w, N, FF, g, jb.nt);
+                mmv(L.gu_type, w + L.gsz, N, FF, u, jb.nt);
+                swiglu(g, u, g, (int64_t) jb.nt * FF);
+                quant(g, FF, jb.nt);
+            }
             mmv(L.d_type, w + 2 * L.gsz, FF, N, eo, jb.nt);
             k_scatter_add_i<<<(unsigned) jb.nt, kThreads, 0, st>>>(moe, eo, N, ix);
             gpu_experts += jb.nt;
         }
         ph_pre += ms_since(t_pre0);
+        lwl(3);
+        gmark("ffn: [post] resident experts queued");
         const auto t_adm0 = Clock::now();
         if (!miss.empty() && admit_per_layer > 0) {
             CK(cudaEventRecord(ev_st, st));
@@ -1352,27 +1410,10 @@ struct Engine {
             }
         }
         ph_adm += ms_since(t_adm0);
-        const auto t0 = Clock::now();
+        lwl(4);
         if (!miss.empty()) {
-            const C::NativeFmt& f = nfmt[(size_t) l];
-            for (int t = 0; t < T; ++t) C::native_quant_act(f, h_host + (size_t) t * N, actb.data() + (size_t) t * C::kNativeActBytes);
-            // entries: one per (job, token slot), in job order
-            const int nj = (int) miss.size();
-            std::vector<int> ent0((size_t) nj + 1, 0);
-            for (int j = 0; j < nj; ++j) ent0[(size_t) j + 1] = ent0[(size_t) j] + miss[(size_t) j].nt;
-            constexpr int kRowsGu = 32, kRowsDown = 96;
-            const int gu_chunks = (FF + kRowsGu - 1) / kRowsGu, dn_chunks = (N + kRowsDown - 1) / kRowsDown;
-            par->run(nj * gu_chunks, [&](int i) {
-                const int j = i / gu_chunks, c = i % gu_chunks;
-                const Job& jb = miss[(size_t) j];
-                const void* actp[kMaxWin];
-                float* ffp[kMaxWin];
-                for (int k = 0; k < jb.nt; ++k) {
-                    actp[k] = actb.data() + (size_t) jb.tok[k] * C::kNativeActBytes;
-                    ffp[k] = ffb.data() + (size_t) (ent0[(size_t) j] + k) * FF;
-                }
-                C::native_gu_rows(f, L.pack + (size_t) jb.e * (2 * L.gsz + L.dsz), actp, jb.nt, ffp, c * kRowsGu, std::min(FF, (c + 1) * kRowsGu));
-            });
+            par->finish();   // the gate/up phase
+            lwl(5);
             for (int e2 = 0; e2 < ent0[(size_t) nj]; ++e2)
                 C::native_quant_h(f, ffb.data() + (size_t) e2 * FF, hqb.data() + (size_t) e2 * C::kNativeHBytes);
             par->run(nj * dn_chunks, [&](int i) {
@@ -1386,6 +1427,7 @@ struct Engine {
                 }
                 C::native_down_rows(f, L.pack + (size_t) jb.e * (2 * L.gsz + L.dsz), hq, jb.nt, op, c * kRowsDown, std::min(N, (c + 1) * kRowsDown));
             });
+            lwl(6);
             std::memset(cpu_out_host, 0, (size_t) T * N * sizeof(float));
             for (int j = 0; j < nj; ++j)
                 for (int k = 0; k < miss[(size_t) j].nt; ++k) {
@@ -1394,8 +1436,10 @@ struct Engine {
                     float* dst = cpu_out_host + (size_t) miss[(size_t) j].tok[k] * N;
                     for (int r = 0; r < N; ++r) dst[r] += w * src[r];
                 }
+            gmark("ffn: [post] CPU result ready (stream before add)");
             k_add<<<grid1((int64_t) T * N), kThreads, 0, st>>>(moe, cpu_out_dev, (int64_t) T * N);
             for (const Job& jb : miss) cpu_experts += jb.nt;
+            lwl(7);
         }
         cpu_wall_ms += ms_since(t0);
         k_add<<<grid1((int64_t) T * N), kThreads, 0, st>>>(x, moe, (int64_t) T * N);
@@ -1810,10 +1854,16 @@ struct Engine {
                 gemm_w(L.sd, g, moe, T);
                 return;
             }
-            mmv(L.sg, g, T);
-            mmv(L.su, u, T);
-            swiglu(g, u, g, (int64_t) T * m->FS);
-            quant(g, m->FS, T);
+            if (fuse_exp && T <= 8 && L.sg.type == L.su.type && L.sg.n_out == L.su.n_out &&
+                K::native_mmvq_pair(L.sg.type, L.sg.d, L.su.d, q8, g, u, L.sg.n_in, L.sg.n_out, T, st)) {
+                // gate and up in one launch, the activation fused with its quantization (bitwise the plain path)
+                K::native_swiglu_oai_quantize_q8_1(g, u, m->FS, q8, m->FS, T, m->alpha, m->limit, st);
+            } else {
+                mmv(L.sg, g, T);
+                mmv(L.su, u, T);
+                swiglu(g, u, g, (int64_t) T * m->FS);
+                quant(g, m->FS, T);
+            }
             mmv(L.sd, moe, T);
         };
         // CPU lane (one token): the router goes first, so the host can start the CPU experts as soon as it knows them
@@ -1858,7 +1908,8 @@ struct Engine {
             for (int32_t e : h_ids) std::fprintf(route_trace, " %d", e);
             std::fprintf(route_trace, "\n");
         }
-        if (prof_gpu) { if (T == 1 || prof_all) gflush(); else gn = 0; }
+        if (prof_gpu) { if (T == 1 || prof_all) { gflush(); gmark("ffn: post-router base"); } else gn = 0; }
+        const auto lw_t0 = Clock::now();
 #if defined(STRATA_M3_CPU_POOL)
         if (cpu_lane && T <= kMaxWin) {
             for (int32_t e : h_ids)
@@ -1867,8 +1918,11 @@ struct Engine {
                     std::exit(1);
                 }
             shared_expert();   // queued behind the router's results, running while the CPU lane works
+            lw[0] += ms_since(lw_t0);
+            gmark("ffn: [post] shared expert queued");
             if (T == 1) moe_cpu_lane(L, l);
             else moe_cpu_lane_multi(L, l, T);
+            ++lw_n;
             return;
         }
 #endif
@@ -1977,6 +2031,7 @@ struct Engine {
             if (trace) trace_row("attn", l, T);
             k_rms<<<(unsigned) T, kThreads, 0, st>>>(x, L.ffn_norm, h, N, m->eps);
             ffn(L, l, T);
+            gmark("ffn: shared + resident experts + CPU wait + combine");
             if (T > kMaxWin) ptick(pt_gemm);
             if (trace) trace_row("out", l, T);
         }
@@ -2060,13 +2115,23 @@ __global__ void k_markov(const uint8_t* w1, const uint8_t* w2, const int32_t* pr
     __syncthreads();
     const int v = blockIdx.x * blockDim.x + threadIdx.x;
     if (v >= V) return;
-    const uint8_t* row = w2 + (size_t) v * 272;
+    // the 272-byte row (8 Q8_0 blocks of 34 bytes) as 17 aligned 16-byte loads instead of 256 byte loads (a warp's byte load
+    // touches 32 different lines, 51 M such wavefronts per row were the whole cost); the same bytes, products and summation order
+    uint32_t wd[68];
+    {
+        const uint4* rv = reinterpret_cast<const uint4*>(w2 + (size_t) v * 272);
+#pragma unroll
+        for (int i = 0; i < 17; ++i) { const uint4 t = rv[i]; wd[4 * i] = t.x; wd[4 * i + 1] = t.y; wd[4 * i + 2] = t.z; wd[4 * i + 3] = t.w; }
+    }
+    auto byte_at = [&](int o) -> uint32_t { return (wd[o >> 2] >> (8 * (o & 3))) & 0xffu; };
     float sum = 0.f;
+#pragma unroll
     for (int b = 0; b < 8; ++b) {
-        const float d = __half2float(*reinterpret_cast<const __half*>(row + b * 34));
-        const int8_t* qv = reinterpret_cast<const int8_t*>(row + b * 34 + 2);
+        const uint16_t hb = (uint16_t) (byte_at(b * 34) | (byte_at(b * 34 + 1) << 8));
+        const float d = __half2float(*reinterpret_cast<const __half*>(&hb));
         float a = 0.f;
-        for (int i = 0; i < 32; ++i) a += (float) qv[i] * e[b * 32 + i];
+#pragma unroll
+        for (int i = 0; i < 32; ++i) a += (float) (int8_t) (uint8_t) byte_at(b * 34 + 2 + i) * e[b * 32 + i];
         sum += d * a;
     }
     col[v] += sum;
@@ -2117,6 +2182,8 @@ struct Dspark {
     int32_t *dtok = nullptr, *dprev = nullptr;
     long long inj_rows = 0, drafts = 0;
     double ms_inject = 0, ms_draft = 0;
+    double ms_dl = 0, ms_dh = 0, ms_dt = 0;   // STRATA_M3_PROF=4: GPU ms of the draft pass: layers / lm_head / markov+argmax+conf
+    cudaEvent_t dev[4] = {};
 
     bool load(const std::string& path, int ctx_, const Model& m, std::string& err) {
         ctx = ctx_;
@@ -2247,6 +2314,8 @@ struct Dspark {
         blk[0] = cur;
         CK(cudaMemcpyAsync(dtok, blk.data(), (size_t) R * 4, cudaMemcpyHostToDevice, E.st));
         CK(cudaMemcpyAsync(dprev, &cur, 4, cudaMemcpyHostToDevice, E.st));
+        const bool dprof = E.prof_draft;
+        if (dprof) { if (!dev[0]) for (auto& e : dev) CK(cudaEventCreate(&e)); CK(cudaEventRecord(dev[0], E.st)); }
         K::iq_embed_rows(E.m->embd_type, E.m->embd, E.m->embd_row, dtok, R, N, xb, E.st);
         for (int l = 0; l < L; ++l) {
             const DL& y = ly[(size_t) l];
@@ -2268,9 +2337,11 @@ struct Dspark {
             qmm(E, y.d, gt, ffo, R);
             k_add<<<grid1((int64_t) R * N), kThreads, 0, E.st>>>(xb, ffo, (int64_t) R * N);
         }
+        if (dprof) CK(cudaEventRecord(dev[1], E.st));
         k_rms<<<(unsigned) R, kThreads, 0, E.st>>>(xb, out_norm, hb, N, E.m->eps);
         E.quant(hb, N, R);
         E.mmv(E.m->head, E.logits, R);
+        if (dprof) CK(cudaEventRecord(dev[2], E.st));
         for (int i = 0; i < R; ++i) {
             k_markov<<<(unsigned) ((V + 255) / 256), 256, 0, E.st>>>(mk1.d, mk2.d, dprev + i, E.logits + (size_t) i * V, V);
             k_argmax1<<<1, 1024, 0, E.st>>>(E.logits + (size_t) i * V, V, dprev + i + 1);
@@ -2283,7 +2354,13 @@ struct Dspark {
         float conf[8] = {};
         CK(cudaMemcpyAsync(out.data(), dprev + 1, (size_t) R * 4, cudaMemcpyDeviceToHost, E.st));
         if (use_conf) CK(cudaMemcpyAsync(conf, d_conf, (size_t) R * 4, cudaMemcpyDeviceToHost, E.st));
+        if (dprof) CK(cudaEventRecord(dev[3], E.st));
         CK(cudaStreamSynchronize(E.st));
+        if (dprof) {
+            float a = 0, b = 0, c = 0;
+            CK(cudaEventElapsedTime(&a, dev[0], dev[1])); CK(cudaEventElapsedTime(&b, dev[1], dev[2])); CK(cudaEventElapsedTime(&c, dev[2], dev[3]));
+            ms_dl += a; ms_dh += b; ms_dt += c;
+        }
         if (use_conf) {
             int keep = 0;
             while (keep < R && conf[keep] >= pmin) ++keep;
@@ -2560,7 +2637,7 @@ int strata::minimax::run(int argc, char** argv) {
     E.ph_sync = 0;
     E.ph_fwd = E.ph_emb = E.ph_attn_enq = E.ph_head = 0;
     E.route_dropped = E.route_total = 0;
-    if (ds) { ds->ms_draft = ds->ms_inject = 0; ds->conf_cut = 0; }
+    if (ds) { ds->ms_draft = ds->ms_inject = 0; ds->ms_dl = ds->ms_dh = ds->ms_dt = 0; ds->conf_cut = 0; }
     E.pt_attn = E.pt_dense = E.pt_route = E.pt_copy = E.pt_gemm = E.pt_other = E.pt_deq = E.pt_mm = E.pt_conv = 0;
     E.pf_marks.clear();
 #if defined(STRATA_M3_CPU_POOL)
@@ -2604,6 +2681,7 @@ int strata::minimax::run(int argc, char** argv) {
         g_prof.on = pv && std::atoi(pv) >= 1;
         E.prof_gpu = pv && std::atoi(pv) >= 2;
         E.prof_all = pv && std::atoi(pv) >= 3;
+        E.prof_draft = pv && std::atoi(pv) >= 4;
         E.gcalls = 0;
         E.gacc.clear();
         E.gn = 0;
@@ -2738,6 +2816,11 @@ int strata::minimax::run(int argc, char** argv) {
     if (ds && speculate)
         std::printf("M3_DSPARK draft pass %.1f ms (%.2f ms per call), inject %.1f ms over the run (host enqueue + waits), %lld drafts cut by confidence\n", ds->ms_draft,
                     ds->ms_draft / (double) std::max<long long>(1, spec_steps), ds->ms_inject, ds->conf_cut);
+        if (E.prof_all && E.lw_n)
+            std::printf("M3_LANE_HOST ms per window layer (%lld layers): filter+shared %.3f | jobs+classify %.3f | cpu quant+start %.3f | gpu enqueue %.3f | admit %.3f | gu join %.3f | quant-h+down %.3f | accumulate+add %.3f\n", E.lw_n, E.lw[0] / (double) E.lw_n, E.lw[1] / (double) E.lw_n, E.lw[2] / (double) E.lw_n, E.lw[3] / (double) E.lw_n, E.lw[4] / (double) E.lw_n, E.lw[5] / (double) E.lw_n, E.lw[6] / (double) E.lw_n, E.lw[7] / (double) E.lw_n);
+        if (E.prof_draft)
+            std::printf("M3_DSPARK_GPU per call: layers %.2f ms, norm+lm_head %.2f ms, markov+argmax+conf %.2f ms\n", ds->ms_dl / (double) std::max<long long>(1, spec_steps),
+                        ds->ms_dh / (double) std::max<long long>(1, spec_steps), ds->ms_dt / (double) std::max<long long>(1, spec_steps));
     if (E.route_total)
         std::printf("M3_ROUTE lever: top-%d, min weight %.2f x max, renorm %d: dropped %lld of %lld routed experts (%.1f %%)\n",
                     E.route_topk, E.route_min_w, (int) E.route_renorm, E.route_dropped, E.route_total,

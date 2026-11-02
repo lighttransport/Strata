@@ -184,6 +184,31 @@ __global__ void native_swiglu_quantize_q8_1_kernel(const float* __restrict__ gat
     if (i % Q8K == 0) y[i / Q8K].ds = q8_1_ds(d, sum);
 }
 
+
+// The MiniMax (gpt-oss style) clamped SwiGLU, k_swiglu_oai's arithmetic, fused with the q8_1 quantization of its result.  This
+// file is built with --use_fast_math, which would turn expf and '/' into the approximate forms; k_swiglu_oai (the engine's
+// file) uses the IEEE ones, so the activation is computed with libdevice's expf and the _rn operations here, and the
+// quantization after it is this file's own (the same as native_quantize_q8_1_kernel): bit for bit the two kernels in a row.
+#if !defined(__HIP_PLATFORM_AMD__)
+extern "C" __device__ float __nv_expf(float);
+__launch_bounds__(QUANT_THREADS, 1)
+__global__ void native_swiglu_oai_quantize_q8_1_kernel(const float* __restrict__ gate, const float* __restrict__ up, long ld,
+                                                       Q81Block* __restrict__ y, int n_in, int n_total, float alpha, float limit) {
+    const int i = int(blockIdx.x) * QUANT_THREADS + int(threadIdx.x);
+    if (i >= n_total) return; // n_in is a multiple of 32: only whole warps return.
+    const int col = i / n_in, k = i % n_in;
+    const float g = fminf(gate[std::size_t(col) * std::size_t(ld) + k], limit);
+    const float u = fmaxf(fminf(up[std::size_t(col) * std::size_t(ld) + k], limit), -limit);
+    const float xi = __fmul_rn(__fdiv_rn(g, __fadd_rn(1.0f, __nv_expf(__fmul_rn(-alpha, g)))), __fadd_rn(1.0f, u));
+    const float amax = warp_max(fabsf(xi));
+    const float sum = warp_sum(xi);
+    const float d = q8_1_finite(amax / 127.0f);
+    const int8_t q = q8_1_quant(xi, d, amax);
+    y[i / Q8K].qs[i % Q8K] = q;
+    if (i % Q8K == 0) y[i / Q8K].ds = q8_1_ds(d, sum);
+}
+#endif
+
 // Exact pinned vec_dot_q5_K_q8_1_impl_vmmq expression and integer dot order.
 __device__ __forceinline__ float q5_q8_dot_impl(
     const int* __restrict__ vl, const int* __restrict__ vh, const int* __restrict__ u,
@@ -2315,6 +2340,33 @@ void native_swiglu_quantize_q8_1(const float* gate, const float* up, void* x_q8_
                                          static_cast<cudaStream_t>(stream)>>>(
         gate, up, static_cast<Q81Block*>(x_q8_1), n_total);
     launch_check();
+}
+
+bool native_swiglu_oai_quantize_exact() noexcept {
+#if !defined(__HIP_PLATFORM_AMD__)
+    return true;
+#else
+    return false;
+#endif
+}
+
+void native_swiglu_oai_quantize_q8_1(const float* gate, const float* up, long ld, void* x_q8_1, int n_in, int ncols,
+                                     float alpha, float limit, void* stream) {
+#if !defined(__HIP_PLATFORM_AMD__)
+    validate_shape(n_in, ncols);
+    validate_pointer(gate);
+    validate_pointer(up);
+    validate_pointer(x_q8_1);
+    validate_stream(stream);
+    const int n_total = n_in * ncols;
+    const unsigned blocks = unsigned((std::size_t(n_total) + QUANT_THREADS - 1) / QUANT_THREADS);
+    native_swiglu_oai_quantize_q8_1_kernel<<<blocks, QUANT_THREADS, 0, static_cast<cudaStream_t>(stream)>>>(
+        gate, up, ld, static_cast<Q81Block*>(x_q8_1), n_in, n_total, alpha, limit);
+    launch_check();
+#else
+    (void) gate; (void) up; (void) ld; (void) x_q8_1; (void) n_in; (void) ncols; (void) alpha; (void) limit; (void) stream;
+    throw std::runtime_error("native_swiglu_oai_quantize_q8_1: CUDA only");
+#endif
 }
 
 void native_q5_k_mmvq(const void* weights, const void* x_q8_1, float* y,
