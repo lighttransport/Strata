@@ -966,6 +966,9 @@ struct Engine {
     void *q8h1 = nullptr, *jq81 = nullptr, *jqf1 = nullptr;
     float *jgu1 = nullptr, *jeo1 = nullptr;
     long long gpu1_experts = 0;
+    bool p2p_direct = strata_env_truthy_default("STRATA_M3_GPU1_DIRECT", 0) != 0;   // kernels read the peer's memory over PCIe instead of copy-engine copies (needs peer access; measured slower: 60.9 against 63.4 tok/s in max-mode)
+    std::vector<cudaEvent_t> g1ev;   // STRATA_M3_PROF>=3: start / end events of the second GPU's first stream per window layer
+    long long g1_layers = 0, g1_jobs = 0;
     bool gpu1_admit = strata_env_truthy_default("STRATA_M3_GPU1_ADMIT", 0) != 0;   // admissions may take second-GPU slots (default off: only the warm-up fills them; with admissions an exact-routing run of one prompt fell from 26.6 to 20.7 tok/s)
     bool on_dev1(int s) const { return s >= n_slots; }
     /// Has the admission copy into slot s finished?  A second-GPU slot's event is queried from that GPU's context.
@@ -1228,6 +1231,7 @@ struct Engine {
         CK(cudaSetDevice(dev0));
         CK(cudaEventCreateWithFlags(&ev_p, cudaEventDisableTiming));   // recorded on the main stream, waited on by the second GPU's
         dev1 = d;
+        if (!(can01 && can10)) p2p_direct = false;
         std::fprintf(stderr, "strata-m3: second GPU %d: %d expert slots of %.1f MiB (%.2f GiB), peer access %d/%d\n", d, n_dev1,
                      (double) slot_bytes / (1 << 20), (double) n_dev1 * (double) slot_bytes / (1 << 30), can01, can10);
     }
@@ -1517,23 +1521,30 @@ struct Engine {
                     const int si1 = n1++ % exp_streams;
                     CK(cudaSetDevice(dev1));
                     cudaStream_t sj = sst1[si1];
-                    if (!woke1[si1]) { CK(cudaStreamWaitEvent(sj, ev_p, 0)); woke1[si1] = true; }
+                    if (!woke1[si1]) {
+                        CK(cudaStreamWaitEvent(sj, ev_p, 0));
+                        woke1[si1] = true;
+                        if (prof_all && si1 == 0 && g1ev.size() < 8192) {
+                            cudaEvent_t ea; CK(cudaEventCreate(&ea)); CK(cudaEventRecord(ea, sj)); g1ev.push_back(ea);
+                        }
+                    }
                     uint8_t* q8j = static_cast<uint8_t*>(jq81) + jx * qbN;
                     uint8_t* qfj = static_cast<uint8_t*>(jqf1) + jx * qbF;
                     float* guj = jgu1 + jx * (size_t) kMaxWin * 2 * FF;
                     float* eoj = jeo1 + jx * (size_t) kMaxWin * N;
-                    k_gather_q8<<<(unsigned) jb.nt, 256, 0, sj>>>(static_cast<const uint8_t*>(q8h1), q8j, (int) K::native_q8_1_bytes(N, 1), ix);
+                    k_gather_q8<<<(unsigned) jb.nt, 256, 0, sj>>>(static_cast<const uint8_t*>(p2p_direct ? q8h : q8h1), q8j, (int) K::native_q8_1_bytes(N, 1), ix);
                     mmv_on(sj, L.gu_type, w, N, 2 * FF, guj, jb.nt, q8j);
                     K::native_swiglu_oai_quantize_q8_1(guj, guj + FF, 2 * (long) FF, qfj, FF, jb.nt, m->alpha, m->limit, sj);
                     mmv_on(sj, L.d_type, w + 2 * L.gsz, FF, N, eoj, jb.nt, qfj);
-                    CK(cudaMemcpyPeerAsync(jeo + jx * (size_t) kMaxWin * N, dev0, eoj, dev1, (size_t) jb.nt * N * 4, sj));
+                    if (!p2p_direct) CK(cudaMemcpyPeerAsync(jeo + jx * (size_t) kMaxWin * N, dev0, eoj, dev1, (size_t) jb.nt * N * 4, sj));
                     used1[si1] = true;
                     CK(cudaSetDevice(dev0));
                     jl.nt[jx] = jb.nt;
-                    jl.eo[jx] = jeo + jx * (size_t) kMaxWin * N;
+                    jl.eo[jx] = p2p_direct ? eoj : jeo + jx * (size_t) kMaxWin * N;   // direct: the accumulate kernel reads the second GPU's rows
                     for (int i = 0; i < jb.nt; ++i) { jl.tok[jx][i] = jb.tok[i]; jl.w[jx][i] = jb.w[i]; }
                     gpu_experts += jb.nt;
                     gpu1_experts += jb.nt;
+                    ++g1_jobs;
                     continue;
                 }
                 const int si = n0++ % exp_streams;
@@ -1557,6 +1568,9 @@ struct Engine {
                 if (woke[si]) { CK(cudaEventRecord(sev[si], sst[si])); CK(cudaStreamWaitEvent(st, sev[si], 0)); }
                 if (used1[si]) {
                     CK(cudaSetDevice(dev1));
+                    if (prof_all && si == 0 && g1ev.size() % 2 == 1) {
+                        cudaEvent_t eb; CK(cudaEventCreate(&eb)); CK(cudaEventRecord(eb, sst1[0])); g1ev.push_back(eb);
+                    }
                     CK(cudaEventRecord(sev1[si], sst1[si]));
                     CK(cudaSetDevice(dev0));
                     CK(cudaStreamWaitEvent(st, sev1[si], 0));
@@ -2143,7 +2157,7 @@ struct Engine {
                 K::native_quantize_q8_1(h, q8h, N * T, 1, st);
                 CK(cudaEventRecord(ev_efork, st));
                 if (dev1 >= 0) {   // the second GPU's copy of the image, while the shared expert runs
-                    CK(cudaMemcpyPeerAsync(q8h1, dev1, q8h, dev0, K::native_q8_1_bytes(N * T, 1), st));
+                    if (!p2p_direct) CK(cudaMemcpyPeerAsync(q8h1, dev1, q8h, dev0, K::native_q8_1_bytes(N * T, 1), st));
                     CK(cudaEventRecord(ev_p, st));
                 }
                 q8h_ready = true;
@@ -3065,6 +3079,11 @@ int strata::minimax::run(int argc, char** argv) {
                     (double) m.pack_bytes / (1 << 30), m.pack_read_s, (double) m.pack_bytes / 1e9 / m.pack_read_s,
                     (double) m.pack_pinned / (1 << 30), m.pack_pin_s);
 #if defined(STRATA_M3_CPU_POOL)
+    if (E.cpu_lane && E.dev1 >= 0 && E.prof_all && E.g1ev.size() >= 2) {
+        double tot = 0; int n = 0;
+        for (size_t i = 0; i + 1 < E.g1ev.size(); i += 2) { float ms = 0; if (cudaEventElapsedTime(&ms, E.g1ev[i], E.g1ev[i + 1]) == cudaSuccess) { tot += ms; ++n; } }
+        std::printf("M3_GPU1_CHAIN first second-GPU stream per window layer: %.3f ms over %d layers (%lld jobs in all)\n", n ? tot / n : 0.0, n, E.g1_jobs);
+    }
     if (E.cpu_lane && E.dev1 >= 0)
         std::printf("M3_GPU1 %d slots on the second GPU, %lld of the GPU expert uses ran there\n", E.n_dev1, E.gpu1_experts);
     if (E.cpu_lane)

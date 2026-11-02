@@ -573,6 +573,9 @@ Peer access works between the two cards (copies: 28 KB 4.3 us, 100 KB 11 us, 200
 The simulator predicted 79.7 % at 2800 slots (52.4 % at 1100) for the exact-routing code trace; the engine reached 78.8 %.
 Tokens differ from the one-GPU run in exact routing: the CPU lane and the GPU round differently, so moving an expert between them changes the
 last bits; the one-GPU runs with the same placement are token-identical. A teacher-forced KL comparison and the 46-task benchmark are the quality checks.
-Open: with admissions onto GPU 1 one prompt (lru_cache) loses 22 % while another gains; the cause is not found (not the peer copies: a version
-that moves both transfers through mapped pinned memory was slower, 59.3 against 63.4 tok/s in max-mode, and the lru_cache loss stayed; not the
-cross-device event query). Not measured: `--speed fast`, the T = 1 step on GPU 1, more than two GPUs.
+Open: with admissions onto GPU 1 one prompt (lru_cache) loses 22 % while another gains; the cause is not found. Not the copy engines: moving
+both transfers through mapped pinned host memory (59.3 against 63.4 tok/s in max-mode) or having the kernels read the peer's memory directly
+(`STRATA_M3_GPU1_DIRECT=1`: 60.9 max-mode, 29.2 / 21.6 exact) was no better, and the lru_cache loss stayed. Not the cross-device event query.
+The second GPU's job chain takes 0.38 ms per window layer (events on its first stream) while the layer waits 1.8 ms for it (0.27 ms and
+1.0 ms with admissions off), so the extra wait is before the chain starts or after it ends, not in its kernels. Next: events on the main
+stream around the fork and the join, and `nsys` with both GPUs. Not measured: `--speed fast`, the T = 1 step on GPU 1, more than two GPUs.
