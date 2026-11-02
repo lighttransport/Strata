@@ -185,6 +185,21 @@ __global__ void k_gather_q8(const uint8_t* src, uint8_t* dst, int bytes, RowIdx 
     uint32_t* d = reinterpret_cast<uint32_t*>(dst + (size_t) blockIdx.x * bytes);
     for (int j = threadIdx.x; j < bytes / 4; j += blockDim.x) d[j] = s[j];
 }
+/// The resident experts of a layer, each with its own output rows (job j's entry i = row i of eo + j * eo_stride): the adds into
+/// `moe` in job order, entry order within a job - the same sequence of operations on every element as the one-job-at-a-time
+/// k_scatter_add_i calls (a token is in a job at most once)
+constexpr int kJobMax = 16;
+struct JobList { int n; int nt[kJobMax]; int tok[kJobMax][kMaxWin]; float w[kJobMax][kMaxWin]; };
+__global__ void k_scatter_jobs(float* moe, const float* eo, int N, long eo_stride, JobList jl) {
+    const int t = blockIdx.x;
+    for (int e = threadIdx.x; e < N; e += blockDim.x) {
+        float acc = moe[(size_t) t * N + e];
+        for (int j = 0; j < jl.n; ++j)
+            for (int i = 0; i < jl.nt[j]; ++i)
+                if (jl.tok[j][i] == t) acc += jl.w[j][i] * eo[(size_t) j * eo_stride + (size_t) i * N + e];
+        moe[(size_t) t * N + e] = acc;
+    }
+}
 /// out rows ix.t[i] += ix.w[i] * src row i
 __global__ void k_scatter_add_i(float* out, const float* src, int n, RowIdx ix) {
     float* d = out + (size_t) ix.t[blockIdx.x] * n;
@@ -1047,6 +1062,13 @@ struct Engine {
     std::vector<cudaEvent_t> slot_ev;
     std::vector<char> slot_pend;
     float *h_host = nullptr, *cpu_out_host = nullptr, *cpu_out_dev = nullptr;
+    // STRATA_M3_EXP_STREAMS=S (default 4, 0 = off): the resident experts of a window layer run on S side streams, each with its own scratch;
+    // the same arithmetic, the adds into `moe` in the same order (k_scatter_jobs)
+    int exp_streams = 0;
+    cudaStream_t sst[4] = {};
+    cudaEvent_t sev[4] = {}, ev_efork = nullptr;
+    void* jq8 = nullptr; void* jqf = nullptr; float* jgu = nullptr; float* jeo = nullptr;
+    bool q8h_ready = false;   // ffn has already quantized h into q8h (and recorded ev_efork) for this layer
     float* gu2 = nullptr;              // [kMaxWin][2 FF]: one expert's gate and up from a single matvec
     bool fuse_exp = strata_env_truthy_one("STRATA_M3_NO_FUSE_EXPERT") == 0 && K::native_swiglu_oai_quantize_exact();   // 5 kernels per resident expert instead of 8 (bitwise the same)
     void* q8h = nullptr;               // q8_1 image of the normed hidden, kept apart from q8 (the intermediates)
@@ -1103,6 +1125,22 @@ struct Engine {
         CK(cudaHostGetDevicePointer((void**) &cpu_out_dev, cpu_out_host, 0));
         CK(cudaMalloc(&q8h, K::native_q8_1_bytes(m->N * kMaxWin, 1)));
         CK(cudaMalloc(&gu2, (size_t) kMaxWin * 2 * m->FF * 4));
+        {
+            const char* v = std::getenv("STRATA_M3_EXP_STREAMS");
+            exp_streams = v && v[0] ? std::min(4, std::max(0, std::atoi(v))) : 4;   // measured best of 0/2/3/4 on a V100 (docs/MINIMAX_M31_SIM.md)
+            if (exp_streams > 0) {
+                for (int i = 0; i < exp_streams; ++i) {
+                    CK(cudaStreamCreateWithFlags(&sst[i], cudaStreamNonBlocking));
+                    CK(cudaEventCreateWithFlags(&sev[i], cudaEventDisableTiming));
+                }
+                CK(cudaEventCreateWithFlags(&ev_efork, cudaEventDisableTiming));
+                CK(cudaMalloc(&jq8, (size_t) kJobMax * K::native_q8_1_bytes(m->N * kMaxWin, 1)));
+                CK(cudaMalloc(&jqf, (size_t) kJobMax * K::native_q8_1_bytes(m->FF * kMaxWin, 1)));
+                CK(cudaMalloc((void**) &jgu, (size_t) kJobMax * kMaxWin * 2 * m->FF * 4));
+                CK(cudaMalloc((void**) &jeo, (size_t) kJobMax * kMaxWin * m->N * 4));
+                std::fprintf(stderr, "strata-m3: resident experts of a window layer on %d side streams\n", exp_streams);
+            }
+        }
         const size_t entries = (size_t) m->top_k * kMaxWin;   // (token, expert) pairs of a window
         ffb.assign(entries * m->FF, 0.f);
         outb.assign(entries * m->N, 0.f);
@@ -1311,7 +1349,7 @@ struct Engine {
         const auto t_pre0 = Clock::now();
         auto lwt = Clock::now();
         auto lwl = [&](int k) { const auto n = Clock::now(); lw[k] += std::chrono::duration<double, std::milli>(n - lwt).count(); lwt = n; };
-        K::native_quantize_q8_1(h, q8h, N * T, 1, st);   // the T rows' q8_1 images, back to back
+        if (!q8h_ready) K::native_quantize_q8_1(h, q8h, N * T, 1, st);   // the T rows' q8_1 images, back to back
         for (const Job& jb : jobs) {   // which experts run where (no GPU work is queued yet)
             const int key = l * E + jb.e;
             const int sl = slot_of[(size_t) key];
@@ -1357,6 +1395,39 @@ struct Engine {
             par->start(nj * gu_chunks, gu_fn);
         }
         lwl(2);
+        if (q8h_ready && gpu_jobs.size() >= 2 && gpu_jobs.size() <= (size_t) kJobMax) {
+            const size_t qbN = K::native_q8_1_bytes(N * kMaxWin, 1), qbF = K::native_q8_1_bytes(FF * kMaxWin, 1);
+            bool woke[4] = {};
+            auto mmv_on = [&](cudaStream_t sj, int type, const void* w, int n_in, int n_out, float* out, int nt, const void* qq) {
+                K::native_mmvq(type, w, qq, out, n_in, n_out, nt, sj);
+            };
+            JobList jl{};
+            for (size_t jx = 0; jx < gpu_jobs.size(); ++jx) {
+                const Job& jb = gpu_jobs[jx];
+                const int si = (int) (jx % (size_t) exp_streams);
+                cudaStream_t sj = sst[si];
+                if (!woke[si]) { CK(cudaStreamWaitEvent(sj, ev_efork, 0)); woke[si] = true; }
+                const uint8_t* w = expert(l, jb.e);
+                RowIdx ix{};
+                ix.n = jb.nt;
+                for (int i = 0; i < jb.nt; ++i) { ix.t[i] = jb.tok[i]; ix.w[i] = jb.w[i]; }
+                uint8_t* q8j = static_cast<uint8_t*>(jq8) + jx * qbN;
+                uint8_t* qfj = static_cast<uint8_t*>(jqf) + jx * qbF;
+                float* guj = jgu + jx * (size_t) kMaxWin * 2 * FF;
+                float* eoj = jeo + jx * (size_t) kMaxWin * N;
+                k_gather_q8<<<(unsigned) jb.nt, 256, 0, sj>>>(static_cast<const uint8_t*>(q8h), q8j, (int) K::native_q8_1_bytes(N, 1), ix);
+                mmv_on(sj, L.gu_type, w, N, 2 * FF, guj, jb.nt, q8j);
+                K::native_swiglu_oai_quantize_q8_1(guj, guj + FF, 2 * (long) FF, qfj, FF, jb.nt, m->alpha, m->limit, sj);
+                mmv_on(sj, L.d_type, w + 2 * L.gsz, FF, N, eoj, jb.nt, qfj);
+                jl.nt[jx] = jb.nt;
+                for (int i = 0; i < jb.nt; ++i) { jl.tok[jx][i] = jb.tok[i]; jl.w[jx][i] = jb.w[i]; }
+                gpu_experts += jb.nt;
+            }
+            jl.n = (int) gpu_jobs.size();
+            for (int si = 0; si < exp_streams; ++si)
+                if (woke[si]) { CK(cudaEventRecord(sev[si], sst[si])); CK(cudaStreamWaitEvent(st, sev[si], 0)); }
+            k_scatter_jobs<<<(unsigned) T, 256, 0, st>>>(moe, jeo, N, (long) kMaxWin * N, jl);
+        } else
         for (const Job& jb : gpu_jobs) {
             const uint8_t* w = expert(l, jb.e);
             RowIdx ix{};
@@ -1917,6 +1988,12 @@ struct Engine {
                     std::fprintf(stderr, "strata-m3: router returned expert %d\n", e);
                     std::exit(1);
                 }
+            q8h_ready = false;
+            if (exp_streams > 0 && fuse_exp && T >= 2) {   // the experts' common input image, then the fork: they run beside the shared expert
+                K::native_quantize_q8_1(h, q8h, N * T, 1, st);
+                CK(cudaEventRecord(ev_efork, st));
+                q8h_ready = true;
+            }
             shared_expert();   // queued behind the router's results, running while the CPU lane works
             lw[0] += ms_since(lw_t0);
             gmark("ffn: [post] shared expert queued");

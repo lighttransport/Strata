@@ -540,3 +540,16 @@ restricted to 16K-32K frequent tokens would save about 3.5 ms a step; tokens of 
 99.2 % (32K) by a list made from this repository's code and docs, so the loss in acceptance is about the same size as the gain.
 The fused SwiGLU + quantize kernel computes the activation with libdevice `expf` and IEEE operations on purpose: `native_mmvq.cu` is
 built with `--use_fast_math`, and the first version (plain `expf`, `/`) changed the generated tokens on 2 of 4 prompts.
+
+The resident experts of a window layer on side streams (`STRATA_M3_EXP_STREAMS=S`, default 4, 0 = off): each expert job has its own scratch and
+output rows, and one kernel adds the jobs into `moe` in the original job order, so every element sees the same operations in the same order
+(generated tokens identical in all rows). One V100, `--dspark --kv-f16`, 300 tokens, two runs each (dijkstra / lru_cache, tok/s):
+
+| side streams | max-mode (`topk=2 missk=0`) | exact routing, 200 tokens |
+|---|---|---|
+| 0 | 55.3 / 54.2 | 27.8 / 26.5 |
+| 2 | 56.9 / 55.7 | - |
+| 3 | 57.0 / 55.9 | 27.9 / 26.6 |
+| 4 | 57.3 / 56.1 | - |
+
+With the stream default at 4 only the max-mode rows were measured at 4 (not the exact-routing rows); the CPU lane is the longer side in exact routing.
