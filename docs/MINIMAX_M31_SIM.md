@@ -560,7 +560,7 @@ GPU 0 keeps everything it had (dense weights, K/V, draft head, prefill, its own 
 2.9k slots in total instead of 1.1k) and its own copy stream; the warm-up after the prefill fills it with the experts the prompt used most. A
 decode-window layer sends the q8_1 image of `h` to GPU 1 by peer copy, runs the experts resident there on GPU 1's side streams (the same
 kernels as on GPU 0) and copies their output rows back into the job's rows on GPU 0; the ordered accumulate adds all jobs in the original order.
-The prefill and the one-token step never use GPU 1's slots (an expert resident there counts as a CPU miss in the one-token step).
+The prefill never uses GPU 1's slots; the one-token step goes through the window lane when a second GPU is on, so it uses them too.
 Peer access works between the two cards (copies: 28 KB 4.3 us, 100 KB 11 us, 200 KB 21 us; pinned host-to-device 12.3 GB/s on each).
 
 Admissions onto GPU 1 take at most `STRATA_M3_GPU1_ADMIT` (default 2) experts per layer. Measured with the final code, two runs each, mean tok/s
@@ -578,16 +578,25 @@ routing gives 34.6 / 35.3 and `--speed fast` 41.8 / 41.0 tok/s; one admission a 
 The simulator predicted 79.7 % at 2800 slots (52.4 % at 1100) for the exact-routing code trace; the engine reached 78.8 %.
 Exactness of the second GPU (`STRATA_M3_GPU1_CHECK=1`, debug and slow: every second-GPU job is also run on GPU 0 from the host copy of the expert and
 the output rows compared bit for bit): 20,487 jobs (6,610 on dijkstra, 13,877 on lru_cache; exact routing, speculation on), 0 differ. A second-GPU
-expert is computed bit for bit as on GPU 0. Tokens still differ from a one-GPU run in exact routing because the two runs place different experts on the
-CPU lane (a different cache), and the CPU lane and the GPU round differently in the last bits. Teacher-forced 64 steps against the exact references
+expert is computed bit for bit as on GPU 0. Whole-run tokens, placement made equal (`STRATA_M3_GPU1_ONLY=1` with `admit=0` and `STRATA_M3_T1_MULTI=1`, debug): the warm-up puts the
+same 1019 experts a one-GPU run would keep into GPU 1's slots (and empties GPU 0's small-class slots and any other second-GPU slot), admissions are
+off, and the one-token step goes through the window lane in both runs, so both run the same experts on a GPU and the same on the CPU. Exact routing,
+speculation on, 200 tokens: the generated token ids are identical on all four prompts (dijkstra 26062ead, lru_cache 0d4d31ee, knapsack 1a4a28d3,
+eval_expr 2ee63a99), and the CPU / GPU expert counts are equal (for example knapsack 35913 / 15159). Before the one-token step and the stale second-GPU slots were
+handled the hashes differed on three of the four prompts, with unequal counts: equal placement is what matters.
+In normal use (second-GPU admissions on, a cache 2.6 times larger) the two runs place different experts on the CPU lane, and the CPU lane and
+the GPU round differently in the last bits, so whole-run tokens differ from a one-GPU run in exact routing by that placement alone. Teacher-forced 64 steps against the exact references
 (`sw/*-exact.f32`), short / code prompts: one GPU KL 4.7e-4 / 6.0e-4, top-1 64/64 and 64/64; two GPUs KL 6.3e-4 / 7.8e-4, top-1 63/64 and 64/64;
 two GPUs against one GPU KL 7.1e-4 / 6.2e-4, top-1 63/64 and 64/64 (the gate is KL <= 0.01 and top-1 >= 95 %). The 46-task benchmark's 41 of 46 in exact
 routing equals the one-GPU result. The one-GPU default path's generated tokens are unchanged by all of this (hashes of four
 prompts equal the earlier runs). Peer access works between the two cards (copies: 28 KB 4.3 us, 100 KB 11 us, 200 KB 21 us; pinned host-to-device
 12.3 GB/s on each).
 
+With the one-token step also going through the window lane (final code, one run each, dijkstra / lru_cache): exact routing 38.5 / 38.6, `--speed fast` 46.5 / 47.5,
+`--speed max` 63.3 / 60.0 tok/s (261 tokens in the second answer), unchanged from the table above within the run-to-run spread.
+
 Found on the way: a window layer with more than 16 distinct experts (4 tokens of exact routing often have more) overflowed the job list of the
 side-stream path and fell back to the sequential loop, which queues every expert on GPU 0, so an expert resident on GPU 1 was read over PCIe by
 GPU 0's kernels: one prompt lost 22 % with admissions on. The capacity is now 64 jobs (top_k x window) and the ordered accumulate runs in launches
 of 16 jobs. Not the cause, and not kept: copy-engine transfers replaced by mapped pinned host memory (slower, 59.3 against 63.4 tok/s in max-mode)
-or by direct peer reads (`STRATA_M3_GPU1_DIRECT=1`, 60.9). Not measured: the T = 1 step on GPU 1 (an expert resident there runs on the CPU in that step), more than two GPUs.
+or by direct peer reads (`STRATA_M3_GPU1_DIRECT=1`, 60.9). Not measured: more than two GPUs.

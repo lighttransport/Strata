@@ -969,6 +969,12 @@ struct Engine {
     long long gpu1_experts = 0;
     // STRATA_M3_GPU1_CHECK=1 (debug, slow): every second-GPU job is also run on GPU 0 from the host copy of the expert, and the output rows compared bit for bit
     bool gpu1_check = strata_env_truthy_one("STRATA_M3_GPU1_CHECK") != 0;
+    // STRATA_M3_GPU1_ONLY=1 (debug): the warm-up puts the same n_small experts a one-GPU run would keep into GPU 1's slots and empties GPU 0's, so with
+    // admissions off (REPL admit=0) both runs run the same experts on the GPU and the same on the CPU: whole-run tokens must then be identical
+    bool gpu1_only = strata_env_truthy_one("STRATA_M3_GPU1_ONLY") != 0;
+    // the one-token step goes through the window lane (second-GPU experts included) when a second GPU is on, or with STRATA_M3_T1_MULTI=1 (debug: for the
+    // placement-equal one-GPU run); the window lane's CPU kernel is the multi-row one, the single-token lane's is not
+    bool t1_multi = strata_env_truthy_one("STRATA_M3_T1_MULTI") != 0;
     uint8_t* chk_slot = nullptr; void *chk_q8 = nullptr, *chk_qf = nullptr; float *chk_gu = nullptr, *chk_eo = nullptr;
     long long chk_jobs = 0, chk_bad = 0;
     bool p2p_direct = strata_env_truthy_default("STRATA_M3_GPU1_DIRECT", 0) != 0;   // kernels read the peer's memory over PCIe instead of copy-engine copies (needs peer access; measured slower: 60.9 against 63.4 tok/s in max-mode)
@@ -1260,15 +1266,21 @@ struct Engine {
             for (int e = 0; e < E; ++e)
                 if (pf_count[(size_t) l * E + e]) cand.emplace_back(pf_count[(size_t) l * E + e], l * E + e);
         }
-        const size_t want = std::min<size_t>((size_t) (n_small + n_dev1), cand.size());
+        if (gpu1_only && n_dev1 >= n_small)   // none of GPU 0's small-class slots keeps an expert
+            for (int s = 0; s < n_small; ++s)   // the large-class slots stay as the prefill left them, as in a one-GPU run
+                if (owner[(size_t) s] >= 0) { slot_of[(size_t) owner[(size_t) s]] = -1; owner[(size_t) s] = -1; slot_pend[(size_t) s] = 0; }
+        const size_t want = std::min<size_t>((size_t) ((gpu1_only && n_dev1 >= n_small) ? n_small : n_small + n_dev1), cand.size());
         std::partial_sort(cand.begin(), cand.begin() + (long) want, cand.end(),
                           [](const auto& a, const auto& b) { return a.first != b.first ? a.first > b.first : a.second < b.second; });
         std::vector<char> target((size_t) m->n_layers * E, 0);
         for (size_t i = 0; i < want; ++i) target[(size_t) cand[i].second] = 1;
         // victims: small-class slots whose owner is not a target (empty first, then least recently used)
+        if (gpu1_only && n_dev1 >= n_small)   // second-GPU slots left from an earlier request must not stay resident: a one-GPU run has no such experts
+            for (int s = n_slots; s < n_slots + n_dev1; ++s)
+                if (owner[(size_t) s] >= 0 && !target[(size_t) owner[(size_t) s]]) { slot_of[(size_t) owner[(size_t) s]] = -1; owner[(size_t) s] = -1; slot_pend[(size_t) s] = 0; }
         std::vector<int> victims, victims1;
         for (int s = 0; s < n_small; ++s)
-            if (owner[(size_t) s] < 0 || !target[(size_t) owner[(size_t) s]]) victims.push_back(s);
+            if (!(gpu1_only && n_dev1 >= n_small) && (owner[(size_t) s] < 0 || !target[(size_t) owner[(size_t) s]])) victims.push_back(s);
         for (int s = n_slots; s < n_slots + n_dev1; ++s)
             if (owner[(size_t) s] < 0 || !target[(size_t) owner[(size_t) s]]) victims1.push_back(s);
         std::sort(victims.begin(), victims.end(), [&](int a, int b) { return used[(size_t) a] < used[(size_t) b]; });
@@ -2191,7 +2203,7 @@ struct Engine {
                     std::exit(1);
                 }
             q8h_ready = false;
-            if (exp_streams > 0 && fuse_exp && T >= 2) {   // the experts' common input image, then the fork: they run beside the shared expert
+            if (exp_streams > 0 && fuse_exp && (T >= 2 || t1_multi || dev1 >= 0)) {   // the experts' common input image, then the fork: they run beside the shared expert
                 K::native_quantize_q8_1(h, q8h, N * T, 1, st);
                 CK(cudaEventRecord(ev_efork, st));
                 if (dev1 >= 0) {   // the second GPU's copy of the image, while the shared expert runs
@@ -2203,7 +2215,7 @@ struct Engine {
             shared_expert();   // queued behind the router's results, running while the CPU lane works
             lw[0] += ms_since(lw_t0);
             gmark("ffn: [post] shared expert queued");
-            if (T == 1) moe_cpu_lane(L, l);
+            if (T == 1 && dev1 < 0 && !t1_multi) moe_cpu_lane(L, l);
             else moe_cpu_lane_multi(L, l, T);
             ++lw_n;
             return;
