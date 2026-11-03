@@ -756,7 +756,8 @@ indexer keys. On one V100 with 8.6 GB of dense weights, that limits VRAM-residen
 - The draft head's K/V becomes a ring of two attention windows (8192 positions) whenever the context is longer. Before, it was FP32 at full
   context: about 5 GB at 128K.
 - `--kv-host --kv-fp8` also keeps a VRAM cache of whole blocks that decode steps selected (`STRATA_M3_KV_BCACHE_GIB`, default 2; CLOCK eviction,
-  filled one step late, only complete blocks, cleared per request). It reports `M3_KV_BCACHE`. **Not measured yet.**
+  filled one step late, only complete blocks, cleared per request). It reports `M3_KV_BCACHE`. At 250K it serves 82 % of the selected blocks
+  from VRAM within a 52-token answer, and decode rises from 2.65 tok/s (FP16 host, no cache) to 8.5 tok/s.
 
 Quality, teacher-forced 64 steps on the 7K prompt against the default q8_1 path (same protocol as the prefill gate):
 
@@ -778,6 +779,8 @@ greedy decoding. Run with `--pf-gemm --pf-prefetch --kv-f16 --chunk 8192 STRATA_
 | 255,424 tokens, depth 75 % | FP16, host | 329 tok/s | 2.64 tok/s | correct |
 | 32,010 tokens, depth 50 % | FP8, VRAM (context 135168, 431 expert slots) | 537 tok/s | 12.4 tok/s | correct, same answer tokens as FP16 |
 | 129,914 tokens, depth 50 % | FP8, VRAM | 445 tok/s | 11.0 tok/s | correct, same answer tokens as FP16 |
+| 255,424 tokens, depth 25 % | FP8, host + 2 GiB block cache (678 expert slots) | 350 tok/s | 8.5 tok/s (82 % of selected blocks from VRAM over the 52-token answer) | correct, same answer tokens as FP16 |
+| 512,664 tokens, depth 50 % | FP8, host + block cache (context 524288, 410 expert slots) | 251 tok/s (34 min) | 6.0 tok/s | correct (code and station) |
 
 Decode at short context (335-token prompt, 200 tokens) is 14.8 tok/s in that same FP8-in-VRAM engine, and 17.7 tok/s in an FP16-in-VRAM engine
 sized for 16K context (925 expert slots, same session). So 128K keeps 74 % of the short-context speed of its own engine, but only 62 % of the
@@ -786,5 +789,8 @@ smaller working image would win some of them back; that is not done. Decode thro
 7.8 against 15.8 tok/s even at short context): the attention kernels read the selected blocks from host memory in small, latency-bound reads. The
 VRAM block cache above is meant to fix that for 256K and beyond.
 
-Limits on this node: 512K FP16 K/V (63 GB) and 1M FP8 K/V (66 GB, plus 15.7 GB of indexer keys in VRAM) do not fit next to the 125 GB pinned
-expert pack in 181 GB. 512K with FP8 in host memory (33 GB) is being tested.
+Limits on this node: 512K works with FP8 K/V in host memory (33 GB). 512K FP16 K/V (63 GB) and 1M FP8 K/V (66 GB in host memory, plus
+15.7 GB of FP16 indexer keys in VRAM) do not fit next to the 125 GB pinned expert pack in 181 GB; 1M is not tested.
+
+Default path after these changes (one V100, the four C++ prompts, exact routing, 200 tokens): tokens identical (dijkstra 1ee67a8d, lru_cache
+38fb7620, knapsack cd04cbf5, eval_expr e30269a7); decode 26.9 / 26.4 / 24.9 / 23.3 tok/s.
