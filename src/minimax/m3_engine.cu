@@ -205,17 +205,28 @@ __global__ void k_kv8_load(const uint8_t* q8, const float* sc, __half* dst, int6
     for (int j = 0; j < 4; ++j) dst[base + lane * 4 + j] = __float2half(e4m3_decode((uint8_t) (p >> (8 * j))) * scale);
 }
 /// the selected blocks only (one-token and window steps): block ids sel[(row * HKV + kh) * topk + j]; grid (topk, HKV, rows), 128 threads
+/// The selected blocks of K and V (one-token and window steps) into the FP16 working images.  sel[(row * HKV + kh) * topk + j]; grid
+/// (topk * 8, 2 * HKV, rows), 128 threads: a thread block takes 16 positions of one block, one head, K or V; the FP8 bytes decode through a table.
 /// map (optional, --kv-host block cache): VRAM slot of each block of this layer or -1; a cached block is read from the slot (pool8 / pools: one
-/// 128-position block of all heads per slot) instead of through PCIe
-__global__ void k_kv8_gather(const uint8_t* q8, const float* sc, __half* dst, const int32_t* sel, int HKV, int topk, int keys,
-                             const int32_t* map = nullptr, const uint8_t* pool8 = nullptr, const float* pools = nullptr) {
-    const int j = blockIdx.x, kh = blockIdx.y, row = blockIdx.z;
+/// 128-position block of all heads per slot) instead of through PCIe.
+__global__ void k_kv8_gather(const uint8_t* q8k, const float* sck, const uint8_t* q8v, const float* scv, __half* dstk, __half* dstv,
+                             const int32_t* sel, int HKV, int topk, int keys, const int32_t* map, const uint8_t* poolk, const float* poolks,
+                             const uint8_t* poolv, const float* poolvs) {
+    __shared__ float lut[256];
+    for (int i = threadIdx.x; i < 256; i += blockDim.x) lut[i] = e4m3_decode((uint8_t) i);
+    __syncthreads();
+    const int j = blockIdx.x >> 3, part = blockIdx.x & 7, kh = blockIdx.y % HKV, isv = blockIdx.y / HKV, row = blockIdx.z;
     const int blk = sel[((size_t) row * HKV + kh) * topk + j];
     if (blk < 0) return;
+    const uint8_t* q8 = isv ? q8v : q8k;
+    const float* sc = isv ? scv : sck;
+    __half* dst = isv ? dstv : dstk;
     const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
     const int slot = map ? map[blk] : -1;
-    for (int k = warp; k < 128; k += 4) {
-        const int pos = blk * 128 + k;
+    const uint8_t* pool8 = isv ? poolv : poolk;
+    const float* pools = isv ? poolvs : poolks;
+    for (int kk = warp; kk < 16; kk += 4) {
+        const int k = part * 16 + kk, pos = blk * 128 + k;
         if (pos >= keys) break;
         const size_t base = ((size_t) pos * HKV + kh) * 128;
         uint32_t p;
@@ -228,7 +239,10 @@ __global__ void k_kv8_gather(const uint8_t* q8, const float* sc, __half* dst, co
             p = *reinterpret_cast<const uint32_t*>(q8 + base + lane * 4);
             scale = sc[(size_t) pos * HKV + kh];
         }
-        for (int jj = 0; jj < 4; ++jj) dst[base + lane * 4 + jj] = __float2half(e4m3_decode((uint8_t) (p >> (8 * jj))) * scale);
+        __half2 lo = __floats2half2_rn(lut[p & 255] * scale, lut[(p >> 8) & 255] * scale);
+        __half2 hi = __floats2half2_rn(lut[(p >> 16) & 255] * scale, lut[p >> 24] * scale);
+        reinterpret_cast<__half2*>(dst + base + lane * 4)[0] = lo;
+        reinterpret_cast<__half2*>(dst + base + lane * 4)[1] = hi;
     }
 }
 
@@ -2368,10 +2382,8 @@ struct Engine {
                     bc_update(li);
                     bmap = bc_map_d + li * (size_t) bc_nblk;
                 }
-                k_kv8_gather<<<dim3((unsigned) topk, (unsigned) HKV, (unsigned) T), 128, 0, st>>>(kq_d[li], ks_d[li], reinterpret_cast<__half*>(kstage), sel, HKV, topk, n_pos,
-                                                                                               bmap, bc_k, bc_ks);
-                k_kv8_gather<<<dim3((unsigned) topk, (unsigned) HKV, (unsigned) T), 128, 0, st>>>(vq_d[li], vs_d[li], reinterpret_cast<__half*>(vstage), sel, HKV, topk, n_pos,
-                                                                                               bmap, bc_v, bc_vs);
+                k_kv8_gather<<<dim3((unsigned) topk * 8, (unsigned) (2 * HKV), (unsigned) T), 128, 0, st>>>(kq_d[li], ks_d[li], vq_d[li], vs_d[li],
+                    reinterpret_cast<__half*>(kstage), reinterpret_cast<__half*>(vstage), sel, HKV, topk, n_pos, bmap, bc_k, bc_ks, bc_v, bc_vs);
                 if (bc_slots > 0) {   // this step's selection to the host, for the next step's fill
                     const int n = T * HKV * topk;
                     CK(cudaMemcpyAsync(bc_sel_h + li * (size_t) kMaxWin * HKV * 16, sel, (size_t) n * 4, cudaMemcpyDeviceToHost, st));
@@ -2380,6 +2392,7 @@ struct Engine {
                     bc_sel_pos[li] = n_pos;
                 }
             }
+            pmark("attn: fp8 K/V expand (layer or selected blocks)");
             K::minimax_msa_attention_h(qb, kstage, vstage, qpos, kpos, sel, T, H, HKV, kHeadDim, n_pos, m->idx_block, topk, (size_t) topk, att, st);
         } else
         if (kv_half && kv_host && T > win_cap) {   // a prompt chunk: the layer's rows (old ones and this chunk's) to the device, one copy each

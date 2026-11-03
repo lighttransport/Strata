@@ -794,3 +794,39 @@ Limits on this node: 512K works with FP8 K/V in host memory (33 GB). 512K FP16 K
 
 Default path after these changes (one V100, the four C++ prompts, exact routing, 200 tokens): tokens identical (dijkstra 1ee67a8d, lru_cache
 38fb7620, knapsack cd04cbf5, eval_expr e30269a7); decode 26.9 / 26.4 / 24.9 / 23.3 tok/s.
+
+### Where a 128K decode step goes, and two kernel fixes (measured 2026-11-03, one V100, FP8 K/V in VRAM, 135168 context, `STRATA_M3_PROF=2`)
+
+GPU timeline per decode step (plain decode, 100 tokens, end of text ignored), before the fixes:
+
+| part | short prompt | 32K | 128K | FP16 K/V engine at 16K context, short prompt |
+|---|---|---|---|---|
+| block scores (indexer) | 1.3 ms | 2.9 ms | 11.7 ms | 1.3 ms |
+| block selection | 0.5 ms | 2.9 ms | 4.0 ms | 0.6 ms |
+| FP8 K/V expand (selected blocks) | 4.0 ms | 4.2 ms | 4.2 ms | - |
+| sparse attention | 1.7 ms | 4.3 ms | 4.3 ms | 1.9 ms |
+| experts (shared, resident, CPU lane wait) | 42.7 ms | 46.7 ms | 48.6 ms | 35.2 ms (925 slots against 431) |
+| whole step | 71.5 ms | 82.9 ms | 94.4 ms | 60.9 ms |
+
+The block scores were one thread block per (key block, index head). All four index heads score the same single key head, so every key row was
+read four times. Now one thread block scores all heads from one read, for 128 key blocks (16K positions) and more; below that the per-head
+grid keeps more of the GPU busy. The lane products, the warp sums, the warp-to-key assignment and the max are unchanged, so the scores are
+bitwise the same. The FP8 expand used a dozen thread blocks walking 128 keys each. Now it runs 8x more thread blocks and K and V in one launch,
+and decodes through a table; the halves are bitwise the same. After the fixes:
+
+| | short prompt | 128K |
+|---|---|---|
+| block scores | 1.6 ms | 5.1 ms |
+| FP8 K/V expand | 0.6 ms | 1.0 ms |
+| whole step | 68.3 ms | 82.4 ms |
+| decode | 14.2 tok/s | 11.8 tok/s (10.3 before) |
+
+At 11.8 tok/s, 128K keeps 83 % of the same engine's short-context speed, and 74 % of the FP16 K/V engine sized for 16K context (15.9 tok/s in
+the same session; 17.7 tok/s in the earlier one, which gives 67 %). `--idx-fp8` (FP8 indexer keys: KL 1.06e-3 and top-1 47/47 on the 7K prompt,
+483 slots instead of 431 at 135168 context) is not faster yet: its block scores take 7.2 ms at 128K because the FP8 bytes decode arithmetically.
+What is left at 128K: block selection (4.0 ms), the block scores above their bandwidth bound (about 2 ms), and the experts that the smaller slot
+count sends to the CPU.
+
+Default path after the fixes (four C++ prompts, exact routing, 200 tokens): tokens identical (1ee67a8d, 38fb7620, cd04cbf5, e30269a7); decode
+26.9 / 25.8 / 24.3 / 22.9 tok/s, the same as the run before the fixes in this session (27.0 / 25.8 / 24.3 / 23.0). With the all-heads
+kernel at every context length, short-prompt decode was about 3 % slower, so it starts at 128 key blocks.

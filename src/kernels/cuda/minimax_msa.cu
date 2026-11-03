@@ -193,6 +193,52 @@ __global__ void block_scores_q8_kernel(const float* __restrict__ q, const uint8_
     }
 }
 
+
+// ---- block scores for a few queries, all index heads of a query in one thread block: each key row is read once for every head (the index keys
+// have one head shared by the 4 index-query heads).  Per (key, head) the same lane products and warp sum as block_scores_d128_kernel, the same
+// warp-to-slot assignment, and a max: the scores are bitwise the same.
+template <class KT, bool Q8>
+__global__ void block_scores_heads_kernel(const float* __restrict__ q, const KT* __restrict__ k, const float* __restrict__ kscale,
+                                          const int32_t* __restrict__ query_positions, const int32_t* __restrict__ key_positions,
+                                          int index_heads, int keys, int block_size, int n_blocks, size_t score_stride,
+                                          float* __restrict__ scores) {
+    __shared__ float partial[kThreads / 32][4];
+    const int block = (int)blockIdx.x, query = (int)blockIdx.y;
+    const int tid = (int)threadIdx.x, warp = tid / 32, lane = tid % 32;
+    const int32_t qpos = query_positions[query];
+    float4 qv[4];
+    for (int h = 0; h < 4; ++h)
+        qv[h] = h < index_heads ? reinterpret_cast<const float4*>(q + ((size_t)query * index_heads + h) * 128)[lane] : make_float4(0.f, 0.f, 0.f, 0.f);
+    float best[4] = {-INFINITY, -INFINITY, -INFINITY, -INFINITY};
+    for (int slot = block * block_size + warp; slot < (block + 1) * block_size && slot < keys; slot += kThreads / 32) {
+        const int32_t pos = key_positions[slot];
+        if (pos < 0 || pos > qpos || pos / block_size != block) continue;
+        float4 kv;
+        float sc = 1.f;
+        if constexpr (Q8) {
+            const uint32_t w = reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(k) + (size_t)slot * 128)[lane];
+            kv = make_float4(e4m3_to_float(w & 255), e4m3_to_float((w >> 8) & 255), e4m3_to_float((w >> 16) & 255), e4m3_to_float(w >> 24));
+            sc = kscale[slot];
+        } else {
+            kv = load4(k + (size_t)slot * 128, lane);
+        }
+        for (int h = 0; h < 4; ++h) {
+            if (h >= index_heads) break;
+            float dot = warp_sum(qv[h].x * kv.x + qv[h].y * kv.y + qv[h].z * kv.z + qv[h].w * kv.w);
+            if constexpr (Q8) dot *= sc;
+            best[h] = fmaxf(best[h], dot);
+        }
+    }
+    if (lane == 0)
+        for (int h = 0; h < 4; ++h) partial[warp][h] = best[h];
+    __syncthreads();
+    if (tid < index_heads) {
+        float b = partial[0][tid];
+        for (int w = 1; w < kThreads / 32; ++w) b = fmaxf(b, partial[w][tid]);
+        scores[((size_t)query * index_heads + tid) * score_stride + block] = b;
+    }
+}
+
 // Measured on the V100 (7000 cached positions, top-16 of 55 blocks): 1589 us generic -> 449 us warp-per-slot ->
 // 133 us with 1024 threads and 4 slots in flight per warp (unroll 8 spilled: 164 us).  A block per (query, kv head)
 // serving its 16 query heads read K/V 16x less but ran on only 4 blocks of an 80-SM GPU: 2100 us.  It would need the
@@ -1106,6 +1152,12 @@ void minimax_msa_block_scores_h(const float* q, const uint16_t* k, const int32_t
         return;
     }
 #endif
+    static const bool per_head = std::getenv("STRATA_MSA_SCORES_PER_HEAD") != nullptr;   // A/B: one thread block per (block, head)
+    // all heads in one thread block pays from about 16K cached positions (128 blocks); below that the per-head grid keeps more of the GPU busy
+    if (!per_head && index_heads <= 4 && n_blocks >= 128)
+        block_scores_heads_kernel<__half, false><<<dim3((unsigned)n_blocks, (unsigned)queries), kThreads, 0, (cudaStream_t)stream>>>(
+            q, (const __half*)k, nullptr, query_positions, key_positions, index_heads, keys, block_size, n_blocks, score_stride, scores);
+    else
     block_scores_d128_kernel<__half><<<grid, kThreads, 0, (cudaStream_t)stream>>>(q, (const __half*)k, query_positions,
         key_positions, index_heads, keys, block_size, n_blocks, score_stride, scores);
     check(cudaGetLastError(), "block score (half) launch");
@@ -1119,6 +1171,10 @@ void minimax_msa_block_scores_q8(const float* q, const uint8_t* k8, const float*
         n_blocks > 65535 || index_heads > 65535 || queries > 65535)
         throw std::invalid_argument("MiniMax MSA block scores (fp8): invalid geometry or buffer");
     const dim3 grid((unsigned)n_blocks, (unsigned)index_heads, (unsigned)queries);
+    if (index_heads <= 4 && n_blocks >= 128)
+        block_scores_heads_kernel<uint8_t, true><<<dim3((unsigned)n_blocks, (unsigned)queries), kThreads, 0, (cudaStream_t)stream>>>(
+            q, k8, kscale, query_positions, key_positions, index_heads, keys, block_size, n_blocks, score_stride, scores);
+    else
     block_scores_q8_kernel<<<grid, kThreads, 0, (cudaStream_t)stream>>>(q, k8, kscale, query_positions, key_positions, index_heads, keys,
                                                                        block_size, n_blocks, score_stride, scores);
     check(cudaGetLastError(), "block score (fp8) launch");
