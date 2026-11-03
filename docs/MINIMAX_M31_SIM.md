@@ -600,3 +600,58 @@ side-stream path and fell back to the sequential loop, which queues every expert
 GPU 0's kernels: one prompt lost 22 % with admissions on. The capacity is now 64 jobs (top_k x window) and the ordered accumulate runs in launches
 of 16 jobs. Not the cause, and not kept: copy-engine transfers replaced by mapped pinned host memory (slower, 59.3 against 63.4 tok/s in max-mode)
 or by direct peer reads (`STRATA_M3_GPU1_DIRECT=1`, 60.9). Not measured: more than two GPUs.
+
+## The simulator fitted on the measured path, and projections for batched decode and prefill (2026-11-03)
+
+`tools/sim/minimax_step.py` is a MiniMax step-time model (the GLM-derived model above was never fitted on this engine); its inputs are
+in `tools/sim/data/minimax_m31_measured.json` (dense matvec bench for 1-8 columns, the max-mode step profile, the routing union law from
+`STRATA_M3_ROUTE_TRACE`, cache-simulator hit rates for B sequences, the six single-stream decode speeds, the prefill points). Only these are
+fitted: the CPU-lane constants (250 us a job, 130 us a layer, 40 us a further token), a host term of 120 us a layer (stream wake-up, routing
+filter, queueing), the effective stream job time (23 us) and three prefill constants. `python3 tools/minimax_m31_fit.py` prints everything
+below (`docs/benchmarks/minimax_m31_sim_20261103/fit.txt`); `python3 tools/minimax_m31_sim.py --measured` prints the measured speeds next to the
+old GLM-fitted projection; `python3 tools/test_sim_minimax.py` checks the fit.
+
+Single-stream decode with DSpark (4.1 rows a window, 3.8 tokens a step), mean of the dijkstra / lru_cache runs, measured against the fitted model:
+
+| | exact | fast (top-3) | max (top-2, `missk=0`) |
+|---|---|---|---|
+| one V100 | 26.4 / 26.6 | 33.1 / 33.0 | 56.1 / 55.0 |
+| two V100s | 38.8 / 38.0 | 46.8 / 46.0 | 61.0 / 59.9 |
+
+Plain decode without speculation (the first engine build, exact routing, one GPU) was 16.0 tok/s, which the GLM-fitted projection also gave;
+every number above includes speculation, FP16 K/V, the fused experts, side streams and (two GPUs) the second GPU's cache.
+
+**Batched decode, PROJECTION.** The engine decodes one sequence of at most 8 rows today. The model runs B sequences, each with a 4.1-row
+window, 2048-token context (K/V 154 KB a token, so more sequences leave fewer expert slots), shared dense matvecs and experts, separate attention.
+Aggregate tok/s (per-sequence tok/s is that divided by B), B = 1 / 2 / 4 / 8 / 16 / 32:
+
+| | exact | fast | max |
+|---|---|---|---|
+| 1 GPU, matvecs as today (8 columns a launch) | 27 / 31 / 36 / 39 / 44 / 48 | 33 / 39 / 45 / 49 / 54 / 58 | 55 / 67 / 82 / 90 / 97 / 100 |
+| 2 GPUs, matvecs as today | 38 / 46 / 53 / 58 / 62 / 64 | 46 / 56 / 66 / 71 / 75 / 76 | 60 / 70 / 86 / 97 / 104 / 108 |
+| 1 GPU, + tensor-core dense path above 8 columns | 27 / 34 / 42 / 47 / 55 / 61 | 33 / 43 / 54 / 62 / 72 / 79 | 55 / 79 / 117 / 150 / 172 / 180 |
+| 2 GPUs, + tensor-core dense path | 38 / 51 / 66 / 78 / 85 / 90 | 46 / 64 / 86 / 104 / 112 / 116 | 60 / 87 / 140 / 196 / 228 / 245 |
+
+Reading: with today's kernels batching gains little (every launch re-reads the weights for each 8 columns); a dense path that reads the
+weights once (the tensor-core dequantize-and-multiply prototype is flat in the columns, 115 us for the q matrix) raises the max-mode
+aggregate to about 2.7x (1 GPU, B = 8: 150) and 3.3x (2 GPUs, B = 8: 196) the single-stream speed, at 19 and 25 tok/s a sequence. Exact and fast
+routing stay limited by the CPU lane (B = 8, 1 GPU: 4.3-5.8 CPU jobs a layer) and their hit rate falls with B (cache shared by the sequences:
+64 % at B = 8 against 84 % in max mode); the draft pass (14 ms at B = 8 with the tensor-core path, 40 ms without) and per-sequence attention
+(32 us + 23 us a row a layer) are the next terms. Not modelled: the engine work (K/V per sequence, several sequences in one window, 32-row
+buffers), sequences of different lengths, and any scheduling loss.
+
+**Prefill, PROJECTION.** The model: each chunk streams the experts its tokens touch over PCIe (one link per GPU) while the GPU computes;
+most of the compute hides under the stream. Fitted on 6960 tokens (14.2 s), 210 tokens (22.8 tok/s) and 487 tokens (38.6 tok/s); it has a
+fixed 3.5 s a prompt (warm-up, last layer, tail), which is a fitted number, not a measured one. tok/s:
+
+| | chunk 2048 | 4096 | 7168 | 14336 |
+|---|---|---|---|---|
+| 14336-token prompt, 1 GPU, as fitted | 204 | 337 | 555 | 575 |
+| same, stream fully hidden | 209 | 350 | 588 | 593 |
+| 14336-token prompt, 2 GPUs (each streams half the experts), as fitted | 387 | 618 | 870 | 895 |
+
+Many short prompts in one chunk share one pass over the pack: 1 x 210 tokens 22 tok/s, 8 x 210 129, 32 x 210 479, 64 x 210 541 (1 GPU; 32 / 203
+/ 699 / 854 with two GPUs); long prompts approach 600 (1 GPU) and 1000 (2 GPUs) tok/s, bound by the 125 GiB pack over 12.3 GB/s links.
+Not measured: the split of the 14.2 s between GPU work and waiting for the stream (the model assumes 10 s of GPU work); a profile of
+`--pf-gemm --pf-prefetch` would pin the fixed cost and the overlap down. Forecasts in this family of models have been several tok/s off on
+GLM; treat the batched and prefill rows as ranges, not promises.

@@ -73,7 +73,22 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--json", type=pathlib.Path)
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="hardware override, e.g. memory.dram_gbps=100")
+    ap.add_argument("--measured", action="store_true",
+                    help="print the model fitted on the measured strata-m3 path (tools/minimax_m31_fit.py) next to the GLM-fitted projection and exit")
     args = ap.parse_args(argv)
+    if args.measured:
+        # the projection below was fitted on GLM; the measured path (FP16 K/V, DSpark, side streams, fused experts, a second GPU) is in
+        # tools/sim/data/minimax_m31_measured.json and modelled by tools/sim/minimax_step.py
+        import minimax_step as mstep
+        p, _ = mstep.fit(mstep.Params())
+        hw0 = load_hw(args.set)
+        d, _ = run("minimax_m31", "minimax_m31_ud_q2_k_xl", hw0, kernels.Params(), hit=0.565, pcie_prefetch=True)
+        print(f"GLM-fitted projection, plain decode, curve-scaled hit, prefetch: {d.tok_s:.1f} tok/s (the engine then measured 16.0 plain)")
+        print("measured single-stream decode with DSpark speculation (mean of two prompts) vs the model fitted on it:")
+        for gpus, mode, meas, tok, step in mstep.check_anchors(p):
+            print(f"  {gpus} GPU  {mode:5s} measured {meas:5.1f}  fitted model {tok:5.1f} tok/s  ({step:5.1f} ms a step)")
+        model.use_model("flash")
+        return 0
     hw = load_hw(args.set)
     params = kernels.Params()
     key, pack = "minimax_m31", "minimax_m31_ud_q2_k_xl"
