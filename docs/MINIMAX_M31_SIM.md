@@ -728,3 +728,15 @@ about 1e-4 in KL because the CPU/GPU expert placement is not fixed; the 7K figur
 What is left (16K, after the changes): sparse attention 6.1 s is still the largest item at about 11 TFLOP/s effective (latency bound on the fragment loads);
 cuBLAS 10.5 s; dequantization 2.2 s is serialized with the GEMMs. The ncu profile of the attention kernel did not finish (kernel replay of a process holding
 125 GiB of pinned memory); not measured. Not done: dequantize/GEMM overlap, second per-layer host sync, 2-GPU prefill.
+
+### Dequantize on a second stream while cuBLAS runs: no gain (measured 2026-11-03, tried and removed)
+
+The next expert's gate / up / down matrices were dequantized into a second FP16 scratch on their own stream while the cuBLAS products of the current
+expert ran (events chained the buffer reuse; the dequant waited on the prefetch copy event). Teacher-forced 7K prompt: KL 1.49e-3 against 1.39e-3 for the
+same run without it, top-1 47/47. Speed, 16000-token single chunk: 630-632 tok/s against 637-640 without it (same node, same session). The cuBLAS products
+fill every SM, so a memory-bound kernel on another stream gets no free capacity; the 2.2 s of dequantization at 16K only goes away with a fused
+dequantize + tensor-core product (no FP16 round trip through memory), which is not built. The change was removed; it also cost 113 MB of VRAM and made the
+16K configuration run out of memory at `--expert-vram 9`.
+
+Status against the target (600+ tok/s at 8-16K, one V100): 16K reaches 634-640 tok/s; 8K reaches 541-547 tok/s (the 8K prompt is bounded by the 10.9 s
+expert stream plus about 3.7 s of attention that does not hide under it). Not done: fused dequantize + GEMM, 2-GPU prefill, several short prompts in one chunk.
