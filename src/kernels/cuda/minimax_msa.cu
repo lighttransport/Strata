@@ -911,6 +911,90 @@ __global__ void select_blocks_warp_kernel(const float* __restrict__ scores, cons
     }
 }
 
+// ---- selection for 64 < n_blocks <= kSelMaxBlocks (1M positions with 128-key blocks).  The order of `better` (forced first, then score, then the
+// lower id) is packed into one 64-bit key: bit 63 forced, bits 62..31 the score as an ordered integer (-0 counted as +0, as `!=` does), bits 30..0
+// the inverted id; ids are unique, so the keys are, and the top-k by key is the top-k set of select_blocks_kernel (output sorted ascending:
+// bitwise the same).  Each warp picks the top-k of its blocks (thread t owns blocks t, t + kThreads, ...; rounds of shuffle max, no block
+// barriers, a rescan of shared-memory scores only in the lane that owned the winner), then one warp picks the top-k of the 8 warps' lists.
+constexpr int kSelMaxBlocks = 8192;
+__device__ __forceinline__ unsigned long long sel_key(float score, int id, int is_forced) {
+    uint32_t u = __float_as_uint(score + 0.0f);   // -0 -> +0
+    u = (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+    return ((unsigned long long)is_forced << 63) | ((unsigned long long)u << 31) | (unsigned long long)(0x7fffffffu - (uint32_t)id);
+}
+__device__ __forceinline__ unsigned long long warp_max_u64(unsigned long long k) {
+    for (int o = 16; o > 0; o >>= 1) {
+        const unsigned long long other = __shfl_xor_sync(0xffffffffu, k, o);
+        k = other > k ? other : k;
+    }
+    return k;
+}
+__global__ void __launch_bounds__(kThreads) select_blocks_reg_kernel(const float* __restrict__ scores, const int32_t* __restrict__ query_positions,
+                                         int index_heads, int n_blocks, int block_size, int top_k, int local_blocks,
+                                         size_t score_stride, size_t id_stride, int32_t* __restrict__ ids) {
+    __shared__ float s_sc[kSelMaxBlocks];
+    __shared__ unsigned long long cand[(kThreads / 32) * kMaxTopK];
+    __shared__ int32_t chosen[kMaxTopK];
+    const int row = (int)blockIdx.x, query = row / index_heads, tid = (int)threadIdx.x, warp = tid / 32, lane = tid % 32;
+    const int qpos = query_positions[query];
+    const float* row_scores = scores + (size_t)row * score_stride;
+    for (int b = tid; b < n_blocks; b += kThreads) s_sc[b] = row_scores[b];   // each thread later reads only the entries it wrote
+    const int mine = n_blocks > tid ? (n_blocks - tid + kThreads - 1) / kThreads : 0;
+    uint32_t taken = 0;
+    unsigned long long best = 0;   // 0: nothing left (every real key is nonzero)
+    auto rescan = [&]() {
+        best = 0;
+        for (int j = 0; j < mine; ++j) {
+            if (taken & (1u << j)) continue;
+            const int b = tid + j * kThreads;
+            const unsigned long long k = sel_key(s_sc[b], b, forced(b, qpos, block_size, local_blocks) ? 1 : 0);
+            best = k > best ? k : best;
+        }
+    };
+    rescan();
+    for (int r = 0; r < top_k; ++r) {
+        const unsigned long long w = warp_max_u64(best);
+        if (lane == 0) cand[warp * top_k + r] = w;
+        if (w != 0 && w == best) {
+            const int b = (int)(0x7fffffffu - (uint32_t)(w & 0x7fffffffu));
+            taken |= 1u << ((b - tid) / kThreads);
+            rescan();
+        }
+    }
+    __syncthreads();
+    if (warp == 0) {
+        const int nc = (kThreads / 32) * top_k;   // <= 512: at most 16 a lane
+        uint32_t used = 0;
+        auto lbest = [&]() {
+            unsigned long long m = 0;
+            for (int i = 0; lane + 32 * i < nc; ++i)
+                if (!(used & (1u << i))) { const unsigned long long k = cand[lane + 32 * i]; m = k > m ? k : m; }
+            return m;
+        };
+        unsigned long long m = lbest();
+        for (int r = 0; r < top_k; ++r) {
+            const unsigned long long w = warp_max_u64(m);
+            if (lane == 0) chosen[r] = (int32_t)(0x7fffffffu - (uint32_t)(w & 0x7fffffffu));
+            if (w != 0 && w == m) {
+                for (int i = 0; lane + 32 * i < nc; ++i)
+                    if (cand[lane + 32 * i] == w) { used |= 1u << i; break; }
+                m = lbest();
+            }
+        }
+        __syncwarp();
+        if (lane == 0) {
+            int32_t* row_ids = ids + (size_t)row * id_stride;
+            for (int i = 1; i < top_k; ++i) {
+                const int32_t value = chosen[i];
+                int j = i;
+                while (j > 0 && chosen[j - 1] > value) { chosen[j] = chosen[j - 1]; --j; }
+                chosen[j] = value;
+            }
+            for (int i = 0; i < top_k; ++i) row_ids[i] = chosen[i];
+        }
+    }
+}
+
 __global__ void select_blocks_kernel(const float* __restrict__ scores,
                                     const int32_t* __restrict__ query_positions,
                                     int index_heads, int n_blocks, int block_size,
@@ -1058,6 +1142,10 @@ bool slow_msa() {
     static const bool slow = std::getenv("STRATA_MSA_SLOW") != nullptr;
     return slow;
 }
+bool select_old() {   // A/B: the block-barrier selection kernel for every n_blocks > 64
+    static const bool old = std::getenv("STRATA_MSA_SELECT_OLD") != nullptr;
+    return old;
+}
 
 void check(cudaError_t error, const char* operation) {
     if (error != cudaSuccess)
@@ -1096,6 +1184,9 @@ void minimax_msa_select_blocks(const float* scores, const int32_t* query_positio
     const int rows = queries * index_heads;
     if (n_blocks <= 64 && !slow_msa())
         select_blocks_warp_kernel<<<rows, 32, 0, (cudaStream_t)stream>>>(scores, query_positions, index_heads, n_blocks,
+            block_size, top_k, local_blocks, score_stride, id_stride, ids);
+    else if (n_blocks <= kSelMaxBlocks && !slow_msa() && !select_old())
+        select_blocks_reg_kernel<<<rows, kThreads, 0, (cudaStream_t)stream>>>(scores, query_positions, index_heads, n_blocks,
             block_size, top_k, local_blocks, score_stride, id_stride, ids);
     else
     select_blocks_kernel<<<rows, kThreads, 0, (cudaStream_t)stream>>>(scores, query_positions, index_heads,

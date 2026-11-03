@@ -249,6 +249,52 @@ int main() {
             return 1;
         }
     }
+    // ---- selection at long-context sizes (the register-resident kernel above 64 blocks, the block-barrier kernel above 8192): many tied
+    // scores, blocks no query can see (-inf), padded score rows, several local blocks; ids must equal the host reference exactly
+    for (const int NB : {65, 300, 1024, 1025, 4096, 8192, 8193}) {
+        const int Q = 4, IH = 4, BS = 128, TOPK = 16, LOCAL = 3;
+        const size_t sstride = (size_t)NB + 7, istride = TOPK + 2;
+        uint32_t seed = 777u + (uint32_t)NB;
+        auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return seed >> 8; };
+        std::vector<int32_t> qp(Q);
+        for (int q = 0; q < Q; ++q) qp[q] = (int32_t)(NB * BS - 1 - (int)(rnd() % (uint32_t)(NB * BS / 2)));
+        std::vector<float> sc((size_t)Q * IH * sstride, 0.f);
+        for (int r = 0; r < Q * IH; ++r)
+            for (int b = 0; b < NB; ++b) {
+                const uint32_t x = rnd();
+                sc[(size_t)r * sstride + b] = (x & 15) == 0 ? -INFINITY : (float)(x % 64u) * 0.25f - 8.f;   // 64 levels: ties
+            }
+        std::vector<int32_t> want((size_t)Q * IH * istride, -1), got((size_t)Q * IH * istride, -1);
+        if (strata_minimax_msa_select_blocks(sc.data(), qp.data(), Q, IH, NB, BS, TOPK, LOCAL, sstride, want.data(), istride) !=
+            STRATA_MINIMAX_MSA_OK) {
+            std::fprintf(stderr, "MiniMax MSA parity: host selection rejected n_blocks %d\n", NB);
+            return 1;
+        }
+        Device<float> Ds(sc.size());
+        Device<int32_t> Dq(qp.size()), Di(got.size());
+        upload(Ds, sc); upload(Dq, qp); upload(Di, got);
+        strata::kernels::minimax_msa_select_blocks(Ds.p, Dq.p, Q, IH, NB, BS, TOPK, LOCAL, sstride, Di.p, istride, nullptr);
+        ck(cudaDeviceSynchronize(), "selection synchronize");
+        ck(cudaMemcpy(got.data(), Di.p, got.size() * sizeof(int32_t), cudaMemcpyDeviceToHost), "download selection");
+        for (int r = 0; r < Q * IH; ++r)
+            for (int i = 0; i < TOPK; ++i)
+                if (want[(size_t)r * istride + i] != got[(size_t)r * istride + i]) {
+                    std::fprintf(stderr, "selection n_blocks %d row %d id[%d]: host %d device %d\n", NB, r, i, want[(size_t)r * istride + i],
+                                 got[(size_t)r * istride + i]);
+                    return 1;
+                }
+        cudaEvent_t e0, e1;
+        ck(cudaEventCreate(&e0), "event"); ck(cudaEventCreate(&e1), "event");
+        ck(cudaEventRecord(e0, nullptr), "record");
+        for (int it = 0; it < 50; ++it)
+            strata::kernels::minimax_msa_select_blocks(Ds.p, Dq.p, Q, IH, NB, BS, TOPK, LOCAL, sstride, Di.p, istride, nullptr);
+        ck(cudaEventRecord(e1, nullptr), "record");
+        ck(cudaEventSynchronize(e1), "sync");
+        float ms = 0.f;
+        ck(cudaEventElapsedTime(&ms, e0, e1), "elapsed");
+        cudaEventDestroy(e0); cudaEventDestroy(e1);
+        std::printf("selection n_blocks %4d, %d rows, top-%d: ids match, %.1f us a launch\n", NB, Q * IH, TOPK, ms * 1000.f / 50.f);
+    }
     std::puts("MiniMax MSA scores, selection and sparse attention match the host reference");
     return 0;
 }

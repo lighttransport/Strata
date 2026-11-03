@@ -835,7 +835,26 @@ session, `--kv-fp8 --idx-fp8`, 100 decode tokens:
 | decode, 128K | 11.7 tok/s | 12.0 tok/s |
 
 With the table, `--idx-fp8` at 128K is a little faster than FP16 index keys (11.8 tok/s, measured in an earlier session), from its extra slots.
-What is left at 128K: block selection (4.0 ms), the block scores above their bandwidth bound (about 2 ms), and the experts that the smaller slot
+
+Block selection (top-16 of the block scores per query and index head) had one 256-thread block per row, a block-wide argmax with 8 barriers
+per round, every score read again from global memory each round, and a check against all blocks picked so far. Up to 8192 blocks (1M
+positions) it now packs the order (forced local block first, then score, then the lower id) into one 64-bit key. Each warp picks its own
+top-16 by shuffle max with no barriers, rescanning shared-memory scores only in the lane that owned the winner, and one warp then picks the
+top-16 of the 8 warps' lists. Keys are unique, so the set is the same and the output is bitwise the same: `minimax_msa_parity` checks the
+ids against the host reference at 65 to 8193 blocks, with many tied and `-inf` scores. Above 8192 blocks the old kernel runs, and
+`STRATA_MSA_SELECT_OLD=1` forces it for A/B. Standalone, 16 rows (`minimax_msa_parity`, one V100):
+
+| blocks | old | new |
+|---|---|---|
+| 65 | 50.0 us | 22.2 us |
+| 1024 (128K) | 76.6 us | 31.6 us |
+| 4096 (512K) | 155.8 us | 69.0 us |
+| 8192 (1M) | 262.9 us | 119.4 us |
+
+In the engine (`--kv-fp8 --idx-fp8`, 128K needle, 100 decode tokens, same session): selection 4.06 -> 2.05 ms a step, decode 12.05 -> 12.34
+tok/s, tokens identical (994813f5; short prompt e58f5f9e), prefill unchanged (437 tok/s). Default hashes unchanged (1ee67a8d, 38fb7620,
+cd04cbf5, e30269a7; 27.7 / 26.5 / 25.0 / 23.4 tok/s).
+What is left at 128K: block selection (2.0 ms), the block scores above their bandwidth bound (about 2 ms), and the experts that the smaller slot
 count sends to the CPU.
 
 Default path after the fixes (four C++ prompts, exact routing, 200 tokens): tokens identical (1ee67a8d, 38fb7620, cd04cbf5, e30269a7); decode
