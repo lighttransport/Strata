@@ -34,6 +34,10 @@ void minimax_msa_attention_f32(const float* q, const float* k, const float* v,
 void minimax_msa_block_scores_h(const float* q, const uint16_t* k, const int32_t* query_positions,
                                 const int32_t* key_positions, int queries, int index_heads, int dim, int keys,
                                 int block_size, int n_blocks, float* scores, size_t score_stride, void* stream);
+/// Block scores against FP8 (E4M3) indexer keys k8 [keys][128] with one float scale per key (a few queries: one-token and window steps).
+void minimax_msa_block_scores_q8(const float* q, const uint8_t* k8, const float* kscale, const int32_t* query_positions,
+                                 const int32_t* key_positions, int queries, int index_heads, int dim, int keys,
+                                 int block_size, int n_blocks, float* scores, size_t score_stride, void* stream);
 void minimax_msa_attention_h(const float* q, const uint16_t* k, const uint16_t* v, const int32_t* query_positions,
                              const int32_t* key_positions, const int32_t* selected_blocks, int queries,
                              int query_heads, int kv_heads, int dim, int keys, int block_size, int top_k,

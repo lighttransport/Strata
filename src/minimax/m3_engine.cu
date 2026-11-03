@@ -1052,6 +1052,33 @@ struct Engine {
     std::vector<int> bc_sel_n, bc_sel_pos;     // rows * HKV * topk of that selection, and the context length then
     std::vector<cudaEvent_t> bc_ev;
     long long bc_hit = 0, bc_miss = 0, bc_fill = 0;
+    // --idx-fp8 (opt-in, with --kv-f16): the indexer keys as E4M3 bytes + one scale per position (half the VRAM of FP16); one FP16 working image
+    // shared by the layers serves the prompt chunks' tensor-core block scores, one-token / window steps score the FP8 keys directly
+    bool idx_fp8 = false;
+    std::vector<uint8_t*> ik8;
+    std::vector<float*> iks;
+    uint16_t* ik16 = nullptr;
+    void push_ikc() {
+        const size_t rows = (size_t) ctx + 128;
+        if (!idx_fp8) {
+            ikc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>(rows * kHeadDim)));
+            CK(cudaMemset(ikc.back(), 0, rows * kHeadDim * 2));
+            return;
+        }
+        if (!ik16) {
+            ik16 = dalloc_t<uint16_t>(rows * kHeadDim);
+            CK(cudaMemset(ik16, 0, rows * kHeadDim * 2));
+        }
+        uint8_t* b = nullptr;
+        float* sc = nullptr;
+        CK(cudaMalloc(&b, rows * kHeadDim));
+        CK(cudaMalloc(&sc, rows * 4));
+        CK(cudaMemset(b, 0, rows * kHeadDim));
+        CK(cudaMemset(sc, 0, rows * 4));
+        ik8.push_back(b);
+        iks.push_back(sc);
+        ikc.push_back(reinterpret_cast<float*>(ik16));
+    }
     std::vector<void*> kc_h, vc_h;     // host base pointers
     std::vector<void*> ks_h, vs_h;     // host scales (--kv-fp8)
     uint16_t *kstage = nullptr, *vstage = nullptr;
@@ -1943,8 +1970,7 @@ struct Engine {
                 }
                 kc.push_back(reinterpret_cast<float*>(kstage));
                 vc.push_back(reinterpret_cast<float*>(vstage));
-                ikc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * kHeadDim)));
-                CK(cudaMemset(ikc.back(), 0, (size_t) (ctx + 128) * kHeadDim * 2));
+                push_ikc();
             } else
             if (kv_half && kv_host) {
                 const size_t bytes = (size_t) (ctx + 128) * KD * 2;
@@ -1959,8 +1985,7 @@ struct Engine {
                 vc_h.push_back(hv);
                 kc.push_back(reinterpret_cast<float*>(dk));
                 vc.push_back(reinterpret_cast<float*>(dv));
-                ikc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * kHeadDim)));
-                CK(cudaMemset(ikc.back(), 0, (size_t) (ctx + 128) * kHeadDim * 2));
+                push_ikc();
                 if (l == 0) {
                     CK(cudaMalloc(&kstage, bytes));
                     CK(cudaMalloc(&vstage, bytes));
@@ -1971,8 +1996,7 @@ struct Engine {
                 // padded by one 128-key block and zeroed: the tensor-core attention reads whole key tiles
                 kc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * KD)));
                 vc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * KD)));
-                ikc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * kHeadDim)));
-                CK(cudaMemset(ikc.back(), 0, (size_t) (ctx + 128) * kHeadDim * 2));
+                push_ikc();
                 CK(cudaMemset(kc.back(), 0, (size_t) (ctx + 128) * KD * 2));
                 CK(cudaMemset(vc.back(), 0, (size_t) (ctx + 128) * KD * 2));
             } else {
@@ -2276,6 +2300,7 @@ struct Engine {
             k_head_prep<float><<<dim3((unsigned) IH, (unsigned) T), kHeadDim, 0, st2>>>(iqraw, L.iq_norm, iqb, IH, m->n_rot, ts,
                                                                                  m->eps, p0, 0);
             cache_prep(st2, ikraw, L.ik_norm, ikc[li], 1, T, ts, p0);
+            if (idx_fp8) k_kv8_store<<<grid1((int64_t) T * 32), kThreads, 0, st2>>>(reinterpret_cast<const __half*>(ik16), ik8[li], iks[li], p0, T, 1);
             CK(cudaEventRecord(ev_join, st2));
         }
         if (pf(T, pf_min_t)) {
@@ -2311,11 +2336,18 @@ struct Engine {
             k_head_prep<float><<<dim3((unsigned) IH, (unsigned) T), kHeadDim, 0, st>>>(iqraw, L.iq_norm, iqb, IH, m->n_rot, ts,
                                                                                 m->eps, p0, 0);
             cache_prep(st, ikraw, L.ik_norm, ikc[li], 1, T, ts, p0);
+            if (idx_fp8) k_kv8_store<<<grid1((int64_t) T * 32), kThreads, 0, st>>>(reinterpret_cast<const __half*>(ik16), ik8[li], iks[li], p0, T, 1);
         }
         pmark("attn: indexer projections + norm/rope");
         const int n_pos = p0 + T;
         const int nblk = (n_pos + m->idx_block - 1) / m->idx_block;
         const int topk = std::min(m->idx_top_k, nblk);
+        if (idx_fp8 && T < 16)
+            K::minimax_msa_block_scores_q8(iqb, ik8[li], iks[li], qpos, kpos, T, IH, kHeadDim, n_pos, m->idx_block, nblk, scores, (size_t) nblk, st);
+        else if (idx_fp8) {
+            k_kv8_load<<<grid1((int64_t) n_pos * 32), kThreads, 0, st>>>(ik8[li], iks[li], reinterpret_cast<__half*>(ik16), n_pos, 1);
+            K::minimax_msa_block_scores_h(iqb, ik16, qpos, kpos, T, IH, kHeadDim, n_pos, m->idx_block, nblk, scores, (size_t) nblk, st);
+        } else
         if (kv_half)
             K::minimax_msa_block_scores_h(iqb, reinterpret_cast<const uint16_t*>(ikc[li]), qpos, kpos, T, IH, kHeadDim, n_pos,
                                           m->idx_block, nblk, scores, (size_t) nblk, st);
@@ -3243,7 +3275,7 @@ int strata::minimax::run(int argc, char** argv) {
     bool interleave_pack = true, ignore_eos = false, preload_experts = strata_env_truthy_one("STRATA_M3_PRELOAD") != 0, pin_pack = true;
     int preload_threads = 16, cpu_threads = 35, admit = 2, runs = 1;
     int seqs_opt = 1;   // --seqs N: sequences a batch can hold (K/V reserved at start)
-    bool kv_host_opt = false, kv_fp8_opt = false;
+    bool kv_host_opt = false, kv_fp8_opt = false, idx_fp8_opt = false;
     bool admit_freq = true, repl = false, route_renorm_opt = false, kv_f16_opt = strata_env_truthy_one("STRATA_M3_KV_F16") != 0;
     std::string spec_mode = "none", dspark_path;
     bool spec_given = false, draft_given = false;
@@ -3281,6 +3313,7 @@ int strata::minimax::run(int argc, char** argv) {
         else if (a == "--kv-f16") kv_f16_opt = true;
         else if (a == "--kv-host") kv_host_opt = true;
         else if (a == "--kv-fp8") kv_fp8_opt = true;
+        else if (a == "--idx-fp8") idx_fp8_opt = true;
         else if (a == "--seqs") seqs_opt = std::max(1, std::atoi(next().c_str()));
         else if (a == "--dspark") dspark_path = next();
         else if (a == "--pf-gemm") pf_gemm_opt = true;
@@ -3401,13 +3434,15 @@ int strata::minimax::run(int argc, char** argv) {
     E.pf_gemm = pf_gemm_opt;
     E.pf_pre = pf_pre_opt;
     E.kv_half = kv_f16_opt;
-    if (kv_host_opt || kv_fp8_opt) {
+    if (kv_host_opt || kv_fp8_opt || idx_fp8_opt) {
         if (!kv_f16_opt || seqs_opt > 1) {
-            std::fprintf(stderr, "strata-m3: --kv-host and --kv-fp8 need --kv-f16 and do not combine with --seqs\n");
+            std::fprintf(stderr, "strata-m3: --kv-host, --kv-fp8 and --idx-fp8 need --kv-f16 and do not combine with --seqs\n");
             return 2;
         }
         E.kv_host = kv_host_opt;
         E.kv_fp8 = kv_fp8_opt;
+        E.idx_fp8 = idx_fp8_opt;
+        if (idx_fp8_opt) std::fprintf(stderr, "strata-m3: indexer keys in FP8 (E4M3, a scale per position)\n");
         if (kv_fp8_opt) std::fprintf(stderr, "strata-m3: K/V caches in FP8 (E4M3, a scale per position and head) in %s\n", kv_host_opt ? "pinned host memory" : "VRAM");
         if (kv_host_opt) std::fprintf(stderr, "strata-m3: K/V caches in pinned host memory (indexer keys stay on the GPU)\n");
     }
