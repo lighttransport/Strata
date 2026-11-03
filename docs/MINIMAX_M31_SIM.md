@@ -704,3 +704,27 @@ unchanged by the multi-sequence work: exact routing, admissions on, the four pro
 knapsack cd04cbf5, eval_expr e30269a7; 27.7 / 26.4 / 25.0 / 23.5 tok/s). One change was needed for that: the batch-sized buffers (32 logit rows, the fp16 activation buffer) are
 allocated only when `--seqs` is above 1, because the larger logits buffer alone cost the single-sequence engine one expert slot (1036 against 1037), which moved the exact-routing
 tokens of two prompts.
+
+## Prefill at 8-16K tokens: where the time goes and what was changed (measured 2026-11-03, one V100 PCIe, UD-Q2_K_XL, draft head on)
+
+Profile of one 16000-token chunk (`STRATA_M3_PFPROF=1`, `--chunk 16384 --pf-gemm --pf-prefetch --kv-f16`, 537 tok/s with injection on tensor cores, 29.8 s; PFPROF itself adds a few percent):
+sparse attention 6.1 s, expert and dense GEMMs (cuBLAS, about 65 TFLOP/s) 10.5 s, i-quant dequantization 2.2 s, indexer block scores 2.0 s, f32 to f16
+conversions 0.56 s, indexer projections 0.65 s, block selection 0.35 s, draft-head injection 2.0 s (8-row loop). The single 125 GiB expert stream (10.9 s)
+is hidden under this at 16K; the pipeline is compute-bound, and the 3.5 s "fixed cost" in the fitted prefill model is attention that grows with the
+prompt, not a fixed term.
+
+Changes, all opt-in except the exact one (tokens/logits compared as noted):
+
+| change | 16K single chunk | 8K single chunk |
+|---|---|---|
+| `STRATA_M3_PF_INJECT=1` (draft head on; the baseline of the rows below): draft-head K/V injection on tensor cores (`native_tc_mmvq`, now with Q8_0); injection 2.0 -> 0.8 s at 16K, 0.88 -> 0.35 s at 7K, tokens and acceptance unchanged | 537 tok/s | 497 tok/s |
+| `STRATA_MSA_TC2=1`: tensor-core prefill attention with 47 KB shared memory (two blocks per SM, 64-key units, 32-lane softmax, merge factors computed once); standalone 1.6x (46 vs 75 ms at 8192 queries, output max difference 9e-5 on values of rms 0.04) | 613 tok/s | 541 tok/s |
+| block-score kernel skips key blocks no query of the group can see (exact; always on in prefill with FP16 caches): scores 2.0 -> 1.06 s at 16K, 0.5 -> 0.27 s at 8K | 634 tok/s | |
+
+Quality of `STRATA_MSA_TC2=1` (teacher-forced 64 steps against the default q8_1 path, `--pf-gemm`): short prompt KL 5.4e-4 (without the flag 1.3e-3), top-1
+64/64; 7K prompt KL 1.37e-3 and 1.67e-3 in a second run (without the flag 1.36e-3 and 1.16e-3), top-1 47/47. Run-to-run spread of the same configuration is
+about 1e-4 in KL because the CPU/GPU expert placement is not fixed; the 7K figure of the flagged path sits at the 1.6e-3 gate line.
+
+What is left (16K, after the changes): sparse attention 6.1 s is still the largest item at about 11 TFLOP/s effective (latency bound on the fragment loads);
+cuBLAS 10.5 s; dequantization 2.2 s is serialized with the GEMMs. The ncu profile of the attention kernel did not finish (kernel replay of a process holding
+125 GiB of pinned memory); not measured. Not done: dequantize/GEMM overlap, second per-layer host sync, 2-GPU prefill.
