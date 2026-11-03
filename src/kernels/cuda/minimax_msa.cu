@@ -1218,6 +1218,90 @@ __global__ void __launch_bounds__(kThreads) select_blocks_reg_kernel(const float
     }
 }
 
+// ---- selection for top_k <= 16 and 64 < n_blocks <= 4096 (512K positions): a warp per 128 blocks bitonic-sorts their packed keys (sel_key, 4 a lane,
+// element r * 32 + lane; 28 compare stages, 25 of them shuffles, none waiting on a rescan) and keeps its top 16; groups of 8 lists are merged the same
+// way until one is left.  The keys are unique, so the top-k set is select_blocks_kernel's and the output (sorted ascending) is bitwise the same.
+constexpr int kSortMaxBlocks = 4096;
+__device__ __forceinline__ void warp_sort128_desc(unsigned long long (&key)[4], int lane) {
+#pragma unroll
+    for (int k = 2; k <= 128; k <<= 1) {
+#pragma unroll
+        for (int j = k >> 1; j > 0; j >>= 1) {
+            if (j >= 32) {   // partner in this lane's registers
+#pragma unroll
+                for (int r = 0; r < 4; ++r) {
+                    const int r2 = r ^ (j >> 5);
+                    if (r2 <= r) continue;
+                    const bool desc = ((r * 32 + lane) & k) == 0;
+                    const unsigned long long a = key[r], b = key[r2];
+                    const unsigned long long hi = a > b ? a : b, lo = a > b ? b : a;
+                    key[r] = desc ? hi : lo;
+                    key[r2] = desc ? lo : hi;
+                }
+            } else {
+#pragma unroll
+                for (int r = 0; r < 4; ++r) {
+                    const int idx = r * 32 + lane;
+                    const unsigned long long o = __shfl_xor_sync(0xffffffffu, key[r], j);
+                    const bool lower = (idx & j) == 0, desc = (idx & k) == 0;
+                    const unsigned long long hi = key[r] > o ? key[r] : o, lo = key[r] > o ? o : key[r];
+                    key[r] = lower == desc ? hi : lo;
+                }
+            }
+        }
+    }
+}
+__global__ void select_blocks_sort_kernel(const float* __restrict__ scores, const int32_t* __restrict__ query_positions,
+                                          int index_heads, int n_blocks, int block_size, int top_k, int local_blocks,
+                                          size_t score_stride, size_t id_stride, int32_t* __restrict__ ids) {
+    __shared__ unsigned long long cand[2][(kSortMaxBlocks / 128) * 16];
+    __shared__ int32_t chosen[16];
+    const int row = (int)blockIdx.x, query = row / index_heads, tid = (int)threadIdx.x, warp = tid / 32, lane = tid % 32;
+    const int nw = (int)blockDim.x / 32;
+    const int qpos = query_positions[query];
+    const float* row_scores = scores + (size_t)row * score_stride;
+    unsigned long long key[4];
+#pragma unroll
+    for (int r = 0; r < 4; ++r) {
+        const int b = warp * 128 + r * 32 + lane;
+        key[r] = b < n_blocks ? sel_key(row_scores[b], b, forced(b, qpos, block_size, local_blocks) ? 1 : 0) : 0ull;
+    }
+    warp_sort128_desc(key, lane);
+    if (lane < 16) cand[0][warp * 16 + lane] = key[0];   // the warp's top 16, descending
+    int lists = nw, buf = 0;
+    while (lists > 1) {
+        __syncthreads();
+        const int groups = (lists + 7) / 8;
+        if (warp < groups) {
+#pragma unroll
+            for (int r = 0; r < 4; ++r) {
+                const int e = r * 32 + lane;   // 8 lists of 16 a group
+                const int list = warp * 8 + e / 16;
+                key[r] = list < lists ? cand[buf][list * 16 + e % 16] : 0ull;
+            }
+            warp_sort128_desc(key, lane);
+            if (lane < 16) cand[buf ^ 1][warp * 16 + lane] = key[0];
+        }
+        lists = groups;
+        buf ^= 1;
+    }
+    __syncthreads();
+    if (warp == 0) {
+        if (lane < top_k) chosen[lane] = (int32_t)(0x7fffffffu - (uint32_t)(cand[buf][lane] & 0x7fffffffu));
+        __syncwarp();
+        if (lane == 0) {
+            int32_t* row_ids = ids + (size_t)row * id_stride;
+            for (int i = 1; i < top_k; ++i) {
+                const int32_t value = chosen[i];
+                int j = i;
+                while (j > 0 && chosen[j - 1] > value) { chosen[j] = chosen[j - 1]; --j; }
+                chosen[j] = value;
+            }
+            for (int i = 0; i < top_k; ++i) row_ids[i] = chosen[i];
+        }
+    }
+}
+
 __global__ void select_blocks_kernel(const float* __restrict__ scores,
                                     const int32_t* __restrict__ query_positions,
                                     int index_heads, int n_blocks, int block_size,
@@ -1369,6 +1453,10 @@ bool scores_old() {   // A/B: one thread block per (key block, query) for the al
     static const bool old = std::getenv("STRATA_MSA_SCORES_OLD") != nullptr;
     return old;
 }
+bool select_reg() {   // A/B: the per-warp shuffle-max selection instead of the bitonic one (top_k <= 16, up to 4096 blocks)
+    static const bool reg = std::getenv("STRATA_MSA_SELECT_REG") != nullptr;
+    return reg;
+}
 bool select_old() {   // A/B: the block-barrier selection kernel for every n_blocks > 64
     static const bool old = std::getenv("STRATA_MSA_SELECT_OLD") != nullptr;
     return old;
@@ -1411,6 +1499,9 @@ void minimax_msa_select_blocks(const float* scores, const int32_t* query_positio
     const int rows = queries * index_heads;
     if (n_blocks <= 64 && !slow_msa())
         select_blocks_warp_kernel<<<rows, 32, 0, (cudaStream_t)stream>>>(scores, query_positions, index_heads, n_blocks,
+            block_size, top_k, local_blocks, score_stride, id_stride, ids);
+    else if (top_k <= 16 && n_blocks <= kSortMaxBlocks && !slow_msa() && !select_old() && !select_reg())
+        select_blocks_sort_kernel<<<rows, 32 * ((n_blocks + 127) / 128), 0, (cudaStream_t)stream>>>(scores, query_positions, index_heads, n_blocks,
             block_size, top_k, local_blocks, score_stride, id_stride, ids);
     else if (n_blocks <= kSelMaxBlocks && !slow_msa() && !select_old())
         select_blocks_reg_kernel<<<rows, kThreads, 0, (cudaStream_t)stream>>>(scores, query_positions, index_heads, n_blocks,

@@ -881,7 +881,22 @@ ms a step, decode 12.31 -> 12.79 tok/s, tokens identical (994813f5); with FP16 i
 decode 12.32 -> 12.60 tok/s. The draft head at 135168 context does not fit next to FP8 K/V on this card (`cudaMalloc` fails after the
 slots are sized), so the window case was measured standalone only. Default hashes unchanged after the change (1ee67a8d, 38fb7620, cd04cbf5,
 e30269a7; 27.7 / 26.5 / 25.1 / 23.6 tok/s).
-What is left at 128K: block selection (2.0 ms), the block scores (3.2 ms, above a bandwidth bound of about 1-2 ms), and the experts that the smaller slot
+For top-k <= 16 and up to 4096 blocks (512K positions), block selection now sorts instead of taking 16 rounds of shuffle max with
+rescans. A warp bitonic-sorts the packed keys of 128 blocks (4 a lane, 28 fixed compare stages) and keeps its top 16, and groups of 8
+lists are merged the same way until one is left. The keys are unique, so the ids are bitwise the same (`minimax_msa_parity`, 65 to 8193
+blocks, 1 and 4 queries). `STRATA_MSA_SELECT_REG=1` selects the previous kernel. A launch, 4 rows (one-token step), one V100:
+
+| blocks | first kernel | per-warp max (previous) | sort |
+|---|---|---|---|
+| 65 | 47.8 us | 21.1 us | 11.6 us |
+| 1024 (128K) | 75.3 us | 31.6 us | 15.7 us |
+| 4096 (512K) | 155.2 us | 68.1 us | 31.2 us |
+
+In the engine (128K needle, FP8 K/V and index keys, same session): selection 2.04 -> 1.56 ms a step, tokens identical (994813f5),
+decode 12.74 / 12.70 tok/s (no measurable change; the step is about 78 ms). In the engine a selection launch takes about 26 us between
+its timeline marks, against 15.7 us back to back in the standalone test. Default hashes unchanged (1ee67a8d, 38fb7620, cd04cbf5, e30269a7;
+27.8 / 26.4 / 24.9 / 23.4 tok/s).
+What is left at 128K: block selection (1.6 ms), the block scores (3.2 ms, above a bandwidth bound of about 1-2 ms), and the experts that the smaller slot
 count sends to the CPU.
 
 Default path after the fixes (four C++ prompts, exact routing, 200 tokens): tokens identical (1ee67a8d, 38fb7620, cd04cbf5, e30269a7); decode

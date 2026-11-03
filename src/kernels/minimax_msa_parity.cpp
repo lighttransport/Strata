@@ -251,10 +251,11 @@ int main() {
     }
     // ---- selection at long-context sizes (the register-resident kernel above 64 blocks, the block-barrier kernel above 8192): many tied
     // scores, blocks no query can see (-inf), padded score rows, several local blocks; ids must equal the host reference exactly
-    for (const int NB : {65, 300, 1024, 1025, 4096, 8192, 8193}) {
-        const int Q = 4, IH = 4, BS = 128, TOPK = 16, LOCAL = 3;
+    for (const int NB : {65, 128, 129, 300, 1024, 1025, 1056, 4096, 4097, 8192, 8193})
+    for (const int Q : {1, 4}) {
+        const int IH = 4, BS = 128, TOPK = 16, LOCAL = 3;
         const size_t sstride = (size_t)NB + 7, istride = TOPK + 2;
-        uint32_t seed = 777u + (uint32_t)NB;
+        uint32_t seed = 777u + (uint32_t)NB * 3u + (uint32_t)Q;
         auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return seed >> 8; };
         std::vector<int32_t> qp(Q);
         for (int q = 0; q < Q; ++q) qp[q] = (int32_t)(NB * BS - 1 - (int)(rnd() % (uint32_t)(NB * BS / 2)));
