@@ -854,7 +854,34 @@ ids against the host reference at 65 to 8193 blocks, with many tied and `-inf` s
 In the engine (`--kv-fp8 --idx-fp8`, 128K needle, 100 decode tokens, same session): selection 4.06 -> 2.05 ms a step, decode 12.05 -> 12.34
 tok/s, tokens identical (994813f5; short prompt e58f5f9e), prefill unchanged (437 tok/s). Default hashes unchanged (1ee67a8d, 38fb7620,
 cd04cbf5, e30269a7; 27.7 / 26.5 / 25.0 / 23.4 tok/s).
-What is left at 128K: block selection (2.0 ms), the block scores above their bandwidth bound (about 2 ms), and the experts that the smaller slot
+
+Block scores from 128 blocks (16K positions) up, for windows of fewer than 16 queries (one-token and verify steps), were limited by the
+5-step shuffle sum of every (key, head) dot, not by memory. Two kernels now replace the old one, and both give bitwise the same scores:
+- They take 8 key rows at a time and sum the 8 dots of a (query, head) with a transposed butterfly. At xor 16, 8 and 4 each lane keeps
+  half its partial sums and adds its partner's matching half, then xor 2 and 1 as before: 9 shuffles for 8 dots instead of 40. Each
+  dot starts from the same lane products and pairs the same lanes at each level, and float addition is commutative, so every dot is
+  bitwise the same.
+- They score every query of the window from one read of a key row; the old grid read each row once per query.
+- FP8 index keys decode by placing the E4M3 bits in FP16 bits and scaling by 2^8, exact and without the table.
+- One query uses one warp per key block, with the next 8 rows loaded while the current ones are scored. Windows use a thread block per
+  key block.
+
+`STRATA_MSA_SCORES_OLD=1` keeps the old kernel for A/B. `minimax_msa_parity` prints a hash of the score bits; the hashes are the same for
+the old and new kernels, FP16 and FP8, with 1 and 5 queries at 1024 and 4096 blocks. A launch, one V100:
+
+| blocks, queries | old FP16 / FP8 | new FP16 / FP8 |
+|---|---|---|
+| 1024, 1 (128K, one-token step) | 88.6 / 98.4 us | 53.3 / 53.9 us |
+| 1024, 5 (128K, verify window) | 346 / 421 us | 147 / 150 us |
+| 4096, 1 (512K) | 281 / 346 us | 195 / 172 us |
+| 4096, 5 | 1341 / 1625 us | 549 / 564 us |
+
+In the engine (128K needle, 100 decode tokens, one-token steps, `--kv-fp8`, same session): with FP8 index keys block scores 5.44 -> 3.16
+ms a step, decode 12.31 -> 12.79 tok/s, tokens identical (994813f5); with FP16 index keys 5.09 -> 3.32 ms, tokens identical (ea87d543),
+decode 12.32 -> 12.60 tok/s. The draft head at 135168 context does not fit next to FP8 K/V on this card (`cudaMalloc` fails after the
+slots are sized), so the window case was measured standalone only. Default hashes unchanged after the change (1ee67a8d, 38fb7620, cd04cbf5,
+e30269a7; 27.7 / 26.5 / 25.1 / 23.6 tok/s).
+What is left at 128K: block selection (2.0 ms), the block scores (3.2 ms, above a bandwidth bound of about 1-2 ms), and the experts that the smaller slot
 count sends to the CPU.
 
 Default path after the fixes (four C++ prompts, exact routing, 200 tokens): tokens identical (1ee67a8d, 38fb7620, cd04cbf5, e30269a7); decode

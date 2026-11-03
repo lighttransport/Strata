@@ -66,7 +66,7 @@ Needle-in-a-haystack, with the answer at the given depth:
 | 128K | FP16, host | 398 tok/s | 2.75 tok/s | correct |
 | 255K, depths 25 % and 75 % | FP16, host | 329 tok/s | 2.65 tok/s | correct |
 | 32K | FP8, VRAM | 537 tok/s | 12.4 tok/s | correct, same tokens as FP16 |
-| 128K | FP8 K/V and FP8 index keys, VRAM | 437 tok/s | **12.3 tok/s** | correct |
+| 128K | FP8 K/V and FP8 index keys, VRAM | 434 tok/s | **12.8 tok/s** | correct |
 | 255K | FP8, host + 2 GiB block cache | 350 tok/s | 8.5 tok/s | correct, same tokens as FP16 |
 | 512K | FP8, host + block cache | 251 tok/s (34 min) | 6.0 tok/s | correct |
 
@@ -78,13 +78,14 @@ Teacher-forced quality on the 7K prompt against the default path:
 | FP8 | 1.59e-3 | 47/47 |
 | FP8 with FP8 index keys | 1.06e-3 | 47/47 |
 
-The 128K decode rate (FP8 in VRAM) went from 10.3 to 12.3 tok/s through four kernel changes:
+The 128K decode rate (FP8 in VRAM) went from 10.3 to 12.8 tok/s through five kernel changes:
 - block scores for all index heads from one key read
 - a wider FP8 expand step that decodes through a table
 - a table decode for the FP8 index keys
 - a block selection without block-wide barriers
+- block scores summed with a transposed butterfly, every query of a window from one key read
 
-All of them give bitwise-identical tokens. 12.3 tok/s is 83 % of the same engine's short-context speed (14.8 tok/s) and 69-77 % of an
+All of them give bitwise-identical tokens. 12.8 tok/s is 86 % of the same engine's short-context speed (14.8 tok/s) and 72-81 % of an
 FP16 engine sized for 16K context (15.9-17.7 tok/s in different sessions). 1M context does not fit next to the pinned pack on a 181 GB
 node and was not tested.
 

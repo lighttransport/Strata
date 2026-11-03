@@ -8,6 +8,7 @@
 #include <cuda_runtime.h>
 #include <climits>
 #include <cmath>
+#include <algorithm>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
@@ -243,6 +244,228 @@ __global__ void block_scores_heads_kernel(const float* __restrict__ q, const KT*
         float b = partial[0][tid];
         for (int w = 1; w < kThreads / 32; ++w) b = fmaxf(b, partial[w][tid]);
         scores[((size_t)query * index_heads + tid) * score_stride + block] = b;
+    }
+}
+
+// Four E4M3 bytes to floats without a table: sign and the 7 exponent/mantissa bits are placed in FP16 bits (exponent bias 15 instead of 7),
+// converted exactly and scaled by 2^8, also exact.  Normals and subnormals give the same floats as e4m3_to_float (0x7f/0xff included: 480).
+__device__ __forceinline__ float4 e4m3x4_to_float4(uint32_t w) {
+    const uint32_t lo = ((w & 0x80u) << 8) | ((w & 0x7fu) << 7) | ((w & 0x8000u) << 16) | ((w & 0x7f00u) << 15);
+    const uint32_t hi = ((w >> 8) & 0x8000u) | ((w >> 9) & 0x3f80u) | (w & 0x80000000u) | ((w >> 1) & 0x3f800000u);
+    const float2 a = __half22float2(*reinterpret_cast<const __half2*>(&lo));
+    const float2 b = __half22float2(*reinterpret_cast<const __half2*>(&hi));
+    return make_float4(a.x * 256.f, a.y * 256.f, b.x * 256.f, b.y * 256.f);
+}
+
+// ---- the same scores for up to 8 queries (decode windows) with one warp per key block, 8 key blocks a thread block: the warp walks its block 8
+// consecutive rows at a time, with the next 8 rows' loads issued before the current ones are scored, and scores every query and head from them, so
+// a key row is read once per window, not once per query.  The 8 dots of a (query, head) are summed by a transposed butterfly: at xor 16, 8 and 4
+// each lane keeps half of its partial sums and adds its partner's matching half, then xor 2 and 1 as in warp_sum (9 shuffles for 8 dots instead of
+// 40).  Each dot starts from the same lane products as warp_sum and pairs the same lanes at each level; float addition is commutative, so every
+// dot, and the max over the keys, is bitwise the same as block_scores_heads_kernel's.
+constexpr int kHeadsQ = 8;
+template <bool Q8> struct RawKey { using T = uint2; };
+template <> struct RawKey<true> { using T = uint32_t; };
+template <class KT, bool Q8>
+__device__ __forceinline__ typename RawKey<Q8>::T load_raw(const KT* k, int slot, int end, int lane) {
+    if constexpr (Q8) return slot < end ? reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(k) + (size_t)slot * 128)[lane] : 0u;
+    else return slot < end ? reinterpret_cast<const uint2*>(k + (size_t)slot * 128)[lane] : make_uint2(0u, 0u);
+}
+__device__ __forceinline__ float4 raw_to_float4(uint2 u) {
+    const float2 a = __half22float2(*reinterpret_cast<const __half2*>(&u.x));
+    const float2 b = __half22float2(*reinterpret_cast<const __half2*>(&u.y));
+    return make_float4(a.x, a.y, b.x, b.y);   // the same conversion as load4(const __half*)
+}
+__device__ __forceinline__ float4 raw_to_float4(uint32_t w) { return e4m3x4_to_float4(w); }
+template <class KT, bool Q8>
+__global__ void __launch_bounds__(kThreads) block_scores_win_kernel(const float* __restrict__ q, const KT* __restrict__ k, const float* __restrict__ kscale,
+                                         const int32_t* __restrict__ query_positions, const int32_t* __restrict__ key_positions,
+                                         int queries, int index_heads, int keys, int block_size, int n_blocks, size_t score_stride,
+                                         float* __restrict__ scores) {
+    extern __shared__ float4 qs[];   // [nq][4][32]
+    __shared__ int32_t qp[kHeadsQ];
+    const int q0 = (int)blockIdx.y * kHeadsQ;
+    const int nq = min(kHeadsQ, queries - q0);
+    const int tid = (int)threadIdx.x, warp = tid / 32, lane = tid % 32;
+    for (int i = tid; i < nq * 4 * 32; i += kThreads) {
+        const int qi = i / 128, h = (i / 32) % 4, l = i % 32;
+        qs[i] = h < index_heads ? reinterpret_cast<const float4*>(q + ((size_t)(q0 + qi) * index_heads + h) * 128)[l] : make_float4(0.f, 0.f, 0.f, 0.f);
+    }
+    if (tid < kHeadsQ) qp[tid] = tid < nq ? query_positions[q0 + tid] : -1;
+    __syncthreads();
+    const int block = (int)blockIdx.x * (kThreads / 32) + warp;
+    if (block >= n_blocks) return;
+    float best[kHeadsQ][4];
+#pragma unroll
+    for (int qi = 0; qi < kHeadsQ; ++qi)
+#pragma unroll
+        for (int h = 0; h < 4; ++h) best[qi][h] = -INFINITY;
+    const bool b16 = lane & 16, b8 = lane & 8, b4 = lane & 4;
+    const int kidx = (b16 ? 4 : 0) + (b8 ? 2 : 0) + (b4 ? 1 : 0);   // the key whose full dot this lane ends with
+    const int end = min((block + 1) * block_size, keys);
+    using Raw = typename RawKey<Q8>::T;
+    Raw nxt[8];
+    int s0 = block * block_size;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) nxt[j] = load_raw<KT, Q8>(k, s0 + j, end, lane);
+    for (; s0 < end; s0 += 8) {
+        float4 kv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) kv[j] = raw_to_float4(nxt[j]);
+#pragma unroll
+        for (int j = 0; j < 8; ++j) nxt[j] = load_raw<KT, Q8>(k, s0 + 8 + j, end, lane);   // the next rows, in flight while these are scored
+        const int own = s0 + kidx;
+        const int32_t pos = own < end ? key_positions[own] : -1;
+        const float sck = Q8 && own < end ? kscale[own] : 1.f;
+        const bool kval = pos >= 0 && pos / block_size == block;
+#pragma unroll
+        for (int qi = 0; qi < kHeadsQ; ++qi) {
+            if (qi >= nq) break;
+#pragma unroll
+            for (int h = 0; h < 4; ++h) {
+                if (h >= index_heads) break;
+                const float4 qv = qs[(qi * 4 + h) * 32 + lane];
+                float v[8];
+#pragma unroll
+                for (int j = 0; j < 8; ++j) v[j] = qv.x * kv[j].x + qv.y * kv[j].y + qv.z * kv[j].z + qv.w * kv[j].w;
+#pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    const float r = __shfl_xor_sync(0xffffffffu, b16 ? v[i] : v[i + 4], 16);
+                    v[i] = (b16 ? v[i + 4] : v[i]) + r;
+                }
+#pragma unroll
+                for (int i = 0; i < 2; ++i) {
+                    const float r = __shfl_xor_sync(0xffffffffu, b8 ? v[i] : v[i + 2], 8);
+                    v[i] = (b8 ? v[i + 2] : v[i]) + r;
+                }
+                {
+                    const float r = __shfl_xor_sync(0xffffffffu, b4 ? v[0] : v[1], 4);
+                    v[0] = (b4 ? v[1] : v[0]) + r;
+                }
+                float dot = v[0];
+                dot += __shfl_xor_sync(0xffffffffu, dot, 2);
+                dot += __shfl_xor_sync(0xffffffffu, dot, 1);
+                if constexpr (Q8) dot *= sck;
+                if (kval && pos <= qp[qi]) best[qi][h] = fmaxf(best[qi][h], dot);
+            }
+        }
+    }
+#pragma unroll
+    for (int qi = 0; qi < kHeadsQ; ++qi) {
+        if (qi >= nq) break;
+#pragma unroll
+        for (int h = 0; h < 4; ++h) {
+            if (h >= index_heads) break;
+            const float b = warp_max(best[qi][h]);
+            if (lane == 0) scores[((size_t)(q0 + qi) * index_heads + h) * score_stride + block] = b;
+        }
+    }
+}
+// ---- the same scores with a thread block per key block (8 warps of 8 rows each, a max over the warps): the same products, butterfly and max, so
+// the same bits.  Faster than the warp-per-key-block kernel above for windows of several queries (147 vs 168 us at 1024 blocks and 5 queries, one
+// V100), slower for one query (67 vs 53 us).
+template <class KT, bool Q8>
+__global__ void __launch_bounds__(kThreads) block_scores_win8_kernel(const float* __restrict__ q, const KT* __restrict__ k, const float* __restrict__ kscale,
+                                         const int32_t* __restrict__ query_positions, const int32_t* __restrict__ key_positions,
+                                         int queries, int index_heads, int keys, int block_size, int n_blocks, size_t score_stride,
+                                         float* __restrict__ scores) {
+    extern __shared__ float4 qs[];   // [nq][4][32]
+    __shared__ float partial[kThreads / 32][kHeadsQ][4];
+    __shared__ int32_t qp[kHeadsQ];
+    const int block = (int)blockIdx.x, q0 = (int)blockIdx.y * kHeadsQ;
+    const int nq = min(kHeadsQ, queries - q0);
+    const int tid = (int)threadIdx.x, warp = tid / 32, lane = tid % 32;
+    for (int i = tid; i < nq * 4 * 32; i += kThreads) {
+        const int qi = i / 128, h = (i / 32) % 4, l = i % 32;
+        qs[i] = h < index_heads ? reinterpret_cast<const float4*>(q + ((size_t)(q0 + qi) * index_heads + h) * 128)[l] : make_float4(0.f, 0.f, 0.f, 0.f);
+    }
+    if (tid < kHeadsQ) qp[tid] = tid < nq ? query_positions[q0 + tid] : -1;
+    __syncthreads();
+    float best[kHeadsQ][4];
+#pragma unroll
+    for (int qi = 0; qi < kHeadsQ; ++qi)
+#pragma unroll
+        for (int h = 0; h < 4; ++h) best[qi][h] = -INFINITY;
+    const bool b16 = lane & 16, b8 = lane & 8, b4 = lane & 4;
+    const int kidx = (b16 ? 4 : 0) + (b8 ? 2 : 0) + (b4 ? 1 : 0);   // the key whose full dot this lane ends with
+    const int end = min((block + 1) * block_size, keys);
+    for (int s0 = block * block_size + warp * 8; s0 < end; s0 += 8 * (kThreads / 32)) {
+        float4 kv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+            const int slot = s0 + j;
+            if constexpr (Q8) {
+                const uint32_t w = slot < end ? reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(k) + (size_t)slot * 128)[lane] : 0u;
+                kv[j] = e4m3x4_to_float4(w);
+            } else {
+                kv[j] = slot < end ? load4(k + (size_t)slot * 128, lane) : make_float4(0.f, 0.f, 0.f, 0.f);
+            }
+        }
+        const int own = s0 + kidx;
+        const int32_t pos = own < end ? key_positions[own] : -1;
+        const float sck = Q8 && own < end ? kscale[own] : 1.f;
+        const bool kval = pos >= 0 && pos / block_size == block;
+#pragma unroll
+        for (int qi = 0; qi < kHeadsQ; ++qi) {
+            if (qi >= nq) break;
+#pragma unroll
+            for (int h = 0; h < 4; ++h) {
+                if (h >= index_heads) break;
+                const float4 qv = qs[(qi * 4 + h) * 32 + lane];
+                float v[8];
+#pragma unroll
+                for (int j = 0; j < 8; ++j) v[j] = qv.x * kv[j].x + qv.y * kv[j].y + qv.z * kv[j].z + qv.w * kv[j].w;
+#pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    const float r = __shfl_xor_sync(0xffffffffu, b16 ? v[i] : v[i + 4], 16);
+                    v[i] = (b16 ? v[i + 4] : v[i]) + r;
+                }
+#pragma unroll
+                for (int i = 0; i < 2; ++i) {
+                    const float r = __shfl_xor_sync(0xffffffffu, b8 ? v[i] : v[i + 2], 8);
+                    v[i] = (b8 ? v[i + 2] : v[i]) + r;
+                }
+                {
+                    const float r = __shfl_xor_sync(0xffffffffu, b4 ? v[0] : v[1], 4);
+                    v[0] = (b4 ? v[1] : v[0]) + r;
+                }
+                float dot = v[0];
+                dot += __shfl_xor_sync(0xffffffffu, dot, 2);
+                dot += __shfl_xor_sync(0xffffffffu, dot, 1);
+                if constexpr (Q8) dot *= sck;
+                if (kval && pos <= qp[qi]) best[qi][h] = fmaxf(best[qi][h], dot);
+            }
+        }
+    }
+#pragma unroll
+    for (int qi = 0; qi < kHeadsQ; ++qi)
+#pragma unroll
+        for (int h = 0; h < 4; ++h) best[qi][h] = warp_max(best[qi][h]);
+    if (lane == 0)
+#pragma unroll
+        for (int qi = 0; qi < kHeadsQ; ++qi)
+#pragma unroll
+            for (int h = 0; h < 4; ++h) partial[warp][qi][h] = best[qi][h];
+    __syncthreads();
+    if (tid < nq * index_heads) {
+        const int qi = tid / index_heads, h = tid % index_heads;
+        float b = partial[0][qi][h];
+        for (int w = 1; w < kThreads / 32; ++w) b = fmaxf(b, partial[w][qi][h]);
+        scores[((size_t)(q0 + qi) * index_heads + h) * score_stride + block] = b;
+    }
+}
+template <class KT, bool Q8>
+void launch_scores_win(const float* q, const KT* k, const float* kscale, const int32_t* qpos, const int32_t* kpos, int queries, int index_heads,
+                       int keys, int block_size, int n_blocks, size_t score_stride, float* scores, cudaStream_t stream) {
+    const size_t smem = (size_t)std::min(queries, kHeadsQ) * 4 * 32 * sizeof(float4);
+    if (queries == 1) {   // one-token step: a warp per key block
+        const dim3 grid((unsigned)((n_blocks + kThreads / 32 - 1) / (kThreads / 32)), 1u);
+        block_scores_win_kernel<KT, Q8><<<grid, kThreads, smem, stream>>>(q, k, kscale, qpos, kpos, queries, index_heads, keys, block_size, n_blocks,
+                                                                         score_stride, scores);
+    } else {              // windows: a thread block per key block
+        const dim3 grid((unsigned)n_blocks, (unsigned)((queries + kHeadsQ - 1) / kHeadsQ));
+        block_scores_win8_kernel<KT, Q8><<<grid, kThreads, smem, stream>>>(q, k, kscale, qpos, kpos, queries, index_heads, keys, block_size, n_blocks,
+                                                                          score_stride, scores);
     }
 }
 
@@ -1142,6 +1365,10 @@ bool slow_msa() {
     static const bool slow = std::getenv("STRATA_MSA_SLOW") != nullptr;
     return slow;
 }
+bool scores_old() {   // A/B: one thread block per (key block, query) for the all-heads block scores
+    static const bool old = std::getenv("STRATA_MSA_SCORES_OLD") != nullptr;
+    return old;
+}
 bool select_old() {   // A/B: the block-barrier selection kernel for every n_blocks > 64
     static const bool old = std::getenv("STRATA_MSA_SELECT_OLD") != nullptr;
     return old;
@@ -1252,6 +1479,12 @@ void minimax_msa_block_scores_h(const float* q, const uint16_t* k, const int32_t
 #endif
     static const bool per_head = std::getenv("STRATA_MSA_SCORES_PER_HEAD") != nullptr;   // A/B: one thread block per (block, head)
     // all heads in one thread block pays from about 16K cached positions (128 blocks); below that the per-head grid keeps more of the GPU busy
+    if (!per_head && !scores_old() && index_heads <= 4 && n_blocks >= 128) {
+        launch_scores_win<__half, false>(q, (const __half*)k, nullptr, query_positions, key_positions, queries, index_heads, keys, block_size, n_blocks,
+                                         score_stride, scores, (cudaStream_t)stream);
+        check(cudaGetLastError(), "block score (half, window) launch");
+        return;
+    }
     if (!per_head && index_heads <= 4 && n_blocks >= 128)
         block_scores_heads_kernel<__half, false><<<dim3((unsigned)n_blocks, (unsigned)queries), kThreads, 0, (cudaStream_t)stream>>>(
             q, (const __half*)k, nullptr, query_positions, key_positions, index_heads, keys, block_size, n_blocks, score_stride, scores);
@@ -1269,6 +1502,12 @@ void minimax_msa_block_scores_q8(const float* q, const uint8_t* k8, const float*
         n_blocks > 65535 || index_heads > 65535 || queries > 65535)
         throw std::invalid_argument("MiniMax MSA block scores (fp8): invalid geometry or buffer");
     const dim3 grid((unsigned)n_blocks, (unsigned)index_heads, (unsigned)queries);
+    if (!scores_old() && index_heads <= 4 && n_blocks >= 128) {
+        launch_scores_win<uint8_t, true>(q, k8, kscale, query_positions, key_positions, queries, index_heads, keys, block_size, n_blocks,
+                                         score_stride, scores, (cudaStream_t)stream);
+        check(cudaGetLastError(), "block score (fp8, window) launch");
+        return;
+    }
     if (index_heads <= 4 && n_blocks >= 128)
         block_scores_heads_kernel<uint8_t, true><<<dim3((unsigned)n_blocks, (unsigned)queries), kThreads, 0, (cudaStream_t)stream>>>(
             q, k8, kscale, query_positions, key_positions, index_heads, keys, block_size, n_blocks, score_stride, scores);

@@ -9,7 +9,7 @@ useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-
 **Updates**
 
 - 2026-11-04: MiniMax M3.1 Flash (UD-Q2_K_XL) on one Tesla V100 32 GB with `strata-m3`: decode 23-28 tok/s at short
-  context (exact routing), 12.3 tok/s at 128K, 6.0 tok/s at 512K; prefill 634-640 tok/s at 16K
+  context (exact routing), 12.8 tok/s at 128K, 6.0 tok/s at 512K; prefill 634-640 tok/s at 16K
   ([MiniMax release notes](docs/MINIMAX_M31_RELEASE.md)).
 - 2026-10-24: GLM-5.3-Flash native FP4 on 2x Tesla V100 32 GB: prefill 780 tok/s, decode 41 tok/s (8K prompt,
   experimental [streamed prefill](docs/GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in)).
@@ -72,7 +72,7 @@ in four same-job pairs at a 12K context; the 800 tok/s target is met only in a 1
 | short (335-token prompts) | exact routing (default), one V100 | 23-28 | 41/46 C++ tasks |
 | short | `--speed max` (top-2, VRAM-only experts), one V100 | 56 | 36-39/46 C++ tasks |
 | short | exact routing, two V100 (`STRATA_M3_GPU1=1`) | 39 | 41/46 C++ tasks |
-| 128K | FP8 K/V and FP8 index keys in VRAM (`--kv-fp8 --idx-fp8`) | 12.3 | needle found; KL 1.06e-3 on a 7K prompt |
+| 128K | FP8 K/V and FP8 index keys in VRAM (`--kv-fp8 --idx-fp8`) | 12.8 | needle found; KL 1.06e-3 on a 7K prompt |
 | 256K | FP8 K/V in host RAM + VRAM block cache (`--kv-host --kv-fp8`) | 8.5 | needle found |
 | 512K | same | 6.0 | needle found |
 

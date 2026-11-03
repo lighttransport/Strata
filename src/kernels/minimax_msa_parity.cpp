@@ -295,6 +295,60 @@ int main() {
         cudaEventDestroy(e0); cudaEventDestroy(e1);
         std::printf("selection n_blocks %4d, %d rows, top-%d: ids match, %.1f us a launch\n", NB, Q * IH, TOPK, ms * 1000.f / 50.f);
     }
+    // ---- decode-size block scores (all-heads kernels, >= 128 blocks): a hash of the score bits, to compare kernels bitwise across runs
+    // (STRATA_MSA_SCORES_OLD=1, STRATA_MSA_SCORES_U=1/2/4/8), and the time a launch
+    for (const int NB : {1024, 4096})
+        for (const int Q : {1, 5}) {
+            const int IH = 4, BS = 128, KEYS = NB * BS - 37;
+            const size_t sstride = (size_t)NB + 3;
+            uint32_t seed = 4242u + (uint32_t)NB * 7u + (uint32_t)Q;
+            auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return seed >> 8; };
+            std::vector<float> hq((size_t)Q * IH * 128), hks(KEYS);
+            std::vector<uint16_t> hk((size_t)KEYS * 128);
+            std::vector<uint8_t> hk8((size_t)KEYS * 128);
+            std::vector<int32_t> hqp(Q), hkp(KEYS);
+            for (float& x : hq) x = (float)(rnd() & 0xffff) / 32768.f - 1.f;
+            for (uint16_t& x : hk) { const uint32_t r = rnd(); x = (uint16_t)(((r & 1) << 15) | ((10 + (r >> 1) % 8) << 10) | ((r >> 4) & 1023)); }
+            for (uint8_t& x : hk8) x = (uint8_t)(rnd() & 0xff);
+            for (float& x : hks) x = 0.001f + (float)(rnd() & 1023) * 1e-5f;
+            for (int i = 0; i < KEYS; ++i) hkp[i] = (i % 1000) == 999 ? -1 : i;   // a few empty slots
+            for (int i = 0; i < Q; ++i) hqp[i] = KEYS - 1 - (Q - 1 - i) * 61;     // a window whose queries see different key counts
+            Device<float> Dq(hq.size()), Dks(hks.size()), Ds((size_t)Q * IH * sstride);
+            Device<uint16_t> Dk(hk.size());
+            Device<uint8_t> Dk8(hk8.size());
+            Device<int32_t> Dqp(hqp.size()), Dkp(hkp.size());
+            upload(Dq, hq); upload(Dks, hks); upload(Dk, hk); upload(Dk8, hk8); upload(Dqp, hqp); upload(Dkp, hkp);
+            for (int path = 0; path < 2; ++path) {
+                auto run = [&]() {
+                    if (path == 0)
+                        strata::kernels::minimax_msa_block_scores_h(Dq.p, Dk.p, Dqp.p, Dkp.p, Q, IH, 128, KEYS, BS, NB, Ds.p, sstride, nullptr);
+                    else
+                        strata::kernels::minimax_msa_block_scores_q8(Dq.p, Dk8.p, Dks.p, Dqp.p, Dkp.p, Q, IH, 128, KEYS, BS, NB, Ds.p, sstride, nullptr);
+                };
+                run();
+                ck(cudaDeviceSynchronize(), "scores synchronize");
+                std::vector<float> got((size_t)Q * IH * sstride);
+                ck(cudaMemcpy(got.data(), Ds.p, got.size() * sizeof(float), cudaMemcpyDeviceToHost), "download scores");
+                uint64_t hsh = 1469598103934665603ull;
+                for (int r = 0; r < Q * IH; ++r)
+                    for (int b = 0; b < NB; ++b) {
+                        uint32_t bits;
+                        std::memcpy(&bits, &got[(size_t)r * sstride + b], 4);
+                        hsh = (hsh ^ bits) * 1099511628211ull;
+                    }
+                cudaEvent_t e0, e1;
+                ck(cudaEventCreate(&e0), "event"); ck(cudaEventCreate(&e1), "event");
+                ck(cudaEventRecord(e0, nullptr), "record");
+                for (int it = 0; it < 50; ++it) run();
+                ck(cudaEventRecord(e1, nullptr), "record");
+                ck(cudaEventSynchronize(e1), "sync");
+                float ms = 0.f;
+                ck(cudaEventElapsedTime(&ms, e0, e1), "elapsed");
+                cudaEventDestroy(e0); cudaEventDestroy(e1);
+                std::printf("scores %s n_blocks %4d queries %d: hash %016llx, %.1f us a launch\n", path == 0 ? "fp16" : "fp8 ", NB, Q,
+                            (unsigned long long)hsh, ms * 1000.f / 50.f);
+            }
+        }
     std::puts("MiniMax MSA scores, selection and sparse attention match the host reference");
     return 0;
 }
