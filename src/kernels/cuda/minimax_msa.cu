@@ -170,8 +170,11 @@ __global__ void block_scores_q8_kernel(const float* __restrict__ q, const uint8_
                                        int index_heads, int keys, int block_size, int n_blocks, size_t score_stride,
                                        float* __restrict__ scores) {
     __shared__ float partial[kThreads / 32];
+    __shared__ float lut[256];   // the 256 E4M3 values, filled with e4m3_to_float: the same floats as decoding each byte
     const int block = (int)blockIdx.x, head = (int)blockIdx.y, query = (int)blockIdx.z;
     const int tid = (int)threadIdx.x, warp = tid / 32, lane = tid % 32;
+    for (int i = tid; i < 256; i += kThreads) lut[i] = e4m3_to_float((uint32_t)i);
+    __syncthreads();
     const int32_t qpos = query_positions[query];
     const float4 qv = reinterpret_cast<const float4*>(q + ((size_t)query * index_heads + head) * 128)[lane];
     float best = -INFINITY;
@@ -180,8 +183,7 @@ __global__ void block_scores_q8_kernel(const float* __restrict__ q, const uint8_
         if (pos < 0 || pos > qpos || pos / block_size != block) continue;
         const uint32_t w = reinterpret_cast<const uint32_t*>(k8 + (size_t)slot * 128)[lane];
         const float sc = kscale[slot];
-        const float dot = warp_sum(qv.x * e4m3_to_float(w & 255) + qv.y * e4m3_to_float((w >> 8) & 255) +
-                                   qv.z * e4m3_to_float((w >> 16) & 255) + qv.w * e4m3_to_float(w >> 24)) * sc;
+        const float dot = warp_sum(qv.x * lut[w & 255] + qv.y * lut[(w >> 8) & 255] + qv.z * lut[(w >> 16) & 255] + qv.w * lut[w >> 24]) * sc;
         best = fmaxf(best, dot);
     }
     if (lane == 0) partial[warp] = best;
@@ -203,8 +205,13 @@ __global__ void block_scores_heads_kernel(const float* __restrict__ q, const KT*
                                           int index_heads, int keys, int block_size, int n_blocks, size_t score_stride,
                                           float* __restrict__ scores) {
     __shared__ float partial[kThreads / 32][4];
+    __shared__ float lut[Q8 ? 256 : 1];   // Q8: the 256 E4M3 values (same floats as e4m3_to_float per byte)
     const int block = (int)blockIdx.x, query = (int)blockIdx.y;
     const int tid = (int)threadIdx.x, warp = tid / 32, lane = tid % 32;
+    if constexpr (Q8) {
+        for (int i = tid; i < 256; i += kThreads) lut[i] = e4m3_to_float((uint32_t)i);
+        __syncthreads();
+    }
     const int32_t qpos = query_positions[query];
     float4 qv[4];
     for (int h = 0; h < 4; ++h)
@@ -217,7 +224,7 @@ __global__ void block_scores_heads_kernel(const float* __restrict__ q, const KT*
         float sc = 1.f;
         if constexpr (Q8) {
             const uint32_t w = reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(k) + (size_t)slot * 128)[lane];
-            kv = make_float4(e4m3_to_float(w & 255), e4m3_to_float((w >> 8) & 255), e4m3_to_float((w >> 16) & 255), e4m3_to_float(w >> 24));
+            kv = make_float4(lut[w & 255], lut[(w >> 8) & 255], lut[(w >> 16) & 255], lut[w >> 24]);
             sc = kscale[slot];
         } else {
             kv = load4(k + (size_t)slot * 128, lane);

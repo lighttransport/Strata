@@ -823,7 +823,18 @@ and decodes through a table; the halves are bitwise the same. After the fixes:
 
 At 11.8 tok/s, 128K keeps 83 % of the same engine's short-context speed, and 74 % of the FP16 K/V engine sized for 16K context (15.9 tok/s in
 the same session; 17.7 tok/s in the earlier one, which gives 67 %). `--idx-fp8` (FP8 indexer keys: KL 1.06e-3 and top-1 47/47 on the 7K prompt,
-483 slots instead of 431 at 135168 context) is not faster yet: its block scores take 7.2 ms at 128K because the FP8 bytes decode arithmetically.
+483 slots instead of 431 at 135168 context) now decodes the FP8 index keys through a 256-entry table in shared memory (the same floats as the
+arithmetic decode it replaces, so the tokens are bitwise the same: dijkstra e58f5f9e and the 128K needle 994813f5 in both builds). A/B in one
+session, `--kv-fp8 --idx-fp8`, 100 decode tokens:
+
+| | arithmetic decode | table decode |
+|---|---|---|
+| block scores, short prompt (335 tokens) | 1.68 ms | 1.30 ms |
+| block scores, 128K | 7.21 ms | 5.43 ms |
+| decode, short prompt | 14.6 tok/s | 14.9 tok/s |
+| decode, 128K | 11.7 tok/s | 12.0 tok/s |
+
+With the table, `--idx-fp8` at 128K is a little faster than FP16 index keys (11.8 tok/s, measured in an earlier session), from its extra slots.
 What is left at 128K: block selection (4.0 ms), the block scores above their bandwidth bound (about 2 ms), and the experts that the smaller slot
 count sends to the CPU.
 
