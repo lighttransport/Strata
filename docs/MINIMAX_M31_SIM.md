@@ -779,8 +779,10 @@ greedy decoding. Run with `--pf-gemm --pf-prefetch --kv-f16 --chunk 8192 STRATA_
 | 32,010 tokens, depth 50 % | FP8, VRAM (context 135168, 431 expert slots) | 537 tok/s | 12.4 tok/s | correct, same answer tokens as FP16 |
 | 129,914 tokens, depth 50 % | FP8, VRAM | 445 tok/s | 11.0 tok/s | correct, same answer tokens as FP16 |
 
-Decode in that same FP8-in-VRAM engine at short context (335-token prompt, 200 tokens) is 14.8 tok/s. 128K therefore keeps 74 % of the
-short-context speed; the FP16 VRAM engine at 16K context had 15.8 tok/s. Decode through `--kv-host` is slow (2.6-2.8 tok/s at every length, and
+Decode at short context (335-token prompt, 200 tokens) is 14.8 tok/s in that same FP8-in-VRAM engine, and 17.7 tok/s in an FP16-in-VRAM engine
+sized for 16K context (925 expert slots, same session). So 128K keeps 74 % of the short-context speed of its own engine, but only 62 % of the
+16K-sized engine's. The difference is the expert slots that the 128K K/V and indexer keys take: 431 instead of 925. FP8 indexer keys and a
+smaller working image would win some of them back; that is not done. Decode through `--kv-host` is slow (2.6-2.8 tok/s at every length, and
 7.8 against 15.8 tok/s even at short context): the attention kernels read the selected blocks from host memory in small, latency-bound reads. The
 VRAM block cache above is meant to fix that for 256K and beyond.
 
