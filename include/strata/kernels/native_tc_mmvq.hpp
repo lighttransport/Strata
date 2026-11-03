@@ -1,4 +1,4 @@
-// native_tc_mmvq - quantized matvec for MANY columns (9..64) that reads the weights ONCE: each 32-row x 256-column block of Q4_K / Q5_K / Q6_K
+// native_tc_mmvq - quantized matvec for MANY columns (9..64) that reads the weights ONCE: each 32-row x 256-column block of Q4_K / Q5_K / Q6_K / Q8_0
 // weights is decoded to fp16 in shared memory and multiplied on tensor cores (WMMA 32x8x16) against fp16 activations with fp32 accumulation, for up
 // to 64 columns in the same pass.  The q8_1 matvec (native_mmvq) re-reads the weights for every 8 columns and spends ~12 us per column and matrix;
 // this kernel is flat in the column count.
@@ -15,7 +15,7 @@ namespace strata::kernels {
 
 constexpr int kTcMaxCols = 64;
 
-/// GGML type ids as in native_mmvq.hpp: Q4_K = 12, Q5_K = 13, Q6_K = 14.
+/// GGML type ids as in native_mmvq.hpp: Q8_0 = 8, Q4_K = 12, Q5_K = 13, Q6_K = 14.
 bool native_tc_mmvq_supported(int ggml_type, int n_in, int n_out, int ncols) noexcept;
 
 /// y[col * n_out + row] = sum_k W[row][k] * x16[col * n_in + k].  x16 holds `ceil(ncols / 8) * 8` columns of n_in fp16 values (the padding columns

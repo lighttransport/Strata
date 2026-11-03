@@ -16,12 +16,13 @@ namespace {
 using namespace nvcuda;
 constexpr int kNW = 4;      // warps a block: each takes every 4th 256-column super-block of the rows
 constexpr int kLDA = 40;    // shared-memory row stride (halves) of the decoded 32 x 32 tile: 32 values + 8 padding
-enum { FQ4 = 12, FQ5 = 13, FQ6 = 14 };
+enum { FQ8 = 8, FQ4 = 12, FQ5 = 13, FQ6 = 14 };
 
 template <int F> struct Blk;
 template <> struct Blk<FQ4> { static constexpr int BYTES = 144, WORDS = 36; };
 template <> struct Blk<FQ5> { static constexpr int BYTES = 176, WORDS = 44; };
 template <> struct Blk<FQ6> { static constexpr int BYTES = 210, WORDS = 53; };
+template <> struct Blk<FQ8> { static constexpr int BYTES = 272, WORDS = 68; };   // eight Q8_0 blocks (34 bytes each) = one 256-value super-block, 16-byte aligned
 
 /// The super-block at `p` as 32-bit words.  Q4_K / Q5_K blocks are 16-byte aligned; a Q6_K block is only 2-byte aligned, so it is read as aligned words
 /// and shifted (the read runs at most 4 bytes past the block: the weights carry 256 bytes of padding).
@@ -82,6 +83,16 @@ __device__ __forceinline__ void dec32(const uint32_t* w, int sb, __half* out) {
                 v = hi ? ((q >> 4) & 0x0F0F0F0Fu) : (q & 0x0F0F0F0Fu);
             }
             store4(out + 4 * i, v, s, nm, off1024);
+        }
+    } else if constexpr (F == FQ8) {   // sub-block sb = Q8_0 block sb: half d, then 32 int8, at byte 34 * sb of the 272
+        const int o = 34 * sb;
+        auto byte_at = [&](int off) -> uint32_t { return (w[off >> 2] >> (8 * (off & 3))) & 0xffu; };
+        const float d = __half2float(__ushort_as_half((unsigned short) (byte_at(o) | (byte_at(o + 1) << 8))));
+        const __half2 s = __float2half2_rn(d), zero = __float2half2_rn(0.f), off = __float2half2_rn(1152.f);   // 1024 + 128: the int8 as offset binary
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+            const uint32_t v = (byte_at(o + 2 + 4 * i) | (byte_at(o + 3 + 4 * i) << 8) | (byte_at(o + 4 + 4 * i) << 16) | (byte_at(o + 5 + 4 * i) << 24)) ^ 0x80808080u;
+            store4(out + 4 * i, v, s, zero, off);
         }
     } else {   // Q6_K: ql words 0..31, qh words 32..47, int8 scales words 48..51, d in the low half of word 52
         const float d = __half2float(__ushort_as_half((unsigned short) (w[52] & 0xffffu)));
@@ -173,7 +184,7 @@ __global__ void f32_to_f16_kernel(const float* __restrict__ src, __half* __restr
 }  // namespace
 
 bool native_tc_mmvq_supported(int ggml_type, int n_in, int n_out, int ncols) noexcept {
-    return (ggml_type == FQ4 || ggml_type == FQ5 || ggml_type == FQ6) && n_in > 0 && n_in % 256 == 0 && n_out > 0 && n_out % 32 == 0 && ncols >= 1 &&
+    return (ggml_type == FQ4 || ggml_type == FQ5 || ggml_type == FQ6 || ggml_type == FQ8) && n_in > 0 && n_in % 256 == 0 && n_out > 0 && n_out % 32 == 0 && ncols >= 1 &&
            ncols <= kTcMaxCols;
 }
 
@@ -183,6 +194,7 @@ void native_tc_mmvq(int ggml_type, const void* weights, const void* x16, float* 
     switch (ggml_type) {
         case FQ4: launch_type<FQ4>(weights, x16, y, n_in, n_out, ncols, s); break;
         case FQ5: launch_type<FQ5>(weights, x16, y, n_in, n_out, ncols, s); break;
+        case FQ8: launch_type<FQ8>(weights, x16, y, n_in, n_out, ncols, s); break;
         default: launch_type<FQ6>(weights, x16, y, n_in, n_out, ncols, s); break;
     }
     const cudaError_t e = cudaGetLastError();

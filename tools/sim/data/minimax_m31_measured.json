@@ -403,5 +403,74 @@
    ]
   },
   "max_error_vs_q8_1_kernel": "0.03 of the rms of the outputs (0.5 % of the largest value)"
+ },
+ "prefill_profile_2026_11_03": {
+  "note": "one V100, UD-Q2_K_XL, --pf-gemm --pf-prefetch --kv-f16, token ids of repository text; draft-head runs used --expert-vram 9 (521 slots) because the feature buffer takes 880 MB at chunk 7168; the no-head runs have 947 slots. Times in ms.",
+  "tok_s": {
+   "7K_dspark": [
+    453.4,
+    461.2
+   ],
+   "7K_no_dspark": [
+    475.8,
+    488.9
+   ],
+   "12K_2_chunks_dspark": 401.8,
+   "12K_2_chunks_no_dspark": 421.0,
+   "16K_3_chunks_dspark": 359.6,
+   "8K_1_chunk": 463.9,
+   "12K_1_chunk": 496.8,
+   "16K_1_chunk": [
+    508.0,
+    508.4
+   ]
+  },
+  "forward_ms": {
+   "7K": [
+    14474,
+    14216
+   ],
+   "8K_1_chunk": 16633,
+   "12K_1_chunk": 23193,
+   "16K_1_chunk": 29469
+  },
+  "draft_head_injection_ms": {
+   "7K": 875,
+   "8K": 1028,
+   "12K": 1541,
+   "16K": 2007
+  },
+  "serialized_profile_ms": {
+   "7K_6960_tokens": {
+    "forward": 18205,
+    "qkv_gemm": 740,
+    "qk_norm_rope_kv": 67,
+    "indexer_proj": 288,
+    "block_scores": 364,
+    "select": 19,
+    "sparse_attention": 3867,
+    "o_proj": 649,
+    "f32_to_f16": 276,
+    "dequant": 1759,
+    "cublas": 5334,
+    "expert_copy_waits": 702,
+    "expert_gemm_phase": 4686
+   },
+   "16K_16000_tokens_1_chunk": {
+    "forward": 29662,
+    "qkv_gemm": 1467,
+    "qk_norm_rope_kv": 162,
+    "indexer_proj": 678,
+    "block_scores": 2099,
+    "select": 365,
+    "sparse_attention": 9969,
+    "o_proj": 1260,
+    "f32_to_f16": 561,
+    "dequant": 2237,
+    "cublas": 10757,
+    "expert_copy_waits": 703
+   }
+  },
+  "finding": "sparse attention is 21 % (7K) to 34 % (16K) of the forward pass at ~6 TFLOP/s effective; at 16K the PCIe stream is fully hidden (compute-bound); the 3.5 s 'fixed cost' of the first fit is attention scaling with tokens. A draft-head launch above ~12K tokens of context failed (k_dattn shared memory sized by the whole context): fixed."
  }
 }

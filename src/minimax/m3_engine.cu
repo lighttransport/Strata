@@ -2784,8 +2784,47 @@ struct Dspark {
     }
 
     /// Fuse the captured target features of T committed rows (E.feat rows 0..T-1) and write their K/V at pos0 ..
+    // STRATA_M3_PF_INJECT=1 (opt-in): a prompt chunk's feature injection in groups of 64 rows through the weights-once tensor-core matvec instead of groups of
+    // 8 rows through the q8_1 matvec (the draft head's context cache then differs from the loop's at fp16 noise level)
+    bool tc_inject = strata_env_truthy_one("STRATA_M3_PF_INJECT") != 0;
+    void* ix16 = nullptr;
+    float *ixg = nullptr, *ixgn = nullptr, *ixk = nullptr, *ixv = nullptr;
+    static constexpr int kIxRows = 64;
+    bool inject_tc(Engine& E, int T, int pos0, int row0) {
+        if (!K::native_tc_mmvq_supported(fc.type, fc.n_in, fc.n_out, kIxRows)) return false;
+        for (const DL& y : ly)
+            if (!K::native_tc_mmvq_supported(y.k.type, y.k.n_in, y.k.n_out, kIxRows) || !K::native_tc_mmvq_supported(y.v.type, y.v.n_in, y.v.n_out, kIxRows)) return false;
+        if (!ix16) {
+            const size_t w16 = (size_t) kIxRows * std::max(fc.n_in, N) * 2;
+            CK(cudaMalloc(&ix16, w16));
+            CK(cudaMemset(ix16, 0, w16));
+            ixg = dalloc((size_t) kIxRows * N); ixgn = dalloc((size_t) kIxRows * N);
+            ixk = dalloc((size_t) kIxRows * HKV * kHeadDim); ixv = dalloc((size_t) kIxRows * HKV * kHeadDim);
+        }
+        for (int g0 = 0; g0 < T; g0 += kIxRows) {
+            const int nc = std::min(kIxRows, T - g0);
+            K::native_f32_to_f16(E.feat + (size_t) (row0 + g0) * fc.n_in, ix16, (int64_t) nc * fc.n_in, E.st);
+            K::native_tc_mmvq(fc.type, fc.d, ix16, ixg, fc.n_in, fc.n_out, nc, E.st);
+            k_rms<<<(unsigned) nc, kThreads, 0, E.st>>>(ixg, enc_norm, ixgn, N, E.m->eps);
+            K::native_f32_to_f16(ixgn, ix16, (int64_t) nc * N, E.st);
+            for (int l = 0; l < L; ++l) {
+                const DL& y = ly[(size_t) l];
+                K::native_tc_mmvq(y.k.type, y.k.d, ix16, ixk, y.k.n_in, y.k.n_out, nc, E.st);
+                K::native_tc_mmvq(y.v.type, y.v.d, ix16, ixv, y.v.n_in, y.v.n_out, nc, E.st);
+                k_head_prep<float><<<dim3((unsigned) HKV, (unsigned) nc), kHeadDim, 0, E.st>>>(ixk, y.kn, kc[(size_t) l], HKV, E.m->n_rot, ts, E.m->eps, pos0 + g0, 1);
+                CK(cudaMemcpyAsync(vc[(size_t) l] + (size_t) (pos0 + g0) * HKV * kHeadDim, ixv, (size_t) nc * HKV * kHeadDim * 4, cudaMemcpyDeviceToDevice, E.st));
+            }
+        }
+        return true;
+    }
+
     void inject(Engine& E, int T, int pos0, int row0 = 0) {   // row0: the first of the T rows in E.feat (a batch step holds several sequences' windows)
         const auto t0 = Clock::now();
+        if (tc_inject && T >= 32 && inject_tc(E, T, pos0, row0)) {
+            inj_rows += T;
+            ms_inject += ms_since(t0);
+            return;
+        }
         for (int g0 = 0; g0 < T; g0 += 8) {
             const int nc = std::min(8, T - g0);
             qmm(E, fc, E.feat + (size_t) (row0 + g0) * fc.n_in, g, nc);
@@ -2823,7 +2862,8 @@ struct Dspark {
             E.mmv(y.v.type, y.v.d, y.v.n_in, y.v.n_out, vraw, R, dq8);
             k_head_prep<float><<<dim3((unsigned) H, (unsigned) R), kHeadDim, 0, E.st>>>(qraw, y.qn, qb, H, E.m->n_rot, ts, E.m->eps, n, 0);
             k_head_prep<float><<<dim3((unsigned) HKV, (unsigned) R), kHeadDim, 0, E.st>>>(kraw, y.kn, kbl, HKV, E.m->n_rot, ts, E.m->eps, n, 0);
-            k_dattn<<<dim3((unsigned) R, (unsigned) H), 128, (size_t) (n + R + 8) * 4, E.st>>>(qb, kc[(size_t) l], vc[(size_t) l], kbl, vraw, n, R, H, HKV, window, att);
+            // only the last `window` cached keys are attended: the scores need no more than that (a full-context size broke the launch above 12K tokens)
+            k_dattn<<<dim3((unsigned) R, (unsigned) H), 128, (size_t) (std::min(n, window) + R + 8) * 4, E.st>>>(qb, kc[(size_t) l], vc[(size_t) l], kbl, vraw, n, R, H, HKV, window, att);
             qmm(E, y.o, att, ao, R);
             k_add<<<grid1((int64_t) R * N), kThreads, 0, E.st>>>(xb, ao, (int64_t) R * N);
             k_rms<<<(unsigned) R, kThreads, 0, E.st>>>(xb, y.fn, hb, N, E.m->eps);
@@ -3163,12 +3203,25 @@ int strata::minimax::run(int argc, char** argv) {
     const int chunk_use = rs.chunk_req > 0 ? std::min(rs.chunk_req, chunk) : chunk;
     if (rs.pf >= 0 && (E.wscr || rs.pf == 0)) E.pf_gemm = rs.pf != 0;
     if (rs.pre >= 0) E.pf_pre = rs.pre != 0;
+    const bool pf_times = E.pfprof || strata_env_truthy_one("STRATA_M3_PF_TIMES") != 0;
+    double pf_fwd_ms = 0, pf_inj_ms = 0;
+    int pf_chunks = 0;
     for (size_t at = 0; at < prompt.size(); at += (size_t) chunk_use) {
         const int T = (int) std::min(prompt.size() - at, (size_t) chunk_use);
         const int p0 = E.pos;
+        const auto tpf = Clock::now();
         E.forward(prompt.data() + at, T, lg);
-        if (ds) ds->inject(E, T, p0);
+        pf_fwd_ms += ms_since(tpf);
+        const auto tpi = Clock::now();
+        if (ds) {
+            ds->inject(E, T, p0);
+            if (pf_times) CK(cudaStreamSynchronize(E.st));   // the draft head's feature injection, timed on its own
+        }
+        pf_inj_ms += ms_since(tpi);
+        ++pf_chunks;
     }
+    if (pf_times)
+        std::printf("M3_PF_TIMES %d chunks: forward %.1f ms, draft-head injection %.1f ms\n", pf_chunks, pf_fwd_ms, pf_inj_ms);
     E.route_topk = route_topk_saved;
     E.lay_topk = lay_topk_saved;
     E.lay_minw = lay_minw_saved;

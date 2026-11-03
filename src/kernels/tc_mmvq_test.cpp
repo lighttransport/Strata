@@ -17,7 +17,7 @@
 namespace K = strata::kernels;
 static void ck(cudaError_t e, const char* w) { if (e != cudaSuccess) { std::fprintf(stderr, "%s: %s\n", w, cudaGetErrorString(e)); std::exit(1); } }
 
-static int block_bytes(int t) { return t == 12 ? 144 : t == 13 ? 176 : 210; }
+static int block_bytes(int t) { return t == 12 ? 144 : t == 13 ? 176 : t == 8 ? 272 : 210; }   // per 256 values (Q8_0: eight 34-byte blocks)
 
 static void fill_blocks(std::vector<uint8_t>& w, int type, size_t nblocks) {
     unsigned s = 12345u;
@@ -27,7 +27,8 @@ static void fill_blocks(std::vector<uint8_t>& w, int type, size_t nblocks) {
         uint8_t* p = w.data() + b * bb;
         for (int i = 0; i < bb; ++i) p[i] = (uint8_t) (rnd() & 255);
         const __half d = __float2half(0.0004f * (1 + rnd() % 4)), m = __float2half(0.0003f * (1 + rnd() % 4));
-        if (type == 14) { std::memcpy(p + 208, &d, 2); for (int i = 0; i < 16; ++i) p[192 + i] = (uint8_t) (int8_t) ((int) (rnd() % 41) - 20); }
+        if (type == 8) { for (int sb = 0; sb < 8; ++sb) std::memcpy(p + 34 * sb, &d, 2); }
+        else if (type == 14) { std::memcpy(p + 208, &d, 2); for (int i = 0; i < 16; ++i) p[192 + i] = (uint8_t) (int8_t) ((int) (rnd() % 41) - 20); }
         else { std::memcpy(p, &d, 2); std::memcpy(p + 2, &m, 2); }
     }
 }
@@ -45,7 +46,7 @@ int main(int argc, char** argv) {
     ck(cudaStreamCreate(&st), "stream");
     struct Shape { const char* name; int type, n_in, n_out; };
     const Shape shapes[] = {{"q", 13, 6144, 8192}, {"kv", 14, 6144, 512}, {"o", 13, 8192, 6144}, {"shg", 13, 6144, 3072},
-                            {"shd", 14, 3072, 6144}, {"head", 12, 6144, 200064}};
+                            {"shd", 14, 3072, 6144}, {"head", 12, 6144, 200064}, {"dfc", 8, 30720, 6144}, {"dk", 8, 6144, 512}, {"dq", 8, 6144, 8192}};
     int bad = 0;
     for (const Shape& sh : shapes) {
         if (!only.empty() && only.find(sh.name) == std::string::npos) continue;
