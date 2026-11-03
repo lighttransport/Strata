@@ -740,3 +740,49 @@ dequantize + tensor-core product (no FP16 round trip through memory), which is n
 
 Status against the target (600+ tok/s at 8-16K, one V100): 16K reaches 634-640 tok/s; 8K reaches 541-547 tok/s (the 8K prompt is bounded by the 10.9 s
 expert stream plus about 3.7 s of attention that does not hide under it). Not done: fused dequantize + GEMM, 2-GPU prefill, several short prompts in one chunk.
+
+## Long context: K/V in host memory, FP8 K/V, needle-in-a-haystack checks (measured 2026-11-03, one V100 PCIe 32 GB, 181 GB node)
+
+The model's context is 1,048,576 tokens (`minimax-m3.context_length`). FP16 K/V costs 123 KB per token over 60 layers, plus 15 KB per token of FP16
+indexer keys. On one V100 with 8.6 GB of dense weights, that limits VRAM-resident FP16 K/V to roughly 64-100K. New opt-in switches (all need
+`--kv-f16`; the default path does not change):
+
+- `--kv-host`: K/V in pinned host memory, mapped into the GPU's address space; indexer keys stay in VRAM. One-token and window steps read the
+  selected blocks through PCIe; a prompt chunk first copies the layer's rows to a device staging pair.
+- `--kv-fp8`: K/V stored as E4M3 bytes plus one float scale per (position, kv head) row of 128 values. They are written from the FP16 rows and
+  expanded into one FP16 working image that all layers share. Prompt chunks expand the whole layer; one-token and window steps expand only the
+  selected blocks. It is in VRAM by default, or in host memory with `--kv-host`. Bit arithmetic only, with no FP8 hardware or headers, so it also
+  builds for HIP.
+- The draft head's K/V becomes a ring of two attention windows (8192 positions) whenever the context is longer. Before, it was FP32 at full
+  context: about 5 GB at 128K.
+- `--kv-host --kv-fp8` also keeps a VRAM cache of whole blocks that decode steps selected (`STRATA_M3_KV_BCACHE_GIB`, default 2; CLOCK eviction,
+  filled one step late, only complete blocks, cleared per request). It reports `M3_KV_BCACHE`. **Not measured yet.**
+
+Quality, teacher-forced 64 steps on the 7K prompt against the default q8_1 path (same protocol as the prefill gate):
+
+| K/V storage | KL mean | top-1 |
+|---|---|---|
+| FP16 in host memory | 1.29e-3 | 47/47 |
+| FP8 | 1.59e-3 | 47/47 |
+
+Tokens with `--kv-host` (FP16) are identical to VRAM K/V on the short and 7K prompts (same md5).
+
+Needle in a haystack. Weather-station sections, with one carrying a vault code at the given depth; the question comes at the end; chat template,
+greedy decoding. Run with `--pf-gemm --pf-prefetch --kv-f16 --chunk 8192 STRATA_MSA_TC2=1`, no draft head, plain decode:
+
+| prompt | K/V | prefill | decode | answer |
+|---|---|---|---|---|
+| 32,010 tokens, depth 50 % | FP16, host | 425 tok/s | 2.8 tok/s | correct (code and station) |
+| 129,914 tokens, depth 50 % | FP16, host | 398 tok/s | 2.75 tok/s | correct |
+| 255,424 tokens, depth 25 % | FP16, host | 329 tok/s (12.9 min) | 2.65 tok/s | correct |
+| 255,424 tokens, depth 75 % | FP16, host | 329 tok/s | 2.64 tok/s | correct |
+| 32,010 tokens, depth 50 % | FP8, VRAM (context 135168, 431 expert slots) | 537 tok/s | 12.4 tok/s | correct, same answer tokens as FP16 |
+| 129,914 tokens, depth 50 % | FP8, VRAM | 445 tok/s | 11.0 tok/s | correct, same answer tokens as FP16 |
+
+Decode in that same FP8-in-VRAM engine at short context (335-token prompt, 200 tokens) is 14.8 tok/s. 128K therefore keeps 74 % of the
+short-context speed; the FP16 VRAM engine at 16K context had 15.8 tok/s. Decode through `--kv-host` is slow (2.6-2.8 tok/s at every length, and
+7.8 against 15.8 tok/s even at short context): the attention kernels read the selected blocks from host memory in small, latency-bound reads. The
+VRAM block cache above is meant to fix that for 256K and beyond.
+
+Limits on this node: 512K FP16 K/V (63 GB) and 1M FP8 K/V (66 GB, plus 15.7 GB of indexer keys in VRAM) do not fit next to the 125 GB pinned
+expert pack in 181 GB. 512K with FP8 in host memory (33 GB) is being tested.

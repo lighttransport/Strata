@@ -160,6 +160,78 @@ __global__ void k_f32_to_f16(const float* x, __half* y, int64_t n) {
     if (i < n) y[i] = __float2half(x[i]);
 }
 
+
+// ---- FP8 (E4M3) K/V cache (--kv-fp8): one scale per (position, kv head) row of 128 values; portable bit arithmetic (no fp8 hardware or headers)
+__device__ __forceinline__ uint8_t e4m3_encode(float x) {   // |x| <= 448 after scaling
+    const uint8_t sgn = x < 0.f ? 0x80 : 0;
+    const float a = fabsf(x);
+    if (a < 0.015625f) return sgn | (uint8_t) rintf(a * 512.f);   // subnormals (and the carry into the smallest normal)
+    int e;
+    const float m = frexpf(a, &e);   // a = m * 2^e, m in [0.5, 1)
+    int ef = e + 6, mi = (int) rintf((2.f * m - 1.f) * 8.f);
+    if (mi == 8) { mi = 0; ++ef; }
+    if (ef > 15 || (ef == 15 && mi > 6)) { ef = 15; mi = 6; }
+    return sgn | (uint8_t) (ef << 3) | (uint8_t) mi;
+}
+__device__ __forceinline__ float e4m3_decode(uint8_t b) {
+    const int ef = (b >> 3) & 15, mi = b & 7;
+    const float v = ef == 0 ? (float) mi * (1.f / 512.f) : ldexpf(1.f + (float) mi * 0.125f, ef - 7);
+    return (b & 0x80) ? -v : v;
+}
+/// rows [r0, r0 + n) of an FP16 image [pos][HKV][128] -> FP8 bytes + one float scale per (pos, head). One warp per (row, head).
+__global__ void k_kv8_store(const __half* src, uint8_t* q8, float* sc, int64_t r0, int64_t n_rows, int HKV) {
+    const int64_t w = ((int64_t) blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    const int lane = threadIdx.x & 31;
+    if (w >= n_rows * HKV) return;
+    const int64_t row = r0 + w / HKV, kh = w % HKV;
+    const size_t base = ((size_t) row * HKV + kh) * 128;
+    float v[4], amax = 0.f;
+    for (int j = 0; j < 4; ++j) { v[j] = __half2float(src[base + lane * 4 + j]); amax = fmaxf(amax, fabsf(v[j])); }
+    for (int o = 16; o; o >>= 1) amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+    const float scale = amax > 0.f ? amax / 448.f : 1.f, inv = 1.f / scale;
+    uint8_t b[4];
+    for (int j = 0; j < 4; ++j) b[j] = e4m3_encode(v[j] * inv);
+    *reinterpret_cast<uint32_t*>(q8 + base + lane * 4) = (uint32_t) b[0] | ((uint32_t) b[1] << 8) | ((uint32_t) b[2] << 16) | ((uint32_t) b[3] << 24);
+    if (lane == 0) sc[(size_t) row * HKV + kh] = scale;
+}
+/// rows [0, n_rows) FP8 -> FP16 image (the prompt-chunk attention reads the whole layer). One warp per (row, head).
+__global__ void k_kv8_load(const uint8_t* q8, const float* sc, __half* dst, int64_t n_rows, int HKV) {
+    const int64_t w = ((int64_t) blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    const int lane = threadIdx.x & 31;
+    if (w >= n_rows * HKV) return;
+    const size_t base = (size_t) w * 128;
+    const uint32_t p = *reinterpret_cast<const uint32_t*>(q8 + base + lane * 4);
+    const float scale = sc[w];
+    for (int j = 0; j < 4; ++j) dst[base + lane * 4 + j] = __float2half(e4m3_decode((uint8_t) (p >> (8 * j))) * scale);
+}
+/// the selected blocks only (one-token and window steps): block ids sel[(row * HKV + kh) * topk + j]; grid (topk, HKV, rows), 128 threads
+/// map (optional, --kv-host block cache): VRAM slot of each block of this layer or -1; a cached block is read from the slot (pool8 / pools: one
+/// 128-position block of all heads per slot) instead of through PCIe
+__global__ void k_kv8_gather(const uint8_t* q8, const float* sc, __half* dst, const int32_t* sel, int HKV, int topk, int keys,
+                             const int32_t* map = nullptr, const uint8_t* pool8 = nullptr, const float* pools = nullptr) {
+    const int j = blockIdx.x, kh = blockIdx.y, row = blockIdx.z;
+    const int blk = sel[((size_t) row * HKV + kh) * topk + j];
+    if (blk < 0) return;
+    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+    const int slot = map ? map[blk] : -1;
+    for (int k = warp; k < 128; k += 4) {
+        const int pos = blk * 128 + k;
+        if (pos >= keys) break;
+        const size_t base = ((size_t) pos * HKV + kh) * 128;
+        uint32_t p;
+        float scale;
+        if (slot >= 0) {
+            const size_t b = (size_t) slot * 128 * HKV * 128 + ((size_t) k * HKV + kh) * 128;
+            p = *reinterpret_cast<const uint32_t*>(pool8 + b + lane * 4);
+            scale = pools[(size_t) slot * 128 * HKV + (size_t) k * HKV + kh];
+        } else {
+            p = *reinterpret_cast<const uint32_t*>(q8 + base + lane * 4);
+            scale = sc[(size_t) pos * HKV + kh];
+        }
+        for (int jj = 0; jj < 4; ++jj) dst[base + lane * 4 + jj] = __float2half(e4m3_decode((uint8_t) (p >> (8 * jj))) * scale);
+    }
+}
+
 /// swigluoai: g = min(gate, limit), u = clamp(up, -limit, limit), out = g * sigmoid(alpha * g) * (1 + u).
 __global__ void k_swiglu_oai(const float* gate, const float* up, float* out, int64_t n, float alpha, float limit) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
@@ -960,6 +1032,29 @@ struct Engine {
     void gemm_w(const Mat& w, const float* in, float* out, int T, bool same_in = false) { gemm_w(w.type, w.d, w.n_in, w.n_out, in, out, T, same_in); }
     float* feat = nullptr;             // [rows][layers][N] target hidden states for the DSpark head (null: off)
     std::vector<int> feat_layers;      // layer ids whose INPUT is captured (n_layers: after the last layer)
+    // --kv-host (opt-in, needs --kv-f16): K and V live in pinned host memory (mapped into the GPU's address space).  One-token and window steps read
+    // the selected blocks through PCIe; a prompt chunk copies the layer's rows to a device staging pair first.  The indexer keys stay on the GPU.
+    bool kv_host = false;
+    bool kv_fp8 = false;               // --kv-fp8 (with --kv-host): the host cache holds E4M3 bytes + a scale per (position, head); kstage / vstage are the FP16 working image
+    std::vector<uint8_t*> kq_d, vq_d;  // device aliases of the host FP8 caches
+    std::vector<float*> ks_d, vs_d;    // device aliases of the host scales
+    // --kv-host --kv-fp8 block cache in VRAM (STRATA_M3_KV_BCACHE_GIB, default 2): whole 128-position blocks (all heads, K and V, FP8 + scales) that
+    // the one-token / window steps selected, so later steps read them from VRAM.  Filled one step late from the selection copied to the host; only
+    // complete blocks are cached (the newest, still growing block is always read from the host).  The data are the same bytes either way.
+    int bc_slots = 0, bc_nblk = 0, bc_hand = 0;
+    uint8_t *bc_k = nullptr, *bc_v = nullptr;
+    float *bc_ks = nullptr, *bc_vs = nullptr;
+    int32_t* bc_map_d = nullptr;               // [layers][bc_nblk] slot or -1 (device)
+    std::vector<int32_t> bc_map;               // host mirror
+    std::vector<int32_t> bc_owner;             // slot -> layer * bc_nblk + block, or -1
+    std::vector<uint8_t> bc_ref;               // CLOCK reference bits
+    int32_t* bc_sel_h = nullptr;               // [layers][kMaxWin * HKV * 16] pinned: each layer's last selection
+    std::vector<int> bc_sel_n, bc_sel_pos;     // rows * HKV * topk of that selection, and the context length then
+    std::vector<cudaEvent_t> bc_ev;
+    long long bc_hit = 0, bc_miss = 0, bc_fill = 0;
+    std::vector<void*> kc_h, vc_h;     // host base pointers
+    std::vector<void*> ks_h, vs_h;     // host scales (--kv-fp8)
+    uint16_t *kstage = nullptr, *vstage = nullptr;
     bool kv_half = false;              // --kv-f16: K, V and the indexer keys stored as FP16 (a lossy lever: half the cache memory)
     // the routed-expert slot cache
     uint8_t* slots = nullptr;
@@ -1819,7 +1914,60 @@ struct Engine {
         const size_t max_in = std::max(QD, WF);
         CK(cudaMalloc(&q8, K::native_q8_1_bytes((int) (max_in * T), 1)));
         for (int l = 0; l < mm.n_layers; ++l) {
-            if (kv_half) {
+            if (kv_half && kv_fp8) {   // in VRAM, or (--kv-host) in pinned host memory mapped into the GPU's address space
+                const size_t bytes = (size_t) (ctx + 128) * KD, sbytes = (size_t) (ctx + 128) * mm.HKV * 4;
+                void *dk, *dv, *dks, *dvs;
+                if (kv_host) {
+                    void *hk, *hv, *hks, *hvs;
+                    CK(cudaHostAlloc(&hk, bytes, cudaHostAllocMapped));
+                    CK(cudaHostAlloc(&hv, bytes, cudaHostAllocMapped));
+                    CK(cudaHostAlloc(&hks, sbytes, cudaHostAllocMapped));
+                    CK(cudaHostAlloc(&hvs, sbytes, cudaHostAllocMapped));
+                    std::memset(hk, 0, bytes); std::memset(hv, 0, bytes);
+                    for (size_t i = 0; i < sbytes / 4; ++i) { ((float*) hks)[i] = 1.f; ((float*) hvs)[i] = 1.f; }
+                    CK(cudaHostGetDevicePointer(&dk, hk, 0)); CK(cudaHostGetDevicePointer(&dv, hv, 0));
+                    CK(cudaHostGetDevicePointer(&dks, hks, 0)); CK(cudaHostGetDevicePointer(&dvs, hvs, 0));
+                    kc_h.push_back(hk); vc_h.push_back(hv); ks_h.push_back(hks); vs_h.push_back(hvs);
+                } else {   // zero bytes decode to 0 with any scale: the scales need no initial value
+                    CK(cudaMalloc(&dk, bytes)); CK(cudaMalloc(&dv, bytes));
+                    CK(cudaMalloc(&dks, sbytes)); CK(cudaMalloc(&dvs, sbytes));
+                    CK(cudaMemset(dk, 0, bytes)); CK(cudaMemset(dv, 0, bytes));
+                    CK(cudaMemset(dks, 0, sbytes)); CK(cudaMemset(dvs, 0, sbytes));
+                }
+                kq_d.push_back((uint8_t*) dk); vq_d.push_back((uint8_t*) dv); ks_d.push_back((float*) dks); vs_d.push_back((float*) dvs);
+                if (l == 0) {   // one FP16 working image shared by every layer
+                    CK(cudaMalloc(&kstage, bytes * 2));
+                    CK(cudaMalloc(&vstage, bytes * 2));
+                    CK(cudaMemset(kstage, 0, bytes * 2));
+                    CK(cudaMemset(vstage, 0, bytes * 2));
+                }
+                kc.push_back(reinterpret_cast<float*>(kstage));
+                vc.push_back(reinterpret_cast<float*>(vstage));
+                ikc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * kHeadDim)));
+                CK(cudaMemset(ikc.back(), 0, (size_t) (ctx + 128) * kHeadDim * 2));
+            } else
+            if (kv_half && kv_host) {
+                const size_t bytes = (size_t) (ctx + 128) * KD * 2;
+                void *hk = nullptr, *hv = nullptr, *dk = nullptr, *dv = nullptr;
+                CK(cudaHostAlloc(&hk, bytes, cudaHostAllocMapped));
+                CK(cudaHostAlloc(&hv, bytes, cudaHostAllocMapped));
+                std::memset(hk, 0, bytes);
+                std::memset(hv, 0, bytes);
+                CK(cudaHostGetDevicePointer(&dk, hk, 0));
+                CK(cudaHostGetDevicePointer(&dv, hv, 0));
+                kc_h.push_back(hk);
+                vc_h.push_back(hv);
+                kc.push_back(reinterpret_cast<float*>(dk));
+                vc.push_back(reinterpret_cast<float*>(dv));
+                ikc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * kHeadDim)));
+                CK(cudaMemset(ikc.back(), 0, (size_t) (ctx + 128) * kHeadDim * 2));
+                if (l == 0) {
+                    CK(cudaMalloc(&kstage, bytes));
+                    CK(cudaMalloc(&vstage, bytes));
+                    CK(cudaMemset(kstage, 0, bytes));
+                    CK(cudaMemset(vstage, 0, bytes));
+                }
+            } else if (kv_half) {
                 // padded by one 128-key block and zeroed: the tensor-core attention reads whole key tiles
                 kc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * KD)));
                 vc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * KD)));
@@ -1834,6 +1982,30 @@ struct Engine {
             }
         }
         CK(cudaHostAlloc((void**) &qpos_h, kMaxWin * 4, 0));
+        if (kv_fp8 && kv_host) {
+            const char* g = std::getenv("STRATA_M3_KV_BCACHE_GIB");
+            const double gib = g ? std::atof(g) : 2.0;
+            const size_t unit = (size_t) 128 * KD * 2 + (size_t) 128 * mm.HKV * 4 * 2;
+            bc_slots = (int) (gib * (double) (1ull << 30) / (double) unit);
+            if (bc_slots > 0) {
+                bc_nblk = (ctx + 127) / 128 + 1;
+                CK(cudaMalloc(&bc_k, (size_t) bc_slots * 128 * KD));
+                CK(cudaMalloc(&bc_v, (size_t) bc_slots * 128 * KD));
+                CK(cudaMalloc(&bc_ks, (size_t) bc_slots * 128 * mm.HKV * 4));
+                CK(cudaMalloc(&bc_vs, (size_t) bc_slots * 128 * mm.HKV * 4));
+                bc_map.assign((size_t) mm.n_layers * bc_nblk, -1);
+                CK(cudaMalloc(&bc_map_d, bc_map.size() * 4));
+                CK(cudaMemcpy(bc_map_d, bc_map.data(), bc_map.size() * 4, cudaMemcpyHostToDevice));
+                bc_owner.assign((size_t) bc_slots, -1);
+                bc_ref.assign((size_t) bc_slots, 0);
+                CK(cudaHostAlloc((void**) &bc_sel_h, (size_t) mm.n_layers * kMaxWin * mm.HKV * 16 * 4, 0));
+                bc_sel_n.assign((size_t) mm.n_layers, 0);
+                bc_sel_pos.assign((size_t) mm.n_layers, 0);
+                bc_ev.resize((size_t) mm.n_layers);
+                for (auto& e : bc_ev) CK(cudaEventCreateWithFlags(&e, cudaEventDisableTiming));
+                std::fprintf(stderr, "strata-m3: K/V block cache in VRAM: %d blocks of 128 positions (%.2f GiB)\n", bc_slots, (double) bc_slots * unit / (1 << 30));
+            }
+        }
         if (nseq_reserve > 1) {   // only a batch needs it: the single-sequence engine's VRAM stays with the expert slots
             const size_t widest = std::max<size_t>(std::max<size_t>(QD, N), WF);
             CK(cudaMalloc(&x16buf, (size_t) kMaxWin * widest * 2));
@@ -2018,6 +2190,67 @@ struct Engine {
             k_head_prep<float><<<dim3((unsigned) nh, (unsigned) T), kHeadDim, 0, s>>>(src, w, cache, nh, m->n_rot, ts, m->eps, p0, 1);
     }
 
+    /// The previous step's selection of layer li (on the host by now): count hits, and copy the complete blocks that missed into VRAM slots (CLOCK
+    /// eviction), on the main stream so this step's gather sees them.
+    /// a new request overwrites the K/V rows: forget every cached block
+    void bc_reset() {
+        if (bc_slots <= 0) return;
+        std::fill(bc_map.begin(), bc_map.end(), -1);
+        std::fill(bc_owner.begin(), bc_owner.end(), -1);
+        std::fill(bc_ref.begin(), bc_ref.end(), 0);
+        std::fill(bc_sel_n.begin(), bc_sel_n.end(), 0);
+        bc_hit = bc_miss = bc_fill = 0;
+        CK(cudaMemcpyAsync(bc_map_d, bc_map.data(), bc_map.size() * 4, cudaMemcpyHostToDevice, st));
+        CK(cudaStreamSynchronize(st));
+    }
+
+    void bc_update(size_t li) {
+        const int n = bc_sel_n[li];
+        if (n <= 0) return;
+        bc_sel_n[li] = 0;
+        CK(cudaEventSynchronize(bc_ev[li]));
+        const int HKV = m->HKV;
+        const size_t KD = (size_t) HKV * kHeadDim;
+        int32_t* map = bc_map.data() + li * (size_t) bc_nblk;
+        const int32_t* sl = bc_sel_h + li * (size_t) kMaxWin * HKV * 16;
+        bool changed = false;
+        for (int i = 0; i < n; ++i) {
+            const int blk = sl[i];
+            if (blk < 0 || blk >= bc_nblk) continue;
+            if (map[blk] >= 0) { ++bc_hit; bc_ref[(size_t) map[blk]] = 1; continue; }
+            ++bc_miss;
+            if ((blk + 1) * 128 > bc_sel_pos[li]) continue;   // the newest block is still growing
+            int s = -1;
+            for (int tries = 0; tries < 2 * bc_slots; ++tries) {   // CLOCK
+                const int c = bc_hand;
+                bc_hand = (bc_hand + 1) % bc_slots;
+                if (bc_ref[(size_t) c]) { bc_ref[(size_t) c] = 0; continue; }
+                s = c;
+                break;
+            }
+            if (s < 0) break;
+            const int own = bc_owner[(size_t) s];
+            if (own >= 0) bc_map[(size_t) own] = -1;
+            bc_owner[(size_t) s] = (int) (li * (size_t) bc_nblk + blk);
+            map[blk] = s;
+            bc_ref[(size_t) s] = 1;
+            const uint8_t* hk = reinterpret_cast<const uint8_t*>(kc_h[li]) + (size_t) blk * 128 * KD;
+            const uint8_t* hv = reinterpret_cast<const uint8_t*>(vc_h[li]) + (size_t) blk * 128 * KD;
+            const float* hks = reinterpret_cast<const float*>(ks_h[li]) + (size_t) blk * 128 * HKV;
+            const float* hvs = reinterpret_cast<const float*>(vs_h[li]) + (size_t) blk * 128 * HKV;
+            CK(cudaMemcpyAsync(bc_k + (size_t) s * 128 * KD, hk, 128 * KD, cudaMemcpyHostToDevice, st));
+            CK(cudaMemcpyAsync(bc_v + (size_t) s * 128 * KD, hv, 128 * KD, cudaMemcpyHostToDevice, st));
+            CK(cudaMemcpyAsync(bc_ks + (size_t) s * 128 * HKV, hks, 128 * HKV * 4, cudaMemcpyHostToDevice, st));
+            CK(cudaMemcpyAsync(bc_vs + (size_t) s * 128 * HKV, hvs, 128 * HKV * 4, cudaMemcpyHostToDevice, st));
+            ++bc_fill;
+            changed = true;
+        }
+        if (changed) {   // the whole table: any slot taken from another layer was unmapped there too
+            CK(cudaMemcpyAsync(bc_map_d, bc_map.data(), bc_map.size() * 4, cudaMemcpyHostToDevice, st));
+            CK(cudaStreamSynchronize(st));   // the host table is pageable: the copy must finish before the next change
+        }
+    }
+
     void attention(const Layer& L, size_t li, int T, int p0) {
         const int N = m->N, H = m->H, HKV = m->HKV, IH = m->idx_heads;
         const float ts = powf(m->rope_base, -2.0f / (float) m->n_rot);
@@ -2064,6 +2297,10 @@ struct Engine {
         else
         CK(cudaMemcpyAsync(vc[li] + (size_t) p0 * HKV * kHeadDim, vraw, (size_t) T * HKV * kHeadDim * 4,
                            cudaMemcpyDeviceToDevice, st));
+        if (kv_fp8) {   // the fresh rows (FP16 in the working image) -> the FP8 host cache
+            k_kv8_store<<<grid1((int64_t) T * HKV * 32), kThreads, 0, st>>>(reinterpret_cast<const __half*>(kstage), kq_d[li], ks_d[li], p0, T, HKV);
+            k_kv8_store<<<grid1((int64_t) T * HKV * 32), kThreads, 0, st>>>(reinterpret_cast<const __half*>(vstage), vq_d[li], vs_d[li], p0, T, HKV);
+        }
         pmark("attn: q/k norm + rope, kv write");
         // the MSA indexer: q (IH heads) and k (one head) from the same normed input, normed and roped like q / k
         if (fork) {
@@ -2089,6 +2326,35 @@ struct Engine {
         K::minimax_msa_select_blocks(scores, qpos, T, IH, nblk, m->idx_block, topk, std::min(m->idx_local, topk),
                                      (size_t) nblk, sel, (size_t) topk, st);
         pmark("attn: msa select");
+        if (kv_fp8) {
+            if (T > win_cap) {   // the whole layer (this chunk's rows included, so every row is seen at FP8 precision)
+                k_kv8_load<<<grid1((int64_t) n_pos * HKV * 32), kThreads, 0, st>>>(kq_d[li], ks_d[li], reinterpret_cast<__half*>(kstage), n_pos, HKV);
+                k_kv8_load<<<grid1((int64_t) n_pos * HKV * 32), kThreads, 0, st>>>(vq_d[li], vs_d[li], reinterpret_cast<__half*>(vstage), n_pos, HKV);
+            } else {
+                const int32_t* bmap = nullptr;
+                if (bc_slots > 0) {
+                    bc_update(li);
+                    bmap = bc_map_d + li * (size_t) bc_nblk;
+                }
+                k_kv8_gather<<<dim3((unsigned) topk, (unsigned) HKV, (unsigned) T), 128, 0, st>>>(kq_d[li], ks_d[li], reinterpret_cast<__half*>(kstage), sel, HKV, topk, n_pos,
+                                                                                               bmap, bc_k, bc_ks);
+                k_kv8_gather<<<dim3((unsigned) topk, (unsigned) HKV, (unsigned) T), 128, 0, st>>>(vq_d[li], vs_d[li], reinterpret_cast<__half*>(vstage), sel, HKV, topk, n_pos,
+                                                                                               bmap, bc_v, bc_vs);
+                if (bc_slots > 0) {   // this step's selection to the host, for the next step's fill
+                    const int n = T * HKV * topk;
+                    CK(cudaMemcpyAsync(bc_sel_h + li * (size_t) kMaxWin * HKV * 16, sel, (size_t) n * 4, cudaMemcpyDeviceToHost, st));
+                    CK(cudaEventRecord(bc_ev[li], st));
+                    bc_sel_n[li] = n;
+                    bc_sel_pos[li] = n_pos;
+                }
+            }
+            K::minimax_msa_attention_h(qb, kstage, vstage, qpos, kpos, sel, T, H, HKV, kHeadDim, n_pos, m->idx_block, topk, (size_t) topk, att, st);
+        } else
+        if (kv_half && kv_host && T > win_cap) {   // a prompt chunk: the layer's rows (old ones and this chunk's) to the device, one copy each
+            CK(cudaMemcpyAsync(kstage, kc_h[li], (size_t) n_pos * HKV * kHeadDim * 2, cudaMemcpyHostToDevice, st));
+            CK(cudaMemcpyAsync(vstage, vc_h[li], (size_t) n_pos * HKV * kHeadDim * 2, cudaMemcpyHostToDevice, st));
+            K::minimax_msa_attention_h(qb, kstage, vstage, qpos, kpos, sel, T, H, HKV, kHeadDim, n_pos, m->idx_block, topk, (size_t) topk, att, st);
+        } else
         if (kv_half)
             K::minimax_msa_attention_h(qb, reinterpret_cast<const uint16_t*>(kc[li]), reinterpret_cast<const uint16_t*>(vc[li]),
                                        qpos, kpos, sel, T, H, HKV, kHeadDim, n_pos, m->idx_block, topk, (size_t) topk, att, st);
@@ -2550,7 +2816,7 @@ struct Engine {
 // ------------------------------------------------------------------------------------------------ the DSpark draft head
 /// Draft attention: R block rows (positions n .. n+R-1) over the cached keys [max(0, pos-window+1), n) and all R block rows.
 __global__ void k_dattn(const float* q, const float* kc, const float* vc, const float* kb, const float* vb, int n_ctx, int R,
-                        int H, int HKV, int window, float* out) {
+                        int H, int HKV, int window, float* out, int ring) {
     extern __shared__ float sc[];
     __shared__ float red[128];
     const int r = blockIdx.x, h = blockIdx.y, kh = h / (H / HKV), w = threadIdx.x >> 5, lane = threadIdx.x & 31;
@@ -2559,7 +2825,7 @@ __global__ void k_dattn(const float* q, const float* kc, const float* vc, const 
     const float4 qq = reinterpret_cast<const float4*>(qv)[lane];
     const float scale = rsqrtf((float) kHeadDim);
     for (int s = w; s < nk; s += 4) {
-        const float* kp = s < nc ? kc + ((size_t) (j0 + s) * HKV + kh) * kHeadDim : kb + ((size_t) (s - nc) * HKV + kh) * kHeadDim;
+        const float* kp = s < nc ? kc + ((size_t) ((j0 + s) % ring) * HKV + kh) * kHeadDim : kb + ((size_t) (s - nc) * HKV + kh) * kHeadDim;
         const float4 kk = reinterpret_cast<const float4*>(kp)[lane];
         float d = qq.x * kk.x + qq.y * kk.y + qq.z * kk.z + qq.w * kk.w;
         for (int o = 16; o > 0; o >>= 1) d += __shfl_xor_sync(0xffffffffu, d, o);
@@ -2586,10 +2852,18 @@ __global__ void k_dattn(const float* q, const float* kc, const float* vc, const 
     __syncthreads();
     float acc = 0.f;
     for (int s = 0; s < nk; ++s) {
-        const float* vp = s < nc ? vc + ((size_t) (j0 + s) * HKV + kh) * kHeadDim : vb + ((size_t) (s - nc) * HKV + kh) * kHeadDim;
+        const float* vp = s < nc ? vc + ((size_t) ((j0 + s) % ring) * HKV + kh) * kHeadDim : vb + ((size_t) (s - nc) * HKV + kh) * kHeadDim;
         acc += sc[s] * vp[threadIdx.x];
     }
     out[((size_t) r * H + h) * kHeadDim + threadIdx.x] = acc / sum;
+}
+
+/// rows [p, p + n) of a [ring][rowlen] cache from contiguous rows (the draft head's K/V ring when the context is longer than it needs)
+__global__ void k_ring_rows(const float* src, float* dst, int p, int n, int ring, int rowlen) {
+    const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= (int64_t) n * rowlen) return;
+    const int64_t r = i / rowlen;
+    dst[(size_t) ((p + r) % ring) * rowlen + (size_t) (i % rowlen)] = src[i];
 }
 
 /// col[v] += w2[v] . w1[*prev] (both [V][256] Q8_0: 8 blocks of 34 bytes per row)
@@ -2662,6 +2936,8 @@ struct Dspark {
     const float *out_norm = nullptr, *enc_norm = nullptr;
     std::vector<int> target_layers;
     int L = 0, N = 0, H = 0, HKV = 0, FF = 0, block = 7, window = 4096, mask_id = 0, ctx = 0;
+    int ring = 0;                      // cached K/V rows: the whole context, or a ring of 2 windows when the context is longer (only the last window is attended)
+    float* ktmp = nullptr;
     float alpha = 1.702f, limit = 7.f, ts = 0.f;
     std::vector<float*> kc, vc;
     int nseq = 1;                                   // sequences of a batch (--seqs): context caches for nseq - 1 more
@@ -2684,6 +2960,7 @@ struct Dspark {
         L = gi("block_count"); N = gi("embedding_length"); FF = gi("feed_forward_length");
         H = gi("attention.head_count"); HKV = gi("attention.head_count_kv"); block = gi("block_size");
         window = gi("attention.sliding_window");
+        ring = ctx > 2 * window + 256 ? 2 * window : ctx;
         if (N != m.N || L < 1 || H * kHeadDim != 8192 || HKV * kHeadDim != 512 || gi("rope.dimension_count") != m.n_rot) {
             err = "the draft head does not match this target (hidden size / heads / rope)";
             return false;
@@ -2757,8 +3034,8 @@ struct Dspark {
             y.q = mat(b + "attn_q.weight", N, H * kHeadDim); y.k = mat(b + "attn_k.weight", N, HKV * kHeadDim);
             y.v = mat(b + "attn_v.weight", N, HKV * kHeadDim); y.o = mat(b + "attn_output.weight", H * kHeadDim, N);
             y.g = mat(b + "ffn_gate.weight", N, FF); y.u = mat(b + "ffn_up.weight", N, FF); y.d = mat(b + "ffn_down.weight", FF, N);
-            kc.push_back(dalloc((size_t) ctx * HKV * kHeadDim));
-            vc.push_back(dalloc((size_t) ctx * HKV * kHeadDim));
+            kc.push_back(dalloc((size_t) ring * HKV * kHeadDim));
+            vc.push_back(dalloc((size_t) ring * HKV * kHeadDim));
         }
         for (int q = 1; q < nseq; ++q) {
             xkc.emplace_back(); xvc.emplace_back();
@@ -2811,11 +3088,27 @@ struct Dspark {
                 const DL& y = ly[(size_t) l];
                 K::native_tc_mmvq(y.k.type, y.k.d, ix16, ixk, y.k.n_in, y.k.n_out, nc, E.st);
                 K::native_tc_mmvq(y.v.type, y.v.d, ix16, ixv, y.v.n_in, y.v.n_out, nc, E.st);
-                k_head_prep<float><<<dim3((unsigned) HKV, (unsigned) nc), kHeadDim, 0, E.st>>>(ixk, y.kn, kc[(size_t) l], HKV, E.m->n_rot, ts, E.m->eps, pos0 + g0, 1);
-                CK(cudaMemcpyAsync(vc[(size_t) l] + (size_t) (pos0 + g0) * HKV * kHeadDim, ixv, (size_t) nc * HKV * kHeadDim * 4, cudaMemcpyDeviceToDevice, E.st));
+                put_rows(E, (size_t) l, ixk, y.kn, ixv, pos0 + g0, nc, ts);
             }
         }
         return true;
+    }
+
+    /// K (normed, roped) and V rows of positions [p, p + nc) into layer l's caches: in place when the cache spans the context, through the ring otherwise
+    void put_rows(Engine& E, size_t l, const float* ksrc, const float* kn, const float* vsrc, int p, int nc, float ts) {
+        const int HKV = E.m->HKV;
+        if (ring >= ctx) {
+            k_head_prep<float><<<dim3((unsigned) HKV, (unsigned) nc), kHeadDim, 0, E.st>>>(ksrc, kn, kc[l], HKV, E.m->n_rot, ts, E.m->eps, p, 1);
+            CK(cudaMemcpyAsync(vc[l] + (size_t) p * HKV * kHeadDim, vsrc, (size_t) nc * HKV * kHeadDim * 4, cudaMemcpyDeviceToDevice, E.st));
+            return;
+        }
+        if (!ktmp) ktmp = dalloc((size_t) 64 * HKV * kHeadDim);
+        for (int c0 = 0; c0 < nc; c0 += 64) {
+            const int n = std::min(64, nc - c0);
+            k_head_prep<float><<<dim3((unsigned) HKV, (unsigned) n), kHeadDim, 0, E.st>>>(ksrc + (size_t) c0 * HKV * kHeadDim, kn, ktmp, HKV, E.m->n_rot, ts, E.m->eps, p + c0, 0);
+            k_ring_rows<<<grid1((int64_t) n * HKV * kHeadDim), kThreads, 0, E.st>>>(ktmp, kc[l], p + c0, n, ring, HKV * kHeadDim);
+            k_ring_rows<<<grid1((int64_t) n * HKV * kHeadDim), kThreads, 0, E.st>>>(vsrc + (size_t) c0 * HKV * kHeadDim, vc[l], p + c0, n, ring, HKV * kHeadDim);
+        }
     }
 
     void inject(Engine& E, int T, int pos0, int row0 = 0) {   // row0: the first of the T rows in E.feat (a batch step holds several sequences' windows)
@@ -2834,8 +3127,7 @@ struct Dspark {
                 const DL& y = ly[(size_t) l];
                 E.mmv(y.k.type, y.k.d, y.k.n_in, y.k.n_out, kraw, nc, dq8);
                 E.mmv(y.v.type, y.v.d, y.v.n_in, y.v.n_out, vraw, nc, dq8);
-                k_head_prep<float><<<dim3((unsigned) HKV, (unsigned) nc), kHeadDim, 0, E.st>>>(kraw, y.kn, kc[(size_t) l], HKV, E.m->n_rot, ts, E.m->eps, pos0 + g0, 1);
-                CK(cudaMemcpyAsync(vc[(size_t) l] + (size_t) (pos0 + g0) * HKV * kHeadDim, vraw, (size_t) nc * HKV * kHeadDim * 4, cudaMemcpyDeviceToDevice, E.st));
+                put_rows(E, (size_t) l, kraw, y.kn, vraw, pos0 + g0, nc, ts);
             }
         }
         inj_rows += T;
@@ -2863,7 +3155,7 @@ struct Dspark {
             k_head_prep<float><<<dim3((unsigned) H, (unsigned) R), kHeadDim, 0, E.st>>>(qraw, y.qn, qb, H, E.m->n_rot, ts, E.m->eps, n, 0);
             k_head_prep<float><<<dim3((unsigned) HKV, (unsigned) R), kHeadDim, 0, E.st>>>(kraw, y.kn, kbl, HKV, E.m->n_rot, ts, E.m->eps, n, 0);
             // only the last `window` cached keys are attended: the scores need no more than that (a full-context size broke the launch above 12K tokens)
-            k_dattn<<<dim3((unsigned) R, (unsigned) H), 128, (size_t) (std::min(n, window) + R + 8) * 4, E.st>>>(qb, kc[(size_t) l], vc[(size_t) l], kbl, vraw, n, R, H, HKV, window, att);
+            k_dattn<<<dim3((unsigned) R, (unsigned) H), 128, (size_t) (std::min(n, window) + R + 8) * 4, E.st>>>(qb, kc[(size_t) l], vc[(size_t) l], kbl, vraw, n, R, H, HKV, window, att, ring);
             qmm(E, y.o, att, ao, R);
             k_add<<<grid1((int64_t) R * N), kThreads, 0, E.st>>>(xb, ao, (int64_t) R * N);
             k_rms<<<(unsigned) R, kThreads, 0, E.st>>>(xb, y.fn, hb, N, E.m->eps);
@@ -2951,6 +3243,7 @@ int strata::minimax::run(int argc, char** argv) {
     bool interleave_pack = true, ignore_eos = false, preload_experts = strata_env_truthy_one("STRATA_M3_PRELOAD") != 0, pin_pack = true;
     int preload_threads = 16, cpu_threads = 35, admit = 2, runs = 1;
     int seqs_opt = 1;   // --seqs N: sequences a batch can hold (K/V reserved at start)
+    bool kv_host_opt = false, kv_fp8_opt = false;
     bool admit_freq = true, repl = false, route_renorm_opt = false, kv_f16_opt = strata_env_truthy_one("STRATA_M3_KV_F16") != 0;
     std::string spec_mode = "none", dspark_path;
     bool spec_given = false, draft_given = false;
@@ -2986,6 +3279,8 @@ int strata::minimax::run(int argc, char** argv) {
         else if (a == "--cpu-experts") cpu_experts = true;
         else if (a == "--repl") repl = true;
         else if (a == "--kv-f16") kv_f16_opt = true;
+        else if (a == "--kv-host") kv_host_opt = true;
+        else if (a == "--kv-fp8") kv_fp8_opt = true;
         else if (a == "--seqs") seqs_opt = std::max(1, std::atoi(next().c_str()));
         else if (a == "--dspark") dspark_path = next();
         else if (a == "--pf-gemm") pf_gemm_opt = true;
@@ -3106,6 +3401,16 @@ int strata::minimax::run(int argc, char** argv) {
     E.pf_gemm = pf_gemm_opt;
     E.pf_pre = pf_pre_opt;
     E.kv_half = kv_f16_opt;
+    if (kv_host_opt || kv_fp8_opt) {
+        if (!kv_f16_opt || seqs_opt > 1) {
+            std::fprintf(stderr, "strata-m3: --kv-host and --kv-fp8 need --kv-f16 and do not combine with --seqs\n");
+            return 2;
+        }
+        E.kv_host = kv_host_opt;
+        E.kv_fp8 = kv_fp8_opt;
+        if (kv_fp8_opt) std::fprintf(stderr, "strata-m3: K/V caches in FP8 (E4M3, a scale per position and head) in %s\n", kv_host_opt ? "pinned host memory" : "VRAM");
+        if (kv_host_opt) std::fprintf(stderr, "strata-m3: K/V caches in pinned host memory (indexer keys stay on the GPU)\n");
+    }
     E.nseq_reserve = seqs_opt;
     if (kv_f16_opt) std::fprintf(stderr, "strata-m3: K/V and indexer-key caches in FP16\n");
     E.init(m, ctx, chunk, expert_vram);
@@ -3173,6 +3478,7 @@ int strata::minimax::run(int argc, char** argv) {
     const int n_gen = rs.n_gen;
     // the cache (slots, LRU) carries over between runs; the counters and the position restart
     E.pos = 0;
+    E.bc_reset();
     E.hits = E.misses = 0;
     E.copy_bytes = E.copy_ms = 0;
     E.ph_sync = 0;
@@ -3430,6 +3736,9 @@ int strata::minimax::run(int argc, char** argv) {
 #endif
         std::printf("M3_DECODE_CACHE resident %lld of %lld expert uses (hit rate %.1f %%)\n", hit_n, all_n,
                     100.0 * (double) hit_n / (double) std::max<long long>(1, all_n));
+        if (E.bc_slots > 0)
+            std::printf("M3_KV_BCACHE selected blocks: %lld from VRAM, %lld through PCIe (%.1f %% hit), %lld blocks filled; %d slots\n", E.bc_hit, E.bc_miss,
+                        100.0 * (double) E.bc_hit / (double) std::max<long long>(1, E.bc_hit + E.bc_miss), E.bc_fill, E.bc_slots);
     }
     std::printf("M3_STATS prompt %zu tokens %.1f ms (%.2f tok/s, %lld expert copies %.2f GiB); decode %zu tokens "
                 "%.1f ms (%.3f tok/s); expert hits %lld misses %lld, copied %.2f GiB in %.1f ms host time\n",
