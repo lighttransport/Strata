@@ -11,53 +11,42 @@ Single-stream decode, measured vs model (verify window 4.1 rows, 3.8 tokens a st
   2     max        61.0    59.9   -1.9 %    63.5 ms
   one-GPU max-mode step by part (model): chain 27.9 ms, post-router 28.5 ms, lm_head 1.8 ms, draft 8.9 ms, host 2.1 ms
 
-Batched decode, PROJECTION (context 2048 a sequence; the engine runs one sequence of at most 8 rows today). Aggregate tok/s (per-sequence tok/s) at the best window length (rows/seq):
+Batched decode, max mode, one V100 (runb, different prompts, context 2048): measured against the model at the measured rows and tokens a step
+  B   rows  tok/seq-step  measured (tc / q8_1 matvecs)   model, engine as it is   + batched draft pass   + one attention launch for all   + 2 GPUs
+  1     4.1     3.70        55.5 /   55.5                53.9                  53.9                   53.9                     58.5
+  2     8.0     3.77        68.5 /   64.1                71.0                  75.8                   78.5                     86.5
+  4    11.6     2.74        70.5 /   66.2                74.0                  88.3                   96.3                    111.8
+  8    17.4     2.04        81.2 /   73.8                71.1                  94.7                  109.9                    135.7
 
-  dense matvecs as today (8 columns a launch), 1 GPU
-    B                         exact                      fast                       max
-    1         27 ( 27.0) T=4.1 h=55%     33 ( 33.4) T=4.1 h=59%     55 ( 55.2) T=4.1 h=84%
-    2         31 ( 15.6) T=4.1 h=52%     39 ( 19.5) T=4.1 h=57%     67 ( 33.5) T=4.1 h=81%
-    4         36 (  9.1) T=4.1 h=49%     45 ( 11.4) T=4.1 h=53%     82 ( 20.5) T=4.1 h=76%
-    8         39 (  4.9) T=4.1 h=40%     49 (  6.1) T=4.1 h=43%     90 ( 11.3) T=4.1 h=64%
-    16        44 (  2.8) T=4.1 h=34%     54 (  3.4) T=4.1 h=38%     97 (  6.1) T=4.1 h=58%
-    32        48 (  1.5) T=4.1 h=26%     58 (  1.8) T=4.1 h=29%    100 (  3.1) T=4.1 h=52%
+Batched decode, PROJECTION for all modes (4.1-row windows, context 2048; a batched draft pass and one attention launch for all sequences, tensor-core matvecs). Aggregate tok/s (per sequence):
 
-  dense matvecs as today (8 columns a launch), 2 GPUs
-    B                         exact                      fast                       max
-    1         38 ( 38.3) T=4.1 h=77%     46 ( 46.3) T=4.1 h=82%     60 ( 60.0) T=4.1 h=93%
-    2         46 ( 22.9) T=4.1 h=77%     56 ( 27.9) T=4.1 h=82%     70 ( 35.1) T=4.1 h=93%
-    4         53 ( 13.3) T=4.1 h=74%     66 ( 16.4) T=4.1 h=79%     86 ( 21.5) T=4.1 h=89%
-    8         58 (  7.3) T=4.1 h=69%     71 (  8.9) T=4.1 h=74%     97 ( 12.1) T=4.1 h=84%
-    16        62 (  3.9) T=4.1 h=63%     75 (  4.7) T=4.1 h=67%    104 (  6.5) T=4.1 h=77%
-    32        64 (  2.0) T=4.1 h=56%     76 (  2.4) T=4.1 h=59%    108 (  3.4) T=4.1 h=70%
+  1 GPU
+    B                     exact                  fast                   max
+    1          27 ( 27.0) h=55%      33 ( 33.4) h=59%      55 ( 55.2) h=84%
+    2          34 ( 16.8) h=52%      43 ( 21.3) h=57%      79 ( 39.3) h=81%
+    4          42 ( 10.4) h=49%      55 ( 13.6) h=53%     118 ( 29.4) h=76%
+    8          47 (  5.9) h=40%      62 (  7.8) h=43%     150 ( 18.8) h=64%
+    16         55 (  3.4) h=34%      72 (  4.5) h=38%     172 ( 10.8) h=58%
+    32         61 (  1.9) h=26%      79 (  2.5) h=29%     181 (  5.7) h=52%
 
-  + tensor-core dense path above 8 columns, 1 GPU
-    B                         exact                      fast                       max
-    1         27 ( 27.0) T=4.1 h=55%     33 ( 33.4) T=4.1 h=59%     55 ( 55.2) T=4.1 h=84%
-    2         34 ( 16.8) T=4.1 h=52%     43 ( 21.3) T=4.1 h=57%     79 ( 39.3) T=4.1 h=81%
-    4         42 ( 10.4) T=4.1 h=49%     54 ( 13.6) T=4.1 h=53%    117 ( 29.3) T=4.1 h=76%
-    8         47 (  5.9) T=4.1 h=40%     62 (  7.7) T=4.1 h=43%    150 ( 18.7) T=4.1 h=64%
-    16        55 (  3.4) T=4.1 h=34%     72 (  4.5) T=4.1 h=38%    172 ( 10.7) T=4.1 h=58%
-    32        61 (  1.9) T=4.1 h=26%     79 (  2.5) T=4.1 h=29%    180 (  5.6) T=4.1 h=52%
-
-  + tensor-core dense path above 8 columns, 2 GPUs
-    B                         exact                      fast                       max
-    1         38 ( 38.3) T=4.1 h=77%     46 ( 46.3) T=4.1 h=82%     60 ( 60.0) T=4.1 h=93%
-    2         51 ( 25.4) T=4.1 h=77%     64 ( 31.8) T=4.1 h=82%     87 ( 43.4) T=4.1 h=93%
-    4         66 ( 16.5) T=4.1 h=74%     86 ( 21.5) T=4.1 h=79%    140 ( 34.9) T=4.1 h=89%
-    8         78 (  9.8) T=4.1 h=69%    104 ( 13.0) T=4.1 h=74%    196 ( 24.5) T=4.1 h=84%
-    16        85 (  5.3) T=4.1 h=63%    112 (  7.0) T=4.1 h=67%    228 ( 14.3) T=4.1 h=77%
-    32        90 (  2.8) T=4.1 h=56%    116 (  3.6) T=4.1 h=59%    245 (  7.7) T=4.1 h=70%
+  2 GPUs
+    B                     exact                  fast                   max
+    1          38 ( 38.3) h=77%      46 ( 46.3) h=82%      60 ( 60.0) h=93%
+    2          51 ( 25.4) h=77%      64 ( 31.8) h=82%      87 ( 43.4) h=93%
+    4          66 ( 16.5) h=74%      86 ( 21.6) h=79%     140 ( 35.0) h=89%
+    8          79 (  9.8) h=69%     104 ( 13.0) h=74%     197 ( 24.7) h=84%
+    16         85 (  5.3) h=63%     112 (  7.0) h=67%     230 ( 14.3) h=77%
+    32         90 (  2.8) h=56%     117 (  3.7) h=59%     247 (  7.7) h=70%
 
 What a batch step is made of (max mode, tensor-core dense path, ms): B  rows  chain  post-router  head  draft  | CPU jobs/layer  hit
   1 GPU B=1    4.1   27.9   28.2   1.8    8.9  |  0.7   84 %
-  1 GPU B=4   16.4   58.5   55.2   2.3   11.6  |  2.3   76 %
-  1 GPU B=8   32.8   87.4   96.9   2.7   14.1  |  4.3   64 %
-  1 GPU B=16  65.6  163.1  164.1   5.4   19.7  |  6.9   58 %
+  1 GPU B=4   16.4   58.1   55.2   2.3   11.6  |  2.3   76 %
+  1 GPU B=8   32.8   86.6   96.9   2.7   14.1  |  4.3   64 %
+  1 GPU B=16  65.6  161.4  164.1   5.4   19.7  |  6.9   58 %
   2 GPU B=1    4.1   27.9   22.7   1.8    8.9  |  0.3   93 %
-  2 GPU B=4   16.4   58.5   34.3   2.3   11.6  |  1.0   89 %
-  2 GPU B=8   32.8   87.4   48.6   2.7   14.1  |  1.7   84 %
-  2 GPU B=16  65.6  163.1   76.3   5.4   19.7  |  2.8   77 %
+  2 GPU B=4   16.4   58.1   34.3   2.3   11.6  |  1.0   89 %
+  2 GPU B=8   32.8   86.6   48.6   2.7   14.1  |  1.7   84 %
+  2 GPU B=16  65.6  161.4   76.3   5.4   19.7  |  2.8   77 %
 
 Prefill: measured points vs the fitted model (one V100):
    6960 tokens  measured  14.2 s (  490 tok/s)  model  14.4 s (  484 tok/s)

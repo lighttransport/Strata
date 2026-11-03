@@ -519,6 +519,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/elementwise.cu
                           src/kernels/cuda/bf16_gemv.cu
                           src/kernels/cuda/native_mmvq.cu
+                          src/kernels/cuda/native_tc_mmvq.cu
                           src/kernels/cuda/native_bf16.cu
                           src/kernels/cuda/native_gr_norm.cu
                           src/kernels/cuda/native_moe.cu
@@ -1298,6 +1299,9 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   add_executable(dense_mmvq_bench src/kernels/dense_mmvq_bench.cpp)
   target_include_directories(dense_mmvq_bench PRIVATE ${_strata_gpu_include_directories})
   target_link_libraries(dense_mmvq_bench PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+  add_executable(tc_mmvq_test src/kernels/tc_mmvq_test.cpp)
+  target_include_directories(tc_mmvq_test PRIVATE ${_strata_gpu_include_directories})
+  target_link_libraries(tc_mmvq_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
   add_executable(minimax_msa_bench src/kernels/minimax_msa_bench.cpp)
   target_include_directories(minimax_msa_bench PRIVATE ${_strata_gpu_include_directories})
   target_link_libraries(minimax_msa_bench PRIVATE strata_kernels ${_strata_gpu_runtime_target})

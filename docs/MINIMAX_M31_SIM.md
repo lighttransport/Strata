@@ -655,3 +655,45 @@ Many short prompts in one chunk share one pass over the pack: 1 x 210 tokens 22 
 Not measured: the split of the 14.2 s between GPU work and waiting for the stream (the model assumes 10 s of GPU work); a profile of
 `--pf-gemm --pf-prefetch` would pin the fixed cost and the overlap down. Forecasts in this family of models have been several tok/s off on
 GLM; treat the batched and prefill rows as ranges, not promises.
+
+## Batched decode: the multi-sequence engine and the weights-once kernel (measured 2026-11-03, one V100)
+
+**What exists.** `strata-m3 --seqs N` reserves K/V for N sequences (before the expert slots are sized: each costs 154 KB a context token) and the REPL command
+`runb prompts=a.ids,b.ids,... n=200 draft=6 [topk=2 missk=0 ...]` prefills each prompt on its own (exact routing), warms the expert cache once from all of
+them, then decodes them together: every step drafts per sequence (DSpark, one pass each), runs the windows of all active sequences as ONE forward
+(`forward_multi`: the dense projections, router and experts shared over all rows, the attention per sequence on its own K/V and positions), and
+verifies each sequence on its own rows. A batch step takes at most 32 rows (`kMaxWin`; a single sequence still takes 8: `win_cap`). A batch of one gives the
+single-sequence tokens exactly (exact routing, `admit=0`: hash bdf2ef0a both; 21.98 against 21.90 tok/s), and two copies of one prompt give that prompt's tokens in both
+sequences (30.4 against 22.0 tok/s aggregate). Not done: prefill of several prompts as one chunk, a batched draft pass, sequences of different lengths in one K/V
+allocation, `runb` on two GPUs (untested).
+
+**The weights-once kernel** (`src/kernels/cuda/native_tc_mmvq.cu`, test `tc_mmvq_test`): Q4_K / Q5_K / Q6_K blocks are decoded to fp16 in shared memory and
+multiplied on tensor cores (WMMA 32x8x16, up to 64 columns in one pass over the weights); the activations are fp16 and the sums fp32, so the results are not bitwise
+those of the q8_1 kernel (every output within 0.5 % of the largest value, 0.03 of the rms) and it is used only for batch steps of more than 8 rows. Microseconds a call:
+
+| columns | q (Q5_K 6144x8192) | o (8192x6144) | shared gate (6144x3072) | lm_head (Q4_K 200064 rows) | q with the 8-column launches (engine settings) |
+|---|---|---|---|---|---|
+| 8 | 118 | 115 | 57 | 1860 | 138 |
+| 16 | 158 | 147 | 74 | 2594 | 276 |
+| 32 | 267 | 216 | 111 | 4088 | 552 |
+| 64 | 378 | 477 | 187 | 7062 | 1104 |
+
+It is not flat in the columns (the activation fragments come from global memory and the 4 warps take turns): about 117 us at 8 columns, the q matrix at 300 GB/s
+effective, 2-3 times faster than the launches above 16 columns, and the lm_head 3x at 32 columns. A shared-memory staging of the activation tile is the obvious next step.
+
+**Batched decode, `--speed max` settings, DSpark, different prompts, context 2048, 200 tokens a sequence** (aggregate tok/s; one run each):
+
+| sequences | rows a step | tok/s with the weights-once kernel | tok/s with 8-column launches | per sequence | forward ms / draft ms a step |
+|---|---|---|---|---|---|
+| 1 | 4.1 | 55.5 | 55.5 | 55.5 | 57.8 / 8.8 |
+| 2 | 8.0 | 68.5 | 64.1 | 34.2 | 92.6 / 17.5 |
+| 4 | 11.6 | 70.5 | 66.2 | 17.6 | 125.6 / 29.5 |
+| 8 (3 drafts) | 17.4 | 81.2 | 73.8 | 10.2 | 164.1 / 36.7 |
+
+Exact routing, 4 sequences: 29.9 (weights-once) and 28.4 tok/s; the batch is bound by the CPU lane there (hit rate 48 %, 354 ms a forward). The simulator had projected
+82 / 117 for 4 sequences and 90 / 150 for 8 (8-column launches / weights-once): too optimistic because it assumed one attention launch for all sequences and a batched
+draft pass. The engine runs the draft once per sequence (7.3-7.5 ms each, 37 ms of a 200 ms step at 8 sequences) and launches the attention kernels per sequence
+(refit: 90 us a sequence and layer beyond the first, 12 kernels). The fitted model (`tools/minimax_m31_fit.py`, measured against model per row) reproduces the batches
+to within 7 % up to 4 sequences (8 sequences: model 71, measured 81) and says what the next two engine changes are worth at 4 / 8 sequences (aggregate tok/s):
+a batched draft pass 88 / 95, plus one attention launch for all sequences 96 / 110, plus a second GPU 112 / 136. The longer-run table of the projection (steady state,
+3.8 tokens a sequence step, which the 4-sequence run does not reach because its sequences finish at different steps) is in `docs/benchmarks/minimax_m31_sim_20261103/fit.txt`.

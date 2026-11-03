@@ -3,54 +3,405 @@
  "notes": "Measured on strata-m3 (UD-Q2_K_XL, one or two Tesla V100 PCIe 32GB, 2 x Xeon Gold 6240, 124.7 GiB pack in pinned RAM, --dspark --kv-f16), 2026-11-02/03. Every number below is a measurement; 'derived' marks arithmetic on measurements. Source tables: docs/MINIMAX_M31_SIM.md. Single runs unless a count is given.",
  "dense_matvec_us": {
   "note": "dense_mmvq_bench (tools: src/kernels/dense_mmvq_bench.cpp), engine defaults (one row per block, transposed reduction), microseconds per call for 1..8 columns; weight bytes derived from the tensor shapes",
-  "q":    {"type": "Q5_K", "n_in": 6144, "n_out": 8192, "us": [49.8, 60.6, 71.4, 85.4, 99.5, 116.5, 127.1, 138.0]},
-  "kv":   {"type": "Q6_K", "n_in": 6144, "n_out": 512,  "us": [7.1, 8.0, 9.1, 10.3, 11.3, 12.4, 13.3, 15.8]},
-  "o":    {"type": "Q5_K", "n_in": 8192, "n_out": 6144, "us": [52.1, 58.1, 66.1, 77.2, 90.4, 111.5, 123.8, 135.1]},
-  "shg":  {"type": "Q5_K", "n_in": 6144, "n_out": 3072, "us": [21.3, 24.9, 28.6, 33.3, 38.3, 46.6, 50.7, 54.9]},
-  "head": {"type": "Q4_K", "n_in": 6144, "n_out": 200064, "us": [899.1, 1160.8, 1428.0, 1741.1, 2063.4, 2516.0, 2816.6, 3090.9]}
+  "q": {
+   "type": "Q5_K",
+   "n_in": 6144,
+   "n_out": 8192,
+   "us": [
+    49.8,
+    60.6,
+    71.4,
+    85.4,
+    99.5,
+    116.5,
+    127.1,
+    138.0
+   ]
+  },
+  "kv": {
+   "type": "Q6_K",
+   "n_in": 6144,
+   "n_out": 512,
+   "us": [
+    7.1,
+    8.0,
+    9.1,
+    10.3,
+    11.3,
+    12.4,
+    13.3,
+    15.8
+   ]
+  },
+  "o": {
+   "type": "Q5_K",
+   "n_in": 8192,
+   "n_out": 6144,
+   "us": [
+    52.1,
+    58.1,
+    66.1,
+    77.2,
+    90.4,
+    111.5,
+    123.8,
+    135.1
+   ]
+  },
+  "shg": {
+   "type": "Q5_K",
+   "n_in": 6144,
+   "n_out": 3072,
+   "us": [
+    21.3,
+    24.9,
+    28.6,
+    33.3,
+    38.3,
+    46.6,
+    50.7,
+    54.9
+   ]
+  },
+  "head": {
+   "type": "Q4_K",
+   "n_in": 6144,
+   "n_out": 200064,
+   "us": [
+    899.1,
+    1160.8,
+    1428.0,
+    1741.1,
+    2063.4,
+    2516.0,
+    2816.6,
+    3090.9
+   ]
+  }
  },
- "tensor_core_matvec_prototype_us": {"note": "WMMA Q5_K prototype, q shape, flat in the column count", "q": 115.0},
+ "tensor_core_matvec_prototype_us": {
+  "note": "WMMA Q5_K prototype, q shape, flat in the column count",
+  "q": 115.0
+ },
  "step_profile_max_mode_one_gpu": {
   "note": "STRATA_M3_PROF=3, dijkstra prompt, --speed max, 79 verify steps of 4.1 rows on average, 3.8 tokens per step, before the side-stream change (ms per step unless noted)",
   "layers": 57,
   "rows_per_step": 4.1,
   "tokens_per_step": 3.8,
   "gpu_chain_to_router_ms": 28.1,
-  "chain_parts_ms": {"qkv_matvecs": 9.6, "o_proj": 5.6, "msa_sparse_attention": 5.4, "msa_block_scores": 1.25, "msa_select": 0.55, "qk_norm_rope_kv": 0.9, "ffn_norm": 1.1, "layer_start": 1.2, "router": 2.4, "indexer": 0.2},
-  "post_router_ms": {"shared_expert": 7.2, "resident_experts_8_kernels_sequential": 18.6, "resident_experts_5_kernels": 15.8, "resident_experts_4_side_streams": 5.8, "cpu_wait": 7.0, "combine": 3.2},
-  "draft_pass_ms": {"rows": 6, "layers": 4.44, "norm_lm_head": 2.48, "markov_argmax_conf_before": 2.31, "markov_argmax_conf_after": 1.48, "total_after": 8.9},
+  "chain_parts_ms": {
+   "qkv_matvecs": 9.6,
+   "o_proj": 5.6,
+   "msa_sparse_attention": 5.4,
+   "msa_block_scores": 1.25,
+   "msa_select": 0.55,
+   "qk_norm_rope_kv": 0.9,
+   "ffn_norm": 1.1,
+   "layer_start": 1.2,
+   "router": 2.4,
+   "indexer": 0.2
+  },
+  "post_router_ms": {
+   "shared_expert": 7.2,
+   "resident_experts_8_kernels_sequential": 18.6,
+   "resident_experts_5_kernels": 15.8,
+   "resident_experts_4_side_streams": 5.8,
+   "cpu_wait": 7.0,
+   "combine": 3.2
+  },
+  "draft_pass_ms": {
+   "rows": 6,
+   "layers": 4.44,
+   "norm_lm_head": 2.48,
+   "markov_argmax_conf_before": 2.31,
+   "markov_argmax_conf_after": 1.48,
+   "total_after": 8.9
+  },
   "between_steps_host_and_head_ms": 11.0,
   "cpu_expert_ms_per_job": 0.29,
-  "window_layer_host_ms": {"filter_shared": 0.014, "jobs_classify": 0.003, "cpu_quant_start": 0.020, "gpu_enqueue": 0.063, "gu_join": 0.122, "quant_h_down": 0.100, "accumulate_add": 0.010}
+  "window_layer_host_ms": {
+   "filter_shared": 0.014,
+   "jobs_classify": 0.003,
+   "cpu_quant_start": 0.02,
+   "gpu_enqueue": 0.063,
+   "gu_join": 0.122,
+   "quant_h_down": 0.1,
+   "accumulate_add": 0.01
+  }
  },
- "expert_bytes": {"routed_mb": 18.14, "slot_mib_small": 17.3, "experts_per_layer": 128, "top_k": 4, "moe_layers": 57, "pack_gib": 124.7},
+ "expert_bytes": {
+  "routed_mb": 18.14,
+  "slot_mib_small": 17.3,
+  "experts_per_layer": 128,
+  "top_k": 4,
+  "moe_layers": 57,
+  "pack_gib": 124.7
+ },
  "union_law": {
   "note": "distinct experts per layer for T consecutive tokens of one sequence = top_k * T * rho(T); from STRATA_M3_ROUTE_TRACE (route-short exact top-4, route-code top-3: the same ratios)",
-  "T": [1, 2, 4, 6, 8, 16], "rho": [1.0, 0.86, 0.74, 0.67, 0.61, 0.475],
-  "cross_sequence_ratio": {"note": "unique experts of B windows of 4 tokens taken from different parts of the trace, divided by B times one window", "B": [1, 2, 3, 4], "ratio": [1.0, 0.83, 0.75, 0.66]}
+  "T": [
+   1,
+   2,
+   4,
+   6,
+   8,
+   16
+  ],
+  "rho": [
+   1.0,
+   0.86,
+   0.74,
+   0.67,
+   0.61,
+   0.475
+  ],
+  "cross_sequence_ratio": {
+   "note": "unique experts of B windows of 4 tokens taken from different parts of the trace, divided by B times one window",
+   "B": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "ratio": [
+    1.0,
+    0.83,
+    0.75,
+    0.66
+   ]
+  }
  },
  "cache_hit_unique_experts": {
   "note": "tools/minimax_cache_policy_sim.py, freq policy, admit 2, route-code trace, B pseudo-sequences (the trace at B offsets) as windows of 4 tokens; hit rate per distinct expert per layer",
-  "slots_1100": {"B": [1, 2, 4, 8], "hit": [0.447, 0.433, 0.408, 0.343]},
-  "slots_2800": {"B": [1, 2, 4, 8], "hit": [0.712, 0.709, 0.684, 0.647]}
+  "slots_1100": {
+   "B": [
+    1,
+    2,
+    4,
+    8
+   ],
+   "hit": [
+    0.447,
+    0.433,
+    0.408,
+    0.343
+   ]
+  },
+  "slots_2800": {
+   "B": [
+    1,
+    2,
+    4,
+    8
+   ],
+   "hit": [
+    0.712,
+    0.709,
+    0.684,
+    0.647
+   ]
+  }
  },
  "decode_anchors_tok_s": {
   "note": "mean of two runs per prompt (dijkstra / lru_cache), 200 new tokens (300 in max-mode); speculation on (DSpark, draft 6, pmin 0.7); final code",
-  "one_gpu":  {"exact": [27.0, 25.8], "fast": [32.9, 33.3], "max": [56.7, 55.5]},
-  "two_gpu":  {"exact": [38.8, 38.7], "fast": [46.7, 46.8], "max": [62.7, 59.3]},
-  "slots": {"one_gpu": 1100, "two_gpu": 2900},
-  "use_hit_rate": {"one_gpu": {"exact": 0.534, "fast": 0.581, "max": 0.837}, "two_gpu": {"exact": 0.77, "fast": 0.82, "max": 0.93}},
-  "tokens_per_step": {"exact": 3.92, "fast": 3.9, "max": 3.8},
-  "plain_decode_no_speculation": {"older_build_one_gpu": 16.0, "note": "210-token prompt, exact routing, --preload-experts --cpu-experts; before FP16 K/V, DSpark and the later kernels"}
+  "one_gpu": {
+   "exact": [
+    27.0,
+    25.8
+   ],
+   "fast": [
+    32.9,
+    33.3
+   ],
+   "max": [
+    56.7,
+    55.5
+   ]
+  },
+  "two_gpu": {
+   "exact": [
+    38.8,
+    38.7
+   ],
+   "fast": [
+    46.7,
+    46.8
+   ],
+   "max": [
+    62.7,
+    59.3
+   ]
+  },
+  "slots": {
+   "one_gpu": 1100,
+   "two_gpu": 2900
+  },
+  "use_hit_rate": {
+   "one_gpu": {
+    "exact": 0.534,
+    "fast": 0.581,
+    "max": 0.837
+   },
+   "two_gpu": {
+    "exact": 0.77,
+    "fast": 0.82,
+    "max": 0.93
+   }
+  },
+  "tokens_per_step": {
+   "exact": 3.92,
+   "fast": 3.9,
+   "max": 3.8
+  },
+  "plain_decode_no_speculation": {
+   "older_build_one_gpu": 16.0,
+   "note": "210-token prompt, exact routing, --preload-experts --cpu-experts; before FP16 K/V, DSpark and the later kernels"
+  }
  },
  "prefill": {
   "note": "6960-token prompt, one 7168-token chunk, --pf-gemm --pf-prefetch --kv-f16, one V100; time in seconds",
-  "tok_s": {"512_default": 30.6, "chunk_4096": 102.3, "one_chunk_7168": 153, "final": 490},
+  "tok_s": {
+   "512_default": 30.6,
+   "chunk_4096": 102.3,
+   "one_chunk_7168": 153,
+   "final": 490
+  },
   "final_s": 14.2,
-  "cublas_s": 5.4, "dequant_s": 1.7, "cublas_tflops": 70,
+  "cublas_s": 5.4,
+  "dequant_s": 1.7,
+  "cublas_tflops": 70,
   "pack_stream_s_at_12_3_gbs": 10.9,
-  "short_prompts_tok_s": {"210": 22.8, "487": 38.6},
+  "short_prompts_tok_s": {
+   "210": 22.8,
+   "487": 38.6
+  },
   "pinned_h2d_gbs": 12.3,
   "two_gpu_pinned_h2d_gbs_each": 12.3
+ },
+ "batched_decode_measured": {
+  "note": "strata-m3 runb (--seqs 8, context 2048, different prompts, --speed max settings topk=2 missk=0, DSpark, one V100); aggregate tok/s over the batch, 200 new tokens a sequence; rows = verify rows a step in all, tokens = tokens a sequence step; 'tc' = the weights-once tensor-core matvec for steps of more than 8 rows, 'q8' = the 8-column launches",
+  "max_mode_one_gpu": [
+   {
+    "B": 1,
+    "draft": 6,
+    "rows": 4.07,
+    "tokens_per_seq_step": 3.7,
+    "tok_s_tc": 55.5,
+    "tok_s_q8": 55.5,
+    "forward_ms_tc": 57.83,
+    "draft_ms_step_tc": 8.81
+   },
+   {
+    "B": 2,
+    "draft": 6,
+    "rows": 8.02,
+    "tokens_per_seq_step": 3.77,
+    "tok_s_tc": 68.5,
+    "tok_s_q8": 64.1,
+    "forward_ms_tc": 92.56,
+    "draft_ms_step_tc": 17.53
+   },
+   {
+    "B": 4,
+    "draft": 6,
+    "rows": 11.64,
+    "tokens_per_seq_step": 2.74,
+    "tok_s_tc": 70.5,
+    "tok_s_q8": 66.2,
+    "forward_ms_tc": 125.63,
+    "draft_ms_step_tc": 29.52
+   },
+   {
+    "B": 8,
+    "draft": 3,
+    "rows": 17.36,
+    "tokens_per_seq_step": 2.04,
+    "tok_s_tc": 81.2,
+    "tok_s_q8": 73.8,
+    "forward_ms_tc": 164.13,
+    "draft_ms_step_tc": 36.74
+   }
+  ],
+  "exact_one_gpu": [
+   {
+    "B": 4,
+    "draft": 6,
+    "rows": 12.3,
+    "tokens_per_seq_step": 2.86,
+    "tok_s_tc": 29.9,
+    "tok_s_q8": 28.4,
+    "forward_ms_tc": 353.56
+   }
+  ],
+  "single_vs_batch_of_one": "a batch of one gives the single-sequence tokens exactly (exact routing, admit=0: bdf2ef0a both) at the same speed (21.98 vs 21.90 tok/s)",
+  "two_identical_prompts": "a batch of two copies of one prompt gives that prompt's tokens in both sequences; 30.4 vs 22.0 tok/s aggregate (exact routing, admit=0)"
+ },
+ "tensor_core_matvec_us": {
+  "note": "tc_mmvq_test, fp16 weights/activations, fp32 accumulate; q8 column = the existing kernel at the test's default settings (two rows a block), 8 columns a launch",
+  "q": {
+   "cols": [
+    1,
+    8,
+    16,
+    32,
+    64
+   ],
+   "tc": [
+    116.9,
+    118.1,
+    157.5,
+    266.8,
+    377.6
+   ]
+  },
+  "o": {
+   "cols": [
+    1,
+    8,
+    16,
+    32,
+    64
+   ],
+   "tc": [
+    113.8,
+    114.9,
+    147.3,
+    216.2,
+    476.9
+   ]
+  },
+  "shg": {
+   "cols": [
+    1,
+    8,
+    16,
+    32,
+    64
+   ],
+   "tc": [
+    56.2,
+    56.7,
+    74.2,
+    111.1,
+    186.7
+   ]
+  },
+  "head": {
+   "cols": [
+    1,
+    8,
+    16,
+    32,
+    64
+   ],
+   "tc": [
+    1756,
+    1860,
+    2594,
+    4088,
+    7062
+   ]
+  },
+  "max_error_vs_q8_1_kernel": "0.03 of the rms of the outputs (0.5 % of the largest value)"
  }
 }

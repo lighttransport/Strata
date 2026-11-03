@@ -2353,7 +2353,8 @@ bool native_swiglu_oai_quantize_exact() noexcept {
 void native_swiglu_oai_quantize_q8_1(const float* gate, const float* up, long ld, void* x_q8_1, int n_in, int ncols,
                                      float alpha, float limit, void* stream) {
 #if !defined(__HIP_PLATFORM_AMD__)
-    validate_shape(n_in, ncols);
+    validate_shape(n_in, 1);   // the columns are quantized as one vector of ncols * n_in values: any count
+    if (ncols < 1) throw std::invalid_argument("native_swiglu_oai_quantize_q8_1: ncols < 1");
     validate_pointer(gate);
     validate_pointer(up);
     validate_pointer(x_q8_1);

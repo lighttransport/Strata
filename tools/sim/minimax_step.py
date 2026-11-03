@@ -95,7 +95,9 @@ class Params:
     # measured decomposition of the one-GPU max-mode step (docs table), per layer, microseconds
     dense_scale: float = 1.41          # (measured qkv + o time) / (matvec bench at the same columns): quantize, launches, gaps
     shared_scale: float = 1.12         # same for the shared expert's three matvecs
-    msa_seq_us: float = 32.0           # block scores + select per sequence (kernel launches do not batch across sequences)
+    msa_seq_us: float = 32.0           # block scores + select of the first sequence of a step
+    msa_extra_seq_us: float = 90.0     # each further sequence of a batch step: its own attention launches (fitted on the measured batches; 30 with one launch for all)
+    draft_batched: bool = False        # the draft pass of all sequences as one pass (the engine runs one pass per sequence)
     msa_row_us: float = 23.2           # sparse attention per row (5.4 ms / 57 / 4.1)
     layer_fix_us: float = 100.0        # norms, rope, router, indexer, layer start
     job_us_seq: float = 62.0           # one resident expert job (5 kernels), one stream
@@ -172,7 +174,7 @@ def step_ms(mode, gpus, B, T, p, tensor_core=False, streams=True, detail=False, 
     k = TOP_K[mode]
     # --- GPU chain to the router
     dense = p.dense_scale * (best_us("q", N, tensor_core) + 2 * best_us("kv", N, tensor_core) + best_us("o", N, tensor_core))
-    chain = dense + B * p.msa_seq_us + p.msa_row_us * N + p.layer_fix_us
+    chain = dense + p.msa_seq_us + (B - 1) * p.msa_extra_seq_us + p.msa_row_us * N + p.layer_fix_us
     # --- experts
     h, slots = hits(mode, gpus, B, p, ctx)
     key = "two_gpu" if gpus == 2 else "one_gpu"
@@ -199,11 +201,12 @@ def step_ms(mode, gpus, B, T, p, tensor_core=False, streams=True, detail=False, 
         cpu_us = p.cpu_layer_us + jobs_cpu * p.cpu_job_us + max(0.0, uses_cpu - jobs_cpu) * p.cpu_token_us
     post = p.host_pre_us + max(shared + gpu_jobs_us, cpu_us) + p.combine_us
     head = best_us("head", N, tensor_core)
-    ms = L * (chain + post) / 1000.0 + head / 1000.0 + draft_ms(p.draft_rows, B, p, tensor_core) + p.host_ms
+    draft = draft_ms(p.draft_rows, B, p, tensor_core) if p.draft_batched else B * draft_ms(p.draft_rows, 1, p, False)
+    ms = L * (chain + post) / 1000.0 + head / 1000.0 + draft + p.host_ms
     if detail:
         return ms, dict(chain_us=chain, dense_us=dense, post_us=post, shared_us=shared, gpu_jobs_us=gpu_jobs_us, cpu_us=cpu_us,
-                        jobs_cpu=jobs_cpu, jobs_gpu=jobs_gpu, hit=h, slots=slots, head_ms=head / 1000.0,
-                        draft_ms=draft_ms(p.draft_rows, B, p, tensor_core), union=uni)
+                        jobs_cpu=jobs_cpu, jobs_gpu=jobs_gpu, hit=h, slots=slots, draft_ms_total=draft, head_ms=head / 1000.0,
+                        draft_ms=draft, union=uni)
     return ms
 
 

@@ -30,6 +30,7 @@
 #include "strata/kernels/iq_kernels.hpp"
 #include "strata/kernels/minimax_msa.hpp"
 #include "strata/kernels/native_mmvq.hpp"
+#include "strata/kernels/native_tc_mmvq.hpp"
 #include "strata/minimax/engine.hpp"
 #if defined(STRATA_M3_CPU_POOL)
 #include "strata/kernels/cpu/native_expert.hpp"
@@ -43,6 +44,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -93,7 +95,8 @@ constexpr auto kGemmAlgo = CUBLAS_GEMM_DEFAULT_TENSOR_OP;
 constexpr int kThreads = 256;
 constexpr int kHeadDim = 128;
 constexpr int kMaxExperts = 512;
-constexpr int kMaxWin = 8;   // tokens of a decode / verify window
+constexpr int kMaxWin = 32;   // array size for the rows of a decode window: one sequence's verify window (win_cap, 8) or a batch of sequences' windows
+constexpr int kWinDef = 8;    // the verify window of one sequence: 1 + at most 7 drafted tokens (the draft head's block)
 const char* const kArch = "minimax-m3.";
 
 // ------------------------------------------------------------------------------------------------ small kernels
@@ -188,7 +191,7 @@ __global__ void k_gather_q8(const uint8_t* src, uint8_t* dst, int bytes, RowIdx 
 /// The resident experts of a layer, each with its own output rows (job j's entry i = row i of eo + j * eo_stride): the adds into
 /// `moe` in job order, entry order within a job - the same sequence of operations on every element as the one-job-at-a-time
 /// k_scatter_add_i calls (a token is in a job at most once)
-constexpr int kJobMax = 16;   // jobs one k_scatter_jobs launch adds (its argument struct is passed by value)
+constexpr int kJobMax = 8;    // jobs one k_scatter_jobs launch adds (its argument struct is passed by value)
 constexpr int kJobCap = 64;   // top_k x kMaxWin: every distinct expert a window layer can need
 struct JobList { int n; int nt[kJobMax]; int tok[kJobMax][kMaxWin]; float w[kJobMax][kMaxWin]; const float* eo[kJobMax]; };
 __global__ void k_scatter_jobs(float* moe, int N, JobList jl) {
@@ -893,6 +896,13 @@ template <class T> T* dalloc_t(size_t n) {
     return p;
 }
 
+/// One sequence of a batch: its target K/V and indexer-key caches per layer, the draft head's context caches per layer, and its next position.
+/// Sequence 0 of a batch is the engine's own caches (a view of the same pointers); the others are allocated at start (--seqs N).
+struct KvSet {
+    std::vector<float*> kc, vc, ikc, dkc, dvc;
+    int pos = 0;
+};
+
 struct Engine {
     const Model* m = nullptr;
     cudaStream_t st = nullptr;
@@ -1021,7 +1031,19 @@ struct Engine {
     int32_t* d_arg = nullptr;    // argmax of the logits, on the device and pinned on the host
     int32_t* p_arg = nullptr;   // kMaxWin argmax results (pinned)
     int arg_rows[kMaxWin] = {};
-    // lossy decode levers (T <= kMaxWin only; the prompt's prefill stays exact): keep at most route_topk of the router's
+    int nseq_reserve = 1;    // --seqs N: K/V caches for N - 1 more sequences, allocated before the expert slots are sized
+    std::vector<std::unique_ptr<KvSet>> extra_seq;
+    int32_t* qpos_h = nullptr;   // pinned staging of the rows' positions for a batch of sequences
+    // the weights-once tensor-core matvec (native_tc_mmvq) for the dense projections of a batch step with more than 8 rows; fp16 activations, so not
+    // bitwise the q8_1 matvec's results (STRATA_M3_TC=0 keeps the 8-column launches)
+    void* x16buf = nullptr;      // [kMaxWin][widest input] fp16
+    bool tc_env = strata_env_truthy_default("STRATA_M3_TC", 1) != 0;
+    bool tc_on = false;          // set by forward_multi for the steps it applies to
+    void tc_convert(const float* xin, int n_in, int T) { K::native_f32_to_f16(xin, x16buf, (int64_t) T * n_in, st); }
+    bool tc_ok(const Mat& w, int T) const { return tc_on && T > 8 && K::native_tc_mmvq_supported(w.type, w.n_in, w.n_out, T); }
+    void tc_run(const Mat& w, float* out, int T) { K::native_tc_mmvq(w.type, w.d, x16buf, out, w.n_in, w.n_out, T, st); }
+    int win_cap = kWinDef;   // rows up to which a forward takes the decode lane (the lossy levers, the CPU lane); a batch of sequences raises it to kMaxWin
+    // lossy decode levers (T <= win_cap only; the prompt's prefill stays exact): keep at most route_topk of the router's
     // experts per token, drop those below route_min_w times the token's largest weight, optionally rescale the rest
     int route_topk = 4;
     // residency-aware lever (REPL keys missk= / missw=): only experts that are NOT resident in VRAM cost CPU time, so only
@@ -1448,7 +1470,7 @@ struct Engine {
         k_add<<<grid1(N), kThreads, 0, st>>>(x, moe, N);
     }
 
-    /// The routed experts of a window of T tokens (2 <= T <= kMaxWin): the same split as the single-token lane, per
+    /// The routed experts of a window of T tokens (2 <= T <= win_cap): the same split as the single-token lane, per
     /// distinct expert of the union.  Resident experts run on the GPU over the tokens routed to them (gather, three matvecs,
     /// scatter-add); the others on the CPU with the multi-token row kernels, each token's activation quantized once.
     void moe_cpu_lane_multi(const Layer& L, int l, int T) {
@@ -1531,7 +1553,9 @@ struct Engine {
             bool woke[4] = {}, woke1[4] = {}, used1[4] = {};
             int n0 = 0, n1 = 0;
             auto mmv_on = [&](cudaStream_t sj, int type, const void* w, int n_in, int n_out, float* out, int nt, const void* qq) {
-                K::native_mmvq(type, w, qq, out, n_in, n_out, nt, sj);
+                const size_t qb8 = K::native_q8_1_bytes(n_in, 1);
+                for (int c0 = 0; c0 < nt; c0 += 8)   // at most 8 columns a launch (a job of a batch step can have more tokens)
+                    K::native_mmvq(type, w, (const char*) qq + (size_t) c0 * qb8, out + (size_t) c0 * n_out, n_in, n_out, std::min(8, nt - c0), sj);
             };
             JobList jls[kJobCap / kJobMax] = {};
             for (size_t jx = 0; jx < gpu_jobs.size(); ++jx) {
@@ -1807,6 +1831,30 @@ struct Engine {
                 ikc.push_back(dalloc((size_t) ctx * kHeadDim));
             }
         }
+        CK(cudaHostAlloc((void**) &qpos_h, kMaxWin * 4, 0));
+        {
+            const size_t widest = std::max<size_t>(std::max<size_t>(QD, N), WF);
+            CK(cudaMalloc(&x16buf, (size_t) kMaxWin * widest * 2));
+            CK(cudaMemset(x16buf, 0, (size_t) kMaxWin * widest * 2));
+        }
+        for (int i = 1; i < nseq_reserve; ++i) {   // the other sequences of a batch
+            auto q = std::make_unique<KvSet>();
+            for (int l = 0; l < mm.n_layers; ++l) {
+                if (kv_half) {
+                    q->kc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * KD)));
+                    q->vc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * KD)));
+                    q->ikc.push_back(reinterpret_cast<float*>(dalloc_t<uint16_t>((size_t) (ctx + 128) * kHeadDim)));
+                    CK(cudaMemset(q->ikc.back(), 0, (size_t) (ctx + 128) * kHeadDim * 2));
+                    CK(cudaMemset(q->kc.back(), 0, (size_t) (ctx + 128) * KD * 2));
+                    CK(cudaMemset(q->vc.back(), 0, (size_t) (ctx + 128) * KD * 2));
+                } else {
+                    q->kc.push_back(dalloc((size_t) ctx * KD));
+                    q->vc.push_back(dalloc((size_t) ctx * KD));
+                    q->ikc.push_back(dalloc((size_t) ctx * kHeadDim));
+                }
+            }
+            extra_seq.push_back(std::move(q));
+        }
         // the slot cache from the VRAM left (or --expert-vram GiB)
         size_t min_blob = SIZE_MAX, max_blob = 0;
         int n_big_layers = 0;
@@ -1975,7 +2023,7 @@ struct Engine {
         auto pmark = [&](const char* name) {
             gmark(name);
             if (g_prof.on) { g_prof.add(name, ms_since(pt)); pt = Clock::now(); }
-            if (pfprof && T > kMaxWin) {   // prefill: device time per phase (syncs)
+            if (pfprof && T > win_cap) {   // prefill: device time per phase (syncs)
                 CK(cudaStreamSynchronize(st));
                 const auto n = Clock::now();
                 for (auto& a : pf_marks) if (a.first == name) { a.second += std::chrono::duration<double, std::milli>(n - pt_mark).count(); pt_mark = n; return; }
@@ -1983,7 +2031,7 @@ struct Engine {
                 pt_mark = n;
             }
         };
-        if (pfprof && T > kMaxWin) { CK(cudaStreamSynchronize(st)); pt_mark = Clock::now(); }
+        if (pfprof && T > win_cap) { CK(cudaStreamSynchronize(st)); pt_mark = Clock::now(); }
         const bool fork = two_streams && T <= 8;
         if (fork) {   // the indexer's projections only need h: queue them on the second stream now
             CK(cudaEventRecord(ev_fork, st));
@@ -2056,6 +2104,74 @@ struct Engine {
         pmark("attn: o-proj + residual");
     }
 
+    // ---- a batch of sequences: the projections run once over every row, the attention per sequence (its own K/V, positions, indexer)
+    /// q / k / v projections and the indexer's projections of `rows` rows of h (rows of up to 8 for the indexer's warp-per-row kernel, as in a single window).
+    void attn_pre_rows(const Layer& L, int rows) {
+        const int N = m->N, IH = m->idx_heads;
+        if (tc_ok(L.wq, rows) && tc_ok(L.wk, rows) && tc_ok(L.wv, rows)) {
+            tc_convert(h, N, rows);
+            tc_run(L.wq, qraw, rows);
+            tc_run(L.wk, kraw, rows);
+            tc_run(L.wv, vraw, rows);
+        } else {
+            quant(h, N, rows);
+            mmv(L.wq, qraw, rows);
+            mmv(L.wk, kraw, rows);
+            mmv(L.wv, vraw, rows);
+        }
+        const int ID = IH * kHeadDim;
+        for (int c0 = 0; c0 < rows; c0 += 8) {
+            const int nc = std::min(8, rows - c0);
+            f32mm(L.iq_w, h + (size_t) c0 * N, iqraw + (size_t) c0 * ID, N, ID, nc);
+            f32mm(L.ik_w, h + (size_t) c0 * N, ikraw + (size_t) c0 * kHeadDim, N, kHeadDim, nc);
+        }
+    }
+
+    /// One sequence's rows [r0, r0 + T) at positions p0 ..: norms and rope, the K/V and indexer-key writes into ITS caches, block scores, selection and
+    /// the sparse attention (kernel for kernel the single-sequence attention(), on this slice of the rows).
+    void attn_seg_rows(const Layer& L, size_t li, int r0, int T, int p0, const std::vector<float*>& kcv, const std::vector<float*>& vcv,
+                       const std::vector<float*>& ikcv) {
+        const int H = m->H, HKV = m->HKV, IH = m->idx_heads;
+        const size_t QD = (size_t) H * kHeadDim, KD = (size_t) HKV * kHeadDim, ID = (size_t) IH * kHeadDim;
+        const float ts = powf(m->rope_base, -2.0f / (float) m->n_rot);
+        k_head_prep<float><<<dim3((unsigned) H, (unsigned) T), kHeadDim, 0, st>>>(qraw + r0 * QD, L.q_norm, qb + r0 * QD, H, m->n_rot, ts, m->eps, p0, 0);
+        cache_prep(st, kraw + r0 * KD, L.k_norm, kcv[li], HKV, T, ts, p0);
+        if (kv_half)
+            k_f32_to_f16<<<grid1((int64_t) T * KD), kThreads, 0, st>>>(vraw + r0 * KD, reinterpret_cast<__half*>(vcv[li]) + (size_t) p0 * KD, (int64_t) T * KD);
+        else
+            CK(cudaMemcpyAsync(vcv[li] + (size_t) p0 * KD, vraw + r0 * KD, (size_t) T * KD * 4, cudaMemcpyDeviceToDevice, st));
+        k_head_prep<float><<<dim3((unsigned) IH, (unsigned) T), kHeadDim, 0, st>>>(iqraw + r0 * ID, L.iq_norm, iqb + r0 * ID, IH, m->n_rot, ts, m->eps, p0, 0);
+        cache_prep(st, ikraw + (size_t) r0 * kHeadDim, L.ik_norm, ikcv[li], 1, T, ts, p0);
+        const int n_pos = p0 + T;
+        const int nblk = (n_pos + m->idx_block - 1) / m->idx_block;
+        const int topk = std::min(m->idx_top_k, nblk);
+        if (kv_half)
+            K::minimax_msa_block_scores_h(iqb + r0 * ID, reinterpret_cast<const uint16_t*>(ikcv[li]), qpos + r0, kpos, T, IH, kHeadDim, n_pos,
+                                          m->idx_block, nblk, scores, (size_t) nblk, st);
+        else
+            K::minimax_msa_block_scores(iqb + r0 * ID, ikcv[li], qpos + r0, kpos, T, IH, kHeadDim, n_pos, m->idx_block, nblk, scores, (size_t) nblk, st);
+        K::minimax_msa_select_blocks(scores, qpos + r0, T, IH, nblk, m->idx_block, topk, std::min(m->idx_local, topk), (size_t) nblk, sel, (size_t) topk, st);
+        if (kv_half)
+            K::minimax_msa_attention_h(qb + r0 * QD, reinterpret_cast<const uint16_t*>(kcv[li]), reinterpret_cast<const uint16_t*>(vcv[li]), qpos + r0, kpos,
+                                       sel, T, H, HKV, kHeadDim, n_pos, m->idx_block, topk, (size_t) topk, att + r0 * QD, st);
+        else
+            K::minimax_msa_attention_f32(qb + r0 * QD, kcv[li], vcv[li], qpos + r0, kpos, sel, T, H, HKV, kHeadDim, n_pos, m->idx_block, topk,
+                                         (size_t) topk, att + r0 * QD, st);
+    }
+
+    /// o projection and the residual add over `rows` rows.
+    void attn_post_rows(const Layer& L, int rows) {
+        const int N = m->N, H = m->H;
+        if (tc_ok(L.wo, rows)) {
+            tc_convert(att, H * kHeadDim, rows);
+            tc_run(L.wo, ao, rows);
+        } else {
+            quant(att, H * kHeadDim, rows);
+            mmv(L.wo, ao, rows);
+        }
+        k_add<<<grid1((int64_t) rows * N), kThreads, 0, st>>>(x, ao, (int64_t) rows * N);
+    }
+
     /// Lossy decode lever: per token keep at most route_topk experts and drop those lighter than route_min_w times the
     /// heaviest; route_renorm rescales the kept weights to the original sum.  Dropped entries get id -1 (skipped by every lane).
     void apply_route_filter(int T, int Kp, int layer) {
@@ -2109,13 +2225,23 @@ struct Engine {
         const int N = m->N, E = m->n_expert, Kp = m->top_k, FF = m->FF;
         gmark("ffn norm");
         const bool pfT = pf(T, pf_min_t);
-        if (!pfT) quant(h, N, T);
+        if (!pfT) quant(h, N, T);   // (the q8_1 image also serves the router-first expert chain)
         if (L.dense && pfT) {
-            if (T > kMaxWin) { ptick(pt_other); }
+            if (T > win_cap) { ptick(pt_other); }
             gemm_w(L.fg, h, g, T);
             gemm_w(L.fu, h, u, T, true);
             swiglu(g, u, g, (int64_t) T * m->DFF);
             gemm_w(L.fd, g, ao, T);
+            k_add<<<grid1((int64_t) T * N), kThreads, 0, st>>>(x, ao, (int64_t) T * N);
+            return;
+        }
+        if (L.dense && tc_ok(L.fg, T) && tc_ok(L.fu, T) && tc_ok(L.fd, T)) {
+            tc_convert(h, N, T);
+            tc_run(L.fg, g, T);
+            tc_run(L.fu, u, T);
+            swiglu(g, u, g, (int64_t) T * m->DFF);
+            tc_convert(g, m->DFF, T);
+            tc_run(L.fd, ao, T);
             k_add<<<grid1((int64_t) T * N), kThreads, 0, st>>>(x, ao, (int64_t) T * N);
             return;
         }
@@ -2139,6 +2265,15 @@ struct Engine {
                 gemm_w(L.sd, g, moe, T);
                 return;
             }
+            if (tc_ok(L.sg, T) && tc_ok(L.su, T) && tc_ok(L.sd, T)) {
+                tc_convert(h, N, T);
+                tc_run(L.sg, g, T);
+                tc_run(L.su, u, T);
+                swiglu(g, u, g, (int64_t) T * m->FS);
+                tc_convert(g, m->FS, T);
+                tc_run(L.sd, moe, T);
+                return;
+            }
             if (fuse_exp && T <= 8 && L.sg.type == L.su.type && L.sg.n_out == L.su.n_out &&
                 K::native_mmvq_pair(L.sg.type, L.sg.d, L.su.d, q8, g, u, L.sg.n_in, L.sg.n_out, T, st)) {
                 // gate and up in one launch, the activation fused with its quantization (bitwise the plain path)
@@ -2155,7 +2290,7 @@ struct Engine {
         // while the GPU runs the shared expert and the resident experts; the sums into `moe` keep their order
         bool router_first = false;
 #if defined(STRATA_M3_CPU_POOL)
-        router_first = cpu_lane && T <= kMaxWin;
+        router_first = cpu_lane && T <= win_cap;
 #endif
         if (!router_first) {
             shared_expert();
@@ -2163,7 +2298,7 @@ struct Engine {
         }
         // the router
         f32mm(L.router, h, lg, N, E, T);
-        const bool want_x = sub_mode > 0 && miss_keep >= 0 && T <= kMaxWin;
+        const bool want_x = sub_mode > 0 && miss_keep >= 0 && T <= win_cap;
         k_route<<<(unsigned) T, kThreads, 0, st>>>(lg, L.bias, ids, wts, E, Kp, m->w_scale, m->w_norm ? 1 : 0, want_x ? d_xids : nullptr,
                                                    want_x ? d_xwts : nullptr, want_x ? 4 : 0);
         h_ids.resize((size_t) T * Kp);
@@ -2175,7 +2310,7 @@ struct Engine {
             CK(cudaMemcpyAsync(p_xwts, d_xwts, (size_t) T * 4 * 4, cudaMemcpyDeviceToHost, st));
         }
 #if defined(STRATA_M3_CPU_POOL)
-        if (cpu_lane && T <= kMaxWin) CK(cudaMemcpyAsync(h_host, h, (size_t) T * N * 4, cudaMemcpyDeviceToHost, st));
+        if (cpu_lane && T <= win_cap) CK(cudaMemcpyAsync(h_host, h, (size_t) T * N * 4, cudaMemcpyDeviceToHost, st));
 #endif
         pmark("ffn: router + route + d2h enqueue");
         const auto t_sync0 = Clock::now();
@@ -2187,7 +2322,7 @@ struct Engine {
             std::memcpy(h_xids.data(), p_xids, (size_t) T * 4 * 4);
             std::memcpy(h_xwts.data(), p_xwts, (size_t) T * 4 * 4);
         }
-        if (T <= kMaxWin && (route_topk < Kp || route_min_w > 0.0f || has_lay() || miss_keep >= 0)) apply_route_filter(T, Kp, l);
+        if (T <= win_cap && (route_topk < Kp || route_min_w > 0.0f || has_lay() || miss_keep >= 0)) apply_route_filter(T, Kp, l);
         if (route_trace && T == 1) {
             std::fprintf(route_trace, "%lld %d", route_step, l);
             for (int32_t e : h_ids) std::fprintf(route_trace, " %d", e);
@@ -2196,7 +2331,7 @@ struct Engine {
         if (prof_gpu) { if (T == 1 || prof_all) { gflush(); gmark("ffn: post-router base"); } else gn = 0; }
         const auto lw_t0 = Clock::now();
 #if defined(STRATA_M3_CPU_POOL)
-        if (cpu_lane && T <= kMaxWin) {
+        if (cpu_lane && T <= win_cap) {
             for (int32_t e : h_ids)
                 if (e < -1 || e >= E) {
                     std::fprintf(stderr, "strata-m3: router returned expert %d\n", e);
@@ -2221,7 +2356,7 @@ struct Engine {
             return;
         }
 #endif
-        if (T > kMaxWin) ptick(pt_dense);   // norm, shared expert, router and its host round trip up to here
+        if (T > win_cap) ptick(pt_dense);   // norm, shared expert, router and its host round trip up to here
         // the entries grouped per expert (ascending id; tokens in order within one)
         std::vector<int> start((size_t) E + 1, 0);
         for (int32_t e : h_ids) {
@@ -2253,9 +2388,9 @@ struct Engine {
         for (int e = 0; e < E; ++e) {
             const int n = start[(size_t) e + 1] - start[(size_t) e];
             if (n == 0) continue;
-            if (T > kMaxWin) ptick(pt_gemm);
+            if (T > win_cap) ptick(pt_gemm);
             const uint8_t* w = expert(l, e);
-            if (T > kMaxWin) ptick(pt_copy);
+            if (T > win_cap) ptick(pt_copy);
             const int32_t* et = e_tok + start[(size_t) e];
             k_gather_rows<<<(unsigned) n, kThreads, 0, st>>>(h, et, eh, N);
             if (pf(n, pf_min_rows)) {
@@ -2290,7 +2425,7 @@ struct Engine {
     }
 
     /// T tokens at positions pos.. through every layer; the logits of the last one into `out`.
-    /// `all_rows` (T <= kMaxWin): the head runs on every row of the window and arg_rows[i] is the argmax after row i.
+    /// `all_rows` (T <= win_cap): the head runs on every row of the window and arg_rows[i] is the argmax after row i.
     void forward(const int32_t* htok, int T, std::vector<float>& out, bool need_logits = true, bool all_rows = false) {
         const int N = m->N;
         if (pos + T > ctx) {
@@ -2318,21 +2453,21 @@ struct Engine {
             capture(l);
             gmark("layer start");
             k_rms<<<(unsigned) T, kThreads, 0, st>>>(x, L.attn_norm, h, N, m->eps);
-            if (pfprof && T > kMaxWin) { CK(cudaStreamSynchronize(st)); pt_last = Clock::now(); }
+            if (pfprof && T > win_cap) { CK(cudaStreamSynchronize(st)); pt_last = Clock::now(); }
             const auto ta0 = Clock::now();
             attention(L, (size_t) l, T, pos);
-            if (T > kMaxWin) ptick(pt_attn);
+            if (T > win_cap) ptick(pt_attn);
             if (T == 1) ph_attn_enq += ms_since(ta0);
             if (trace) trace_row("attn", l, T);
             k_rms<<<(unsigned) T, kThreads, 0, st>>>(x, L.ffn_norm, h, N, m->eps);
             ffn(L, l, T);
             gmark("ffn: shared + resident experts + CPU wait + combine");
-            if (T > kMaxWin) ptick(pt_gemm);
+            if (T > win_cap) ptick(pt_gemm);
             if (trace) trace_row("out", l, T);
         }
         capture(m->n_layers);
         const auto th0 = Clock::now();
-        const int R = (all_rows && T <= kMaxWin) ? T : 1;   // rows the head runs on: the window's, or the last one
+        const int R = (all_rows && T <= win_cap) ? T : 1;   // rows the head runs on: the window's, or the last one
         k_rms<<<(unsigned) R, kThreads, 0, st>>>(x + (size_t) (T - R) * N, m->out_norm, h, N, m->eps);
         quant(h, N, R);
         mmv(m->head, logits, R);
@@ -2350,6 +2485,62 @@ struct Engine {
             ph_fwd += ms_since(tf0);
         }
         pos += T;
+    }
+
+    /// One step of a batch of sequences: segs[i] = the next `T` tokens of sequence i at its position (a verify window), every row through every layer
+    /// with the dense projections, the router and the experts shared over all rows and the attention per sequence; then the head on every row.
+    /// arg_rows[r0 + i] is the argmax after row i of a segment; the positions are the caller's to advance.
+    struct Seg { KvSet* s; const int32_t* toks; int T; int r0 = 0; };
+    void forward_multi(std::vector<Seg>& segs) {
+        const int N = m->N;
+        int rows = 0;
+        for (Seg& g : segs) {
+            g.r0 = rows;
+            rows += g.T;
+            if (g.s->pos + g.T > ctx) { std::fprintf(stderr, "strata-m3: the context (%d) is full\n", ctx); std::exit(1); }
+        }
+        if (rows > kMaxWin || rows > tmax) { std::fprintf(stderr, "strata-m3: a batch step of %d rows (limit %d)\n", rows, std::min(kMaxWin, tmax)); std::exit(1); }
+        const int win_saved = win_cap;
+        win_cap = kMaxWin;
+        tc_on = tc_env && rows > 8;
+        for (Seg& g : segs) {
+            std::memcpy(tok_host + g.r0, g.toks, (size_t) g.T * 4);
+            for (int i = 0; i < g.T; ++i) qpos_h[g.r0 + i] = g.s->pos + i;
+        }
+        CK(cudaMemcpyAsync(qpos, qpos_h, (size_t) rows * 4, cudaMemcpyHostToDevice, st));
+        K::iq_embed_rows(m->embd_type, m->embd, m->embd_row, tok, rows, N, x, st);
+        auto capture = [&](int at) {
+            for (size_t k = 0; feat && k < feat_layers.size(); ++k)
+                if (feat_layers[k] == at)
+                    CK(cudaMemcpy2DAsync(feat + k * (size_t) N, feat_layers.size() * (size_t) N * 4, x, (size_t) N * 4, (size_t) N * 4, (size_t) rows,
+                                         cudaMemcpyDeviceToDevice, st));
+        };
+        for (int l = 0; l < m->n_layers; ++l) {
+            const Layer& L = m->layers[(size_t) l];
+            capture(l);
+            gmark("layer start");
+            k_rms<<<(unsigned) rows, kThreads, 0, st>>>(x, L.attn_norm, h, N, m->eps);
+            attn_pre_rows(L, rows);
+            for (Seg& g : segs) attn_seg_rows(L, (size_t) l, g.r0, g.T, g.s->pos, g.s->kc, g.s->vc, g.s->ikc);
+            attn_post_rows(L, rows);
+            k_rms<<<(unsigned) rows, kThreads, 0, st>>>(x, L.ffn_norm, h, N, m->eps);
+            ffn(L, l, rows);
+        }
+        capture(m->n_layers);
+        k_rms<<<(unsigned) rows, kThreads, 0, st>>>(x, m->out_norm, h, N, m->eps);
+        if (tc_ok(m->head, rows)) {
+            tc_convert(h, N, rows);
+            tc_run(m->head, logits, rows);
+        } else {
+            quant(h, N, rows);
+            mmv(m->head, logits, rows);
+        }
+        k_argmax_rows<<<(unsigned) rows, 1024, 0, st>>>(logits, m->n_vocab, d_arg);
+        CK(cudaMemcpyAsync(p_arg, d_arg, (size_t) rows * 4, cudaMemcpyDeviceToHost, st));
+        CK(cudaStreamSynchronize(st));
+        for (int i = 0; i < rows; ++i) arg_rows[i] = p_arg[i];
+        tc_on = false;
+        win_cap = win_saved;
     }
 };
 
@@ -2471,6 +2662,8 @@ struct Dspark {
     int L = 0, N = 0, H = 0, HKV = 0, FF = 0, block = 7, window = 4096, mask_id = 0, ctx = 0;
     float alpha = 1.702f, limit = 7.f, ts = 0.f;
     std::vector<float*> kc, vc;
+    int nseq = 1;                                   // sequences of a batch (--seqs): context caches for nseq - 1 more
+    std::vector<std::vector<float*>> xkc, xvc;      // [sequence - 1][layer]
     float *g = nullptr, *gn = nullptr, *kraw = nullptr, *vraw = nullptr, *qraw = nullptr, *qb = nullptr, *kbl = nullptr,
           *xb = nullptr, *hb = nullptr, *att = nullptr, *ao = nullptr, *gt = nullptr, *up = nullptr, *ffo = nullptr;
     void* dq8 = nullptr;
@@ -2565,6 +2758,13 @@ struct Dspark {
             kc.push_back(dalloc((size_t) ctx * HKV * kHeadDim));
             vc.push_back(dalloc((size_t) ctx * HKV * kHeadDim));
         }
+        for (int q = 1; q < nseq; ++q) {
+            xkc.emplace_back(); xvc.emplace_back();
+            for (int l = 0; l < L; ++l) {
+                xkc.back().push_back(dalloc((size_t) ctx * HKV * kHeadDim));
+                xvc.back().push_back(dalloc((size_t) ctx * HKV * kHeadDim));
+            }
+        }
         const size_t R = 8;
         g = dalloc(R * N); gn = dalloc(R * N); kraw = dalloc(R * HKV * kHeadDim); vraw = dalloc(R * HKV * kHeadDim);
         qraw = dalloc(R * H * kHeadDim); qb = dalloc(R * H * kHeadDim); kbl = dalloc(R * HKV * kHeadDim);
@@ -2582,11 +2782,11 @@ struct Dspark {
     }
 
     /// Fuse the captured target features of T committed rows (E.feat rows 0..T-1) and write their K/V at pos0 ..
-    void inject(Engine& E, int T, int pos0) {
+    void inject(Engine& E, int T, int pos0, int row0 = 0) {   // row0: the first of the T rows in E.feat (a batch step holds several sequences' windows)
         const auto t0 = Clock::now();
         for (int g0 = 0; g0 < T; g0 += 8) {
             const int nc = std::min(8, T - g0);
-            qmm(E, fc, E.feat + (size_t) g0 * fc.n_in, g, nc);
+            qmm(E, fc, E.feat + (size_t) (row0 + g0) * fc.n_in, g, nc);
             k_rms<<<(unsigned) nc, kThreads, 0, E.st>>>(g, enc_norm, gn, N, E.m->eps);
             K::native_quantize_q8_1(gn, dq8, N * nc, 1, E.st);
             for (int l = 0; l < L; ++l) {
@@ -2604,7 +2804,7 @@ struct Dspark {
     /// Draft D tokens after `cur` (the next token to feed, at position n): block [cur, mask * (D-1)], greedy Markov chain.
     std::vector<int32_t> draft(Engine& E, int32_t cur, int n, int D) {
         const auto t0 = Clock::now();
-        const int R = std::min(D, std::min(block, kMaxWin - 1)), V = E.m->n_vocab;
+        const int R = std::min(D, std::min(block, kWinDef - 1)), V = E.m->n_vocab;
         std::vector<int32_t> blk((size_t) R, mask_id);
         blk[0] = cur;
         CK(cudaMemcpyAsync(dtok, blk.data(), (size_t) R * 4, cudaMemcpyHostToDevice, E.st));
@@ -2708,6 +2908,7 @@ int strata::minimax::run(int argc, char** argv) {
     double expert_vram = -1.0;
     bool interleave_pack = true, ignore_eos = false, preload_experts = strata_env_truthy_one("STRATA_M3_PRELOAD") != 0, pin_pack = true;
     int preload_threads = 16, cpu_threads = 35, admit = 2, runs = 1;
+    int seqs_opt = 1;   // --seqs N: sequences a batch can hold (K/V reserved at start)
     bool admit_freq = true, repl = false, route_renorm_opt = false, kv_f16_opt = strata_env_truthy_one("STRATA_M3_KV_F16") != 0;
     std::string spec_mode = "none", dspark_path;
     bool spec_given = false, draft_given = false;
@@ -2743,6 +2944,7 @@ int strata::minimax::run(int argc, char** argv) {
         else if (a == "--cpu-experts") cpu_experts = true;
         else if (a == "--repl") repl = true;
         else if (a == "--kv-f16") kv_f16_opt = true;
+        else if (a == "--seqs") seqs_opt = std::max(1, std::atoi(next().c_str()));
         else if (a == "--dspark") dspark_path = next();
         else if (a == "--pf-gemm") pf_gemm_opt = true;
         else if (a == "--pf-prefetch") pf_pre_opt = true;
@@ -2843,6 +3045,7 @@ int strata::minimax::run(int argc, char** argv) {
     std::unique_ptr<Dspark> dsp;
     if (!dspark_path.empty()) {
         dsp = std::make_unique<Dspark>();
+        dsp->nseq = seqs_opt;
         std::string derr;
         if (!dsp->load(dspark_path, ctx, m, derr)) {
             std::fprintf(stderr, "strata-m3: DSpark head: %s\n", derr.c_str());
@@ -2853,7 +3056,7 @@ int strata::minimax::run(int argc, char** argv) {
     Dspark* ds = dsp.get();
     if (ds) {   // with the head loaded, speculation is the default (measured best: 6 drafts, confidence floor 0.7)
         if (!spec_given) spec_mode = "dspark";
-        if (!draft_given) spec_draft = std::min(6, kMaxWin - 1);
+        if (!draft_given) spec_draft = std::min(6, kWinDef - 1);
         ds->pmin_default = 0.7f;
         ds->pmin = ds->pmin_default;
     }
@@ -2861,6 +3064,7 @@ int strata::minimax::run(int argc, char** argv) {
     E.pf_gemm = pf_gemm_opt;
     E.pf_pre = pf_pre_opt;
     E.kv_half = kv_f16_opt;
+    E.nseq_reserve = seqs_opt;
     if (kv_f16_opt) std::fprintf(stderr, "strata-m3: K/V and indexer-key caches in FP16\n");
     E.init(m, ctx, chunk, expert_vram);
     if (ds) {
@@ -3018,13 +3222,13 @@ int strata::minimax::run(int argc, char** argv) {
     const auto t1 = Clock::now();
     int force_n = 0, force_agree = 0;
     long long spec_steps = 0, spec_drafted = 0, spec_accepted = 0;
-    const bool speculate = (rs.spec == "ngram" || rs.spec == "dspark") && rs.forced.empty() && (rs.spec != "dspark" || ds) && rs.draft > 0 && rs.draft < kMaxWin;
+    const bool speculate = (rs.spec == "ngram" || rs.spec == "dspark") && rs.forced.empty() && (rs.spec != "dspark" || ds) && rs.draft > 0 && rs.draft < kWinDef;
     std::vector<int32_t> hist = prompt;   // the text so far (prompt + emitted), for the drafter
     int32_t cur = argmax(lg);             // the next token to emit and feed: the prompt's own prediction first
     if (rs.spec == "window" && !rs.forced.empty()) {
         // test mode: the forced tokens go through the multi-token window path (1 + draft rows per step) instead of one at a
         // time; the dump holds the same per-step logits as the single-token run, for a numerical comparison of the two paths
-        const int W0 = 1 + std::max(1, std::min(rs.draft, kMaxWin - 1));
+        const int W0 = 1 + std::max(1, std::min(rs.draft, kWinDef - 1));
         int written = 0;
         if (rs.dump && run == 0) { std::fwrite(lg.data(), 4, lg.size(), rs.dump); ++written; }
         ++force_n;
@@ -3180,6 +3384,158 @@ int strata::minimax::run(int argc, char** argv) {
     std::fflush(stdout);
     };
 
+    // ---- a batch of sequences decoded together ("runb prompts=a.ids,b.ids n=N"): each prompt is prefilled on its own, then every step runs the
+    // verify windows of all active sequences as one forward (shared projections, router and experts; attention per sequence)
+    auto do_batch = [&](const std::vector<std::vector<int32_t>>& prompts, int n_gen, int draft_n) {
+        const int B = (int) prompts.size();
+        if (B < 1 || B > 1 + (int) E.extra_seq.size()) { std::printf("M3_ERROR %d sequences, the engine was started for %d (--seqs)\n", B, 1 + (int) E.extra_seq.size()); return; }
+        if (!ds || draft_n < 1 || draft_n >= kWinDef) { std::printf("M3_ERROR a batch needs --dspark and draft 1..%d\n", kWinDef - 1); return; }
+        if (B * (1 + draft_n) > std::min(kMaxWin, chunk)) { std::printf("M3_ERROR %d sequences x %d rows exceed the batch step limit %d\n", B, 1 + draft_n, std::min(kMaxWin, chunk)); return; }
+        std::vector<KvSet*> sq;
+        KvSet prim;   // sequence 0: the engine's own caches (the same pointers)
+        prim.kc = E.kc; prim.vc = E.vc; prim.ikc = E.ikc; prim.dkc = ds->kc; prim.dvc = ds->vc;
+        sq.push_back(&prim);
+        for (int i = 1; i < B; ++i) {
+            KvSet* q = E.extra_seq[(size_t) i - 1].get();
+            q->dkc = ds->xkc[(size_t) i - 1];
+            q->dvc = ds->xvc[(size_t) i - 1];
+            sq.push_back(q);
+        }
+        E.hits = E.misses = 0;
+        E.copy_bytes = E.copy_ms = 0;
+        E.route_dropped = E.route_total = 0;
+        ds->ms_draft = ds->ms_inject = 0; ds->conf_cut = 0;
+        if (E.cpu_lane) {
+            std::fill(E.use_count.begin(), E.use_count.end(), 0);
+            std::fill(E.pf_count.begin(), E.pf_count.end(), 0);
+            E.pf_tokens = 0;
+        }
+        const int route_topk_saved = E.route_topk;
+        const int miss_keep_saved = E.miss_keep;
+        const std::vector<int> lay_topk_saved = E.lay_topk;
+        const std::vector<float> lay_minw_saved = E.lay_minw;
+        std::vector<int32_t> cur((size_t) B);
+        const auto t0 = Clock::now();
+        for (int i = 0; i < B; ++i) {   // prefill: exact routing, one sequence at a time, its caches swapped into the engine
+            E.route_topk = E.top_k_model();
+            E.miss_keep = -1;
+            E.lay_topk.clear();
+            E.lay_minw.clear();
+            KvSet* q = sq[(size_t) i];
+            if (i > 0) { E.kc.swap(q->kc); E.vc.swap(q->vc); E.ikc.swap(q->ikc); }
+            ds->kc = q->dkc; ds->vc = q->dvc;
+            E.pos = 0;
+            const std::vector<int32_t>& pr = prompts[(size_t) i];
+            const int chunk_use = chunk;
+            for (size_t at = 0; at < pr.size(); at += (size_t) chunk_use) {
+                const int T = (int) std::min(pr.size() - at, (size_t) chunk_use);
+                const int p0 = E.pos;
+                E.forward(pr.data() + at, T, lg);
+                ds->inject(E, T, p0);
+            }
+            q->pos = E.pos;
+            cur[(size_t) i] = argmax(lg);
+            if (i > 0) { E.kc.swap(q->kc); E.vc.swap(q->vc); E.ikc.swap(q->ikc); }
+        }
+        E.route_topk = route_topk_saved;
+        E.miss_keep = miss_keep_saved;
+        E.lay_topk = lay_topk_saved;
+        E.lay_minw = lay_minw_saved;
+        const double pp_ms = ms_since(t0);
+#if defined(STRATA_M3_CPU_POOL)
+        if (E.cpu_lane && strata_env_truthy_default("STRATA_M3_WARM", 1)) {
+            std::fprintf(stderr, "strata-m3: admission gate prior strength 0.20\n");
+            E.warm_cache(n_gen, 0.2);
+            std::fill(E.pf_count.begin(), E.pf_count.end(), 0);
+            E.pf_tokens = 0;
+        }
+#endif
+        E.cpu_experts = E.gpu_experts = E.admitted = 0;
+        E.cpu_wall_ms = 0;
+        std::vector<std::vector<int32_t>> out((size_t) B);
+        std::vector<char> done((size_t) B, 0);
+        long long steps = 0, drafted = 0, accepted = 0, rows_total = 0;
+        {   // STRATA_M3_PROF=2/3: the device timeline between marks, per step, for the batch forward
+            const char* pv = std::getenv("STRATA_M3_PROF");
+            E.prof_gpu = pv && std::atoi(pv) >= 2;
+            E.prof_all = pv && std::atoi(pv) >= 3;
+            E.gcalls = 0;
+            E.gacc.clear();
+            E.gn = 0;
+        }
+        double ms_d = 0, ms_f = 0, ms_i = 0;   // host wall: the draft passes, the batch forwards, the draft head's feature injection
+        const auto t1 = Clock::now();
+        int active = B;
+        while (active > 0) {
+            std::vector<Engine::Seg> segs;
+            const auto td0 = Clock::now();
+            std::vector<std::array<int32_t, kWinDef>> wins((size_t) B);
+            std::vector<int> D((size_t) B, 0), who;
+            for (int i = 0; i < B; ++i) {
+                if (done[(size_t) i]) continue;
+                KvSet* q = sq[(size_t) i];
+                ds->kc = q->dkc; ds->vc = q->dvc;
+                E.route_step = steps;
+                std::vector<int32_t> d = ds->draft(E, cur[(size_t) i], q->pos, draft_n);
+                D[(size_t) i] = (int) d.size();
+                wins[(size_t) i][0] = cur[(size_t) i];
+                for (int k = 0; k < D[(size_t) i]; ++k) wins[(size_t) i][(size_t) k + 1] = d[(size_t) k];
+                who.push_back(i);
+            }
+            ms_d += ms_since(td0);
+            for (int i : who) segs.push_back(Engine::Seg{sq[(size_t) i], wins[(size_t) i].data(), 1 + D[(size_t) i], 0});
+            const auto tf0 = Clock::now();
+            E.forward_multi(segs);
+            ms_f += ms_since(tf0);
+            const auto ti0 = Clock::now();
+            ++steps;
+            rows_total += segs.empty() ? 0 : segs.back().r0 + segs.back().T;
+            for (size_t j = 0; j < who.size(); ++j) {
+                const int i = who[j];
+                KvSet* q = sq[(size_t) i];
+                const Engine::Seg& g = segs[j];
+                std::vector<int32_t>& o = out[(size_t) i];
+                drafted += D[(size_t) i];
+                o.push_back(cur[(size_t) i]);
+                const int pos0 = q->pos;
+                if (cur[(size_t) i] == eos && !ignore_eos) { q->pos = pos0 + 1; done[(size_t) i] = 1; --active; continue; }
+                int a = 0;
+                while (a < D[(size_t) i] && (int) o.size() < n_gen && E.arg_rows[g.r0 + a] == wins[(size_t) i][(size_t) a + 1]) {
+                    o.push_back(wins[(size_t) i][(size_t) a + 1]);
+                    ++a;
+                    if (wins[(size_t) i][(size_t) a] == eos && !ignore_eos) break;
+                }
+                accepted += a;
+                q->pos = pos0 + 1 + a;
+                ds->kc = q->dkc; ds->vc = q->dvc;
+                ds->inject(E, a + 1, pos0, g.r0);
+                cur[(size_t) i] = E.arg_rows[g.r0 + a];
+                if ((int) o.size() >= n_gen || (!o.empty() && o.back() == eos && !ignore_eos)) { done[(size_t) i] = 1; --active; }
+            }
+            ms_i += ms_since(ti0);
+        }
+        const double tg_ms = ms_since(t1);
+        ds->kc = prim.dkc; ds->vc = prim.dvc;
+        long long total = 0;
+        for (int i = 0; i < B; ++i) total += (long long) out[(size_t) i].size();
+        std::printf("M3_BATCH %d sequences, prefill %.1f ms, decode %lld tokens in %.1f ms = %.3f tok/s aggregate (%.3f a sequence), %lld steps, %.2f rows a step, "
+                    "%.2f tokens a sequence step\n", B, pp_ms, total, tg_ms, (double) total * 1000.0 / tg_ms, (double) total * 1000.0 / tg_ms / B, steps,
+                    (double) rows_total / (double) std::max<long long>(1, steps), (double) total / (double) std::max<long long>(1, steps * B));
+        std::printf("M3_BATCH_TIME ms over %lld steps: draft passes %.1f | batch forward %.1f | verify + feature injection %.1f | forward per step %.2f ms\n", steps, ms_d, ms_f, ms_i, ms_f / (double) std::max<long long>(1, steps));
+        if (E.prof_gpu)
+            for (auto& a : E.gacc) std::printf("M3_BATCH_GPU %-58s %8.2f ms a step\n", a.first, a.second / (double) std::max<long long>(1, steps));
+        E.prof_gpu = E.prof_all = false;
+        std::printf("M3_BATCH_SPEC %lld drafted, %lld accepted (%.1f %%)\n", drafted, accepted, 100.0 * (double) accepted / (double) std::max<long long>(1, drafted));
+        std::printf("M3_DECODE_CACHE resident %lld of %lld expert uses (hit rate %.1f %%)\n", E.gpu_experts, E.gpu_experts + E.cpu_experts,
+                    100.0 * (double) E.gpu_experts / (double) std::max<long long>(1, E.gpu_experts + E.cpu_experts));
+        for (int i = 0; i < B; ++i) {
+            std::printf("M3_BTOKENS %d", i);
+            for (int32_t t : out[(size_t) i]) std::printf(" %d", t);
+            std::printf("\n");
+        }
+        std::fflush(stdout);
+    };
+
     RunSpec base;
     base.prompt = prompt;
     base.n_gen = n_gen;
@@ -3221,6 +3577,8 @@ int strata::minimax::run(int argc, char** argv) {
             if (ds) ds->pmin = ds->pmin_default;
             std::string dump_path;
             bool ok = true;
+            const bool is_batch = line.rfind("runb", 0) == 0;   // runb prompts=a.ids,b.ids,... n=N draft=D: sequences decoded together
+            std::vector<std::vector<int32_t>> bprompts;
             size_t at = 3;
             while (at < line.size()) {
                 while (at < line.size() && line[at] == ' ') ++at;
@@ -3232,6 +3590,15 @@ int strata::minimax::run(int argc, char** argv) {
                 if (eq == std::string::npos) continue;
                 const std::string k = kv.substr(0, eq), v = kv.substr(eq + 1);
                 if (k == "prompt") rs.prompt = parse_ids(read_file(v));
+                else if (k == "prompts") {
+                    size_t q = 0;
+                    while (q < v.size()) {
+                        size_t e2 = v.find(',', q);
+                        if (e2 == std::string::npos) e2 = v.size();
+                        bprompts.push_back(parse_ids(read_file(v.substr(q, e2 - q))));
+                        q = e2 + 1;
+                    }
+                }
                 else if (k == "n") rs.n_gen = std::atoi(v.c_str());
                 else if (k == "spec") rs.spec = v;
                 else if (k == "draft") rs.draft = std::atoi(v.c_str());
@@ -3272,6 +3639,17 @@ int strata::minimax::run(int argc, char** argv) {
                 else if (k == "admit") E.admit_per_layer = std::atoi(v.c_str());
                 else if (k == "policy") E.admit_freq = v != "lru";
                 else { std::printf("M3_ERROR unknown key %s\n", k.c_str()); ok = false; }
+            }
+            if (is_batch) {
+                for (const auto& pr : bprompts)
+                    if (pr.empty() || (int) pr.size() + rs.n_gen > ctx) { std::printf("M3_ERROR a prompt (%zu) + n (%d) does not fit the context %d\n", pr.size(), rs.n_gen, ctx); ok = false; }
+                if (bprompts.empty()) { std::printf("M3_ERROR runb needs prompts=a.ids,b.ids\n"); ok = false; }
+                if (!ok) { std::fflush(stdout); continue; }
+                std::printf("M3_REQUEST %d: %s\n", ++serial, line.c_str());
+                do_batch(bprompts, rs.n_gen, rs.draft);
+                std::printf("M3_REQUEST_DONE %d\n", serial);
+                std::fflush(stdout);
+                continue;
             }
             if (rs.prompt.empty() || (int) rs.prompt.size() + rs.n_gen > ctx) {
                 std::printf("M3_ERROR prompt (%zu) + n (%d) does not fit the context %d\n", rs.prompt.size(), rs.n_gen, ctx);

@@ -55,33 +55,48 @@ def main(argv=None):
     print(f"  one-GPU max-mode step by part (model): chain {ms.LAYERS * d['chain_us'] / 1000:.1f} ms, post-router {ms.LAYERS * d['post_us'] / 1000:.1f} ms, "
           f"lm_head {d['head_ms']:.1f} ms, draft {d['draft_ms']:.1f} ms, host {p.host_ms:.1f} ms")
 
-    # --- batched decode: B sequences, each with a speculative window; aggregate and per-sequence tok/s
+    # --- batched decode: measured, then PROJECTIONS of what the next engine changes are worth
+    meas = ms.DATA["batched_decode_measured"]["max_mode_one_gpu"]
     ctx = 2048
-    print(f"\nBatched decode, PROJECTION (context {ctx} a sequence; the engine runs one sequence of at most 8 rows today). Aggregate tok/s "
-          "(per-sequence tok/s) at the best window length (rows/seq):")
+    cur = dataclasses.replace(p, draft_batched=False, msa_extra_seq_us=90.0)
+    bd = dataclasses.replace(p, draft_batched=True, msa_extra_seq_us=90.0)
+    ba = dataclasses.replace(p, draft_batched=True, msa_extra_seq_us=30.0)
+    print("\nBatched decode, max mode, one V100 (runb, different prompts, context 2048): measured against the model at the measured rows and tokens a step")
+    print("  B   rows  tok/seq-step  measured (tc / q8_1 matvecs)   model, engine as it is   + batched draft pass   + one attention launch for all   + 2 GPUs")
     batch = []
-    for tensor_core, label in ((False, "dense matvecs as today (8 columns a launch)"), (True, "+ tensor-core dense path above 8 columns")):
-        for gpus in (1, 2):
-            print(f"\n  {label}, {gpus} GPU{'s' if gpus == 2 else ''}")
-            print("    B    " + "".join(f"{m:>26s}" for m in MODES))
-            for B in (1, 2, 4, 8, 16, 32):
-                cells = []
-                for mode in MODES:
-                    tok, T, step = best_window(mode, gpus, B, p, ctx, tensor_core)
-                    _, d = ms.step_ms(mode, gpus, B, T, p, ctx=ctx, tensor_core=tensor_core, detail=True)
-                    cells.append(f"{tok:7.0f} ({tok / B:5.1f}) T={T:3.1f} h={d['hit'] * 100:2.0f}%")
-                    batch.append(dict(tensor_core=tensor_core, gpus=gpus, B=B, mode=mode, tok_s=tok, per_seq=tok / B, rows_per_seq=T, step_ms=step,
-                                      hit=d["hit"], slots=d["slots"], jobs_cpu=d["jobs_cpu"], jobs_gpu=d["jobs_gpu"], cpu_us=d["cpu_us"],
-                                      chain_us=d["chain_us"], post_us=d["post_us"], draft_ms=d["draft_ms"], head_ms=d["head_ms"]))
-                print(f"    {B:<3d}  " + "".join(f"{c:>26s}" for c in cells))
-    out["batched_decode"] = batch
+    for r in meas:
+        B, rows, tps = r["B"], r["rows"], r["tokens_per_seq_step"]
+        def agg(q, gpus=1, tc=True):
+            step = ms.step_ms("max", gpus, B, rows / B, q, tensor_core=tc, ctx=ctx)
+            return B * tps / step * 1000.0
+        row = dict(B=B, rows=rows, measured_tc=r["tok_s_tc"], measured_q8=r["tok_s_q8"], model_now=agg(cur), batched_draft=agg(bd), one_attention_launch=agg(ba), two_gpus=agg(ba, 2))
+        batch.append(row)
+        print(f"  {B:<3d} {rows:5.1f} {tps:8.2f}      {r['tok_s_tc']:6.1f} / {r['tok_s_q8']:6.1f}              {row['model_now']:6.1f}                {row['batched_draft']:6.1f}                 "
+              f"{row['one_attention_launch']:6.1f}                   {row['two_gpus']:6.1f}")
+    out["batched_decode_measured_vs_model"] = batch
+    print(f"\nBatched decode, PROJECTION for all modes (4.1-row windows, context {ctx}; a batched draft pass and one attention launch for all sequences, tensor-core matvecs). Aggregate tok/s (per sequence):")
+    proj = []
+    for gpus in (1, 2):
+        print(f"\n  {gpus} GPU{'s' if gpus == 2 else ''}")
+        print("    B    " + "".join(f"{m:>22s}" for m in MODES))
+        for B in (1, 2, 4, 8, 16, 32):
+            cells = []
+            for mode in MODES:
+                tok, T, step = best_window(mode, gpus, B, ba, ctx, True)
+                _, d = ms.step_ms(mode, gpus, B, T, ba, ctx=ctx, tensor_core=True, detail=True)
+                cells.append(f"{tok:6.0f} ({tok / B:5.1f}) h={d['hit'] * 100:2.0f}%")
+                proj.append(dict(gpus=gpus, B=B, mode=mode, tok_s=tok, per_seq=tok / B, rows_per_seq=T, step_ms=step, hit=d["hit"], slots=d["slots"],
+                                 jobs_cpu=d["jobs_cpu"], jobs_gpu=d["jobs_gpu"], cpu_us=d["cpu_us"], chain_us=d["chain_us"], post_us=d["post_us"],
+                                 draft_ms=d["draft_ms"], head_ms=d["head_ms"]))
+            print(f"    {B:<3d}  " + "".join(f"{c:>22s}" for c in cells))
+    out["batched_decode_projection"] = proj
 
     # --- what limits a batch: the step parts at B = 8 (max mode, tensor-core path, one and two GPUs)
     print("\nWhat a batch step is made of (max mode, tensor-core dense path, ms): B  rows  chain  post-router  head  draft  | CPU jobs/layer  hit")
     for gpus in (1, 2):
         for B in (1, 4, 8, 16):
-            tok, T, step = best_window("max", gpus, B, p, ctx, True)
-            _, d = ms.step_ms("max", gpus, B, T, p, ctx=ctx, tensor_core=True, detail=True)
+            tok, T, step = best_window("max", gpus, B, ba, ctx, True)
+            _, d = ms.step_ms("max", gpus, B, T, ba, ctx=ctx, tensor_core=True, detail=True)
             print(f"  {gpus} GPU B={B:<2d} {B * T:5.1f}  {ms.LAYERS * d['chain_us'] / 1000:5.1f}  {ms.LAYERS * d['post_us'] / 1000:5.1f}  {d['head_ms']:4.1f}  "
                   f"{d['draft_ms']:5.1f}  | {d['jobs_cpu']:4.1f}  {d['hit'] * 100:3.0f} %")
 
