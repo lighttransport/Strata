@@ -98,10 +98,16 @@ block_scores_tc_kernel(const float* __restrict__ q, const __half* __restrict__ k
     const int pos0 = block * 128, row = lane & 15, qu = qg * 4 + (row >> 2);
     const int qpos = qu < queries ? query_positions[qu] : -1;
     float best = -INFINITY;
-    for (int kt = 0; kt < 8; ++kt) {
+    // a key block that starts after every query of the group sees no valid key (all masked: best stays -inf): skip its matrix products
+    int group_max = -1;
+    for (int u = 0; u < 4; ++u)
+        if (qg * 4 + u < queries) group_max = max(group_max, query_positions[qg * 4 + u]);
+    const int kt_end = pos0 > group_max ? 0 : 8;
+    for (int kt = 0; kt < kt_end; ++kt) {
         if (pos0 + kt * 16 >= keys) break;
         wmma::fragment<wmma::accumulator, 16, 16, 16, float> c;
         wmma::fill_fragment(c, 0.f);
+#pragma unroll
         for (int ks = 0; ks < 8; ++ks) {
             wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a;
             wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> b;
