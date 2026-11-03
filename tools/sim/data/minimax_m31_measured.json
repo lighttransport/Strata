@@ -472,5 +472,63 @@
    }
   },
   "finding": "sparse attention is 21 % (7K) to 34 % (16K) of the forward pass at ~6 TFLOP/s effective; at 16K the PCIe stream is fully hidden (compute-bound); the 3.5 s 'fixed cost' of the first fit is attention scaling with tokens. A draft-head launch above ~12K tokens of context failed (k_dattn shared memory sized by the whole context): fixed."
+ },
+ "prefill_after_attention_2026_11_03": {
+  "note": "one V100, UD-Q2_K_XL, draft head, --pf-gemm --pf-prefetch --kv-f16, STRATA_M3_PF_INJECT=1 STRATA_MSA_TC2=1 (+ exact block-score causal skip); single chunk",
+  "tok_s": {
+   "7K": [
+    482.8
+   ],
+   "8K": [
+    535.1,
+    546.9
+   ],
+   "16K_tc2_only": [
+    611.8,
+    615.2
+   ],
+   "16K_with_score_skip": [
+    634.3,
+    636.6,
+    640.0
+   ],
+   "8K_with_score_skip": [
+    541.0,
+    547.3
+   ]
+  },
+  "pfprof_16K_ms": {
+   "sparse_attention": 6073,
+   "cublas": 10526,
+   "dequant": 2180,
+   "f32_to_f16": 560,
+   "block_scores_before_skip": 2031,
+   "block_scores_after_skip": 1062,
+   "indexer_projections": 649,
+   "select": 354,
+   "injection": 803
+  },
+  "pfprof_8K_ms": {
+   "sparse_attention": 2818,
+   "cublas": 6163,
+   "dequant": 1996,
+   "block_scores_after_skip": 265
+  },
+  "kl_vs_default_q8_1_7K": {
+   "tc2": [
+    0.00137,
+    0.00167,
+    0.00139
+   ],
+   "without_tc2": [
+    0.00136,
+    0.00116
+   ],
+   "overlap_tried": 0.00149
+  },
+  "dequant_overlap_tried_16K_tok_s": [
+   630.2,
+   632.0
+  ]
  }
 }

@@ -258,7 +258,8 @@ def fit(p, T=4.1):
 class PrefillParams:
     h2d_gbs: float = 12.3
     pack_gib: float = 124.7
-    compute_s_per_ktok: float = 1.43    # GPU work per 1000 tokens with --pf-gemm: cuBLAS 0.78 + dequant 0.24 (measured) + attention and the rest 0.41 (assumed: the rest of the 14.2 s row)
+    compute_s_per_ktok: float = 1.33    # GPU work per 1000 tokens (PFPROF at 16K, 2026-11-03): cuBLAS 0.66 + dequant 0.14 + f32->f16 0.04 + sparse attention 0.38 + projections/rope/select 0.07 + draft-head injection 0.05
+    attn_quad_s: float = 4.14e-12       # indexer block scores grow with the square of the chunk: seconds per token^2 (1.06 s at 16000, 0.27 s at 8192; the old kernel took twice that)
     overlap: float = 0.81               # share of the GPU work hidden under the pack stream with --pf-prefetch (fitted on the 14.2 s row)
     warm_s: float = 1.4                 # warm-up of the expert cache from the prompt's routing (measured ~1.4 s), once per prompt batch
     touch_tokens: float = 150.0         # experts touched by n tokens: 1 - exp(-n / touch_tokens) of the pack (fitted on the 210 / 487-token prompts)
@@ -278,7 +279,7 @@ def prefill_s(tokens, chunk, gpus, pp: PrefillParams, resident_share=None, overl
         left -= n
         touched = 1.0 - math.exp(-n / pp.touch_tokens)
         stream = pp.pack_gib * (1 << 30) * touched * (1.0 - res) / (pp.h2d_gbs * 1e9 * gpus)
-        comp = n / 1000.0 * pp.compute_s_per_ktok * compute_scale / (pp.gpu_scaling_2 if gpus == 2 else 1.0)
+        comp = (n / 1000.0 * pp.compute_s_per_ktok + pp.attn_quad_s * n * n) * compute_scale / (pp.gpu_scaling_2 if gpus == 2 else 1.0)
         total += max(stream, comp) + (1.0 - ov) * min(stream, comp)
     return total
 
@@ -297,6 +298,7 @@ def fit_prefill(pp):
 
 
 def prefill_anchor_errors(pp):
-    """Model vs the measured points: 6960 tokens in one chunk 14.2 s, 210 tokens 22.8 tok/s, 487 tokens 38.6 tok/s, one GPU."""
-    pts = [(6960, 7168, 14.2), (210, 512, 210 / 22.8), (487, 512, 487 / 38.6)]
+    """Model vs the measured points, one GPU, current engine (draft head on, STRATA_M3_PF_INJECT=1 STRATA_MSA_TC2=1): 6960 tokens in one chunk 14.4 s,
+    8192 tokens 15.1 s, 16000 tokens 25.1 s; 210 tokens 22.8 tok/s and 487 tokens 38.6 tok/s (short prompts, unchanged by the tensor-core work)."""
+    pts = [(6960, 7168, 14.4), (8192, 8192, 15.1), (16000, 16384, 25.1), (210, 512, 210 / 22.8), (487, 512, 487 / 38.6)]
     return [(n, c, m, prefill_s(n, c, 1, pp)) for n, c, m in pts]
