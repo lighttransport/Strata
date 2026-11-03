@@ -488,6 +488,171 @@ attention_tc_kernel(const float* __restrict__ q, const __half* __restrict__ k, c
         o[idx] = l > 0.f ? run[idx] / l : 0.f;
     }
 }
+
+// ---- v2 of the tensor-core prefill attention (opt-in, STRATA_MSA_TC2): about 47 KB of shared memory instead of 80 KB, so two thread blocks
+// share an SM.  A warp takes a half block of 64 keys (S 16 x 64 floats = 4 KB a warp); the softmax runs on all 32 lanes (two per row); the
+// merge uses scale factors computed once per round, and the 16 x 128 accumulators leave the warps in two column halves.
+constexpr size_t kTc2Smem = 4096 + (size_t)kTcWarps * 4096 + 8192 + 2 * kTcWarps * 16 * 4 + 2 * 16 * 4 + kTcWarps * 64 + 16 * 4 + kTcWarps * 16 * 4;
+
+__global__ void __launch_bounds__(256, 2)
+attention_tc2_kernel(const float* __restrict__ q, const __half* __restrict__ k, const __half* __restrict__ v,
+                     const int32_t* __restrict__ query_positions, const int32_t* __restrict__ key_positions,
+                     const int32_t* __restrict__ selected_blocks, int query_heads, int kv_heads, int keys, int top_k,
+                     size_t ids_stride, float* __restrict__ out) {
+    using namespace nvcuda;
+    extern __shared__ __align__(16) unsigned char smem[];
+    __half* qs = reinterpret_cast<__half*>(smem);                         // [16][128]
+    float* sb = reinterpret_cast<float*>(smem + 4096);                    // 8 warps x [16][64]
+    float* run = sb + kTcWarps * 1024;                                    // merged acc [16][128]
+    float* mw = run + 2048;                                               // [8][16]
+    float* lw = mw + kTcWarps * 16;                                       // [8][16]
+    float* mrun = lw + kTcWarps * 16;                                     // [16]
+    float* lrun = mrun + 16;                                              // [16]
+    float* sr = lrun + 16;                                                // [16] scale of the running result
+    float* swt = sr + 16;                                                 // [8][16] scale of each warp's piece
+    unsigned char* vflag = reinterpret_cast<unsigned char*>(swt + kTcWarps * 16);   // [8][64]
+    const int query = (int)blockIdx.x, kh = (int)blockIdx.y, tid = (int)threadIdx.x, warp = tid >> 5, lane = tid & 31;
+    const int qpos = query_positions[query];
+    const int32_t* blocks = selected_blocks + ((size_t)query * kv_heads + kh) * ids_stride;
+    const float* qsrc = q + ((size_t)query * query_heads + (size_t)kh * 16) * 128;
+    for (int i = tid; i < 2048; i += 256) qs[i] = __float2half(qsrc[i]);
+    for (int i = tid; i < 2048; i += 256) run[i] = 0.f;
+    if (tid < 16) { mrun[tid] = -INFINITY; lrun[tid] = 0.f; }
+    __syncthreads();
+    const float scale = rsqrtf(128.0f);
+    float* sbw = sb + warp * 1024;
+    unsigned char* vf = vflag + warp * 64;
+    const int units = 2 * top_k;
+    for (int round = 0; round < (units + kTcWarps - 1) / kTcWarps; ++round) {
+        const int unit = round * kTcWarps + warp;
+        const int chunk = unit >> 1, half = unit & 1;
+        bool active = false;
+        int pos0 = 0, blk = -1;
+        if (chunk < top_k) {
+            blk = blocks[chunk];
+            if (blk >= 0) {
+                pos0 = blk * 128 + half * 64;
+                int any = 0;
+                for (int j = lane; j < 64; j += 32) {
+                    const int pos = pos0 + j;
+                    bool ok = false;
+                    if (pos < keys) {
+                        const int kp = key_positions[pos];
+                        ok = kp >= 0 && kp <= qpos && kp / 128 == blk;
+                    }
+                    vf[j] = ok ? 1 : 0;
+                    any |= ok ? 1 : 0;
+                }
+                active = __any_sync(0xffffffffu, any) != 0;
+            }
+        }
+        if (lane < 16) { mw[warp * 16 + lane] = -INFINITY; lw[warp * 16 + lane] = 0.f; }
+        __syncwarp();
+        wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc[8];
+        if (active) {
+            for (int kt = 0; kt < 4; ++kt) {
+                if (pos0 + kt * 16 >= keys) break;
+                wmma::fragment<wmma::accumulator, 16, 16, 16, float> c;
+                wmma::fill_fragment(c, 0.f);
+#pragma unroll
+                for (int ks = 0; ks < 8; ++ks) {
+                    wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a;
+                    wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> b;
+                    wmma::load_matrix_sync(a, qs + ks * 16, 128);
+                    wmma::load_matrix_sync(b, k + ((size_t)(pos0 + kt * 16) * kv_heads + kh) * 128 + ks * 16, kv_heads * 128);
+                    wmma::mma_sync(c, a, b, c);
+                }
+                wmma::store_matrix_sync(sbw + kt * 16, c, 64, wmma::mem_row_major);
+            }
+            __syncwarp();
+            {   // row softmax, two lanes a row (32 keys each); P is written back in place as halves after every lane has read its floats
+                const int r = lane >> 1, h2 = lane & 1;
+                float* row = sbw + r * 64 + h2 * 32;
+                const unsigned char* vfr = vf + h2 * 32;
+                float x[32];
+                float m = -INFINITY;
+#pragma unroll
+                for (int j = 0; j < 32; ++j) {
+                    x[j] = row[j] * scale;
+                    if (vfr[j]) m = fmaxf(m, x[j]);
+                }
+                m = fmaxf(m, __shfl_xor_sync(0xffffffffu, m, 1));
+                float l = 0.f;
+#pragma unroll
+                for (int j = 0; j < 32; ++j) {
+                    x[j] = vfr[j] ? __expf(x[j] - m) : 0.f;
+                    l += x[j];
+                }
+                l += __shfl_xor_sync(0xffffffffu, l, 1);
+                __syncwarp();
+                __half* prow = reinterpret_cast<__half*>(sbw) + r * 128 + h2 * 32;
+#pragma unroll
+                for (int j = 0; j < 32; ++j) prow[j] = __float2half(x[j]);
+                if (h2 == 0) { mw[warp * 16 + r] = m; lw[warp * 16 + r] = l; }
+            }
+            __syncwarp();
+#pragma unroll
+            for (int dt = 0; dt < 8; ++dt) wmma::fill_fragment(acc[dt], 0.f);
+            for (int kt = 0; kt < 4; ++kt) {
+                if (pos0 + kt * 16 >= keys) break;
+                wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a;
+                wmma::load_matrix_sync(a, reinterpret_cast<const __half*>(sbw) + kt * 16, 128);
+#pragma unroll
+                for (int dt = 0; dt < 8; ++dt) {
+                    wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::row_major> b;
+                    wmma::load_matrix_sync(b, v + ((size_t)(pos0 + kt * 16) * kv_heads + kh) * 128 + dt * 16, kv_heads * 128);
+                    wmma::mma_sync(acc[dt], a, b, acc[dt]);
+                }
+            }
+            __syncwarp();
+        }
+        __syncthreads();
+        if (tid < 16) {   // scale factors of this round and the new running max / sum
+            float M = mrun[tid];
+            for (int w = 0; w < kTcWarps; ++w) M = fmaxf(M, mw[w * 16 + tid]);
+            if (isfinite(M)) {
+                const float s0 = isfinite(mrun[tid]) ? __expf(mrun[tid] - M) : 0.f;
+                float l = lrun[tid] * s0;
+                sr[tid] = s0;
+                for (int w = 0; w < kTcWarps; ++w) {
+                    const float mwh = mw[w * 16 + tid];
+                    const float sw = isfinite(mwh) ? __expf(mwh - M) : 0.f;
+                    swt[w * 16 + tid] = sw;
+                    l += sw * lw[w * 16 + tid];
+                }
+                mrun[tid] = M;
+                lrun[tid] = l;
+            } else {
+                sr[tid] = 1.f;
+                for (int w = 0; w < kTcWarps; ++w) swt[w * 16 + tid] = 0.f;
+            }
+        }
+        __syncthreads();
+        for (int c = 0; c < 2; ++c) {   // column halves: the warps' accumulators go through their 4 KB buffers
+            if (active) {
+#pragma unroll
+                for (int dt = 0; dt < 4; ++dt) wmma::store_matrix_sync(sbw + dt * 16, acc[c * 4 + dt], 64, wmma::mem_row_major);
+            }
+            __syncthreads();
+            for (int idx = tid; idx < 1024; idx += 256) {
+                const int h = idx >> 6, cc = idx & 63;
+                float a = run[h * 128 + c * 64 + cc] * sr[h];
+#pragma unroll
+                for (int w = 0; w < kTcWarps; ++w) {
+                    const float sw = swt[w * 16 + h];
+                    if (sw != 0.f) a += sw * sb[w * 1024 + h * 64 + cc];
+                }
+                run[h * 128 + c * 64 + cc] = a;
+            }
+            __syncthreads();
+        }
+    }
+    float* o = out + ((size_t)query * query_heads + (size_t)kh * 16) * 128;
+    for (int idx = tid; idx < 2048; idx += 256) {
+        const float l = lrun[idx >> 7];
+        o[idx] = l > 0.f ? run[idx] / l : 0.f;
+    }
+}
 #endif
 
 template <class KT>
@@ -924,6 +1089,17 @@ void minimax_msa_attention_h(const float* q, const uint16_t* k, const uint16_t* 
             check(cudaFuncSetAttribute(attention_tc_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)kTcSmem), "tc attention smem");
             attr = true;
         }
+        static const bool tc2 = std::getenv("STRATA_MSA_TC2") != nullptr;
+        if (tc2) {
+            static bool attr2 = false;
+            if (!attr2) {
+                check(cudaFuncSetAttribute(attention_tc2_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)kTc2Smem), "tc2 attention smem");
+                attr2 = true;
+            }
+            attention_tc2_kernel<<<dim3((unsigned)queries, (unsigned)kv_heads), 256, kTc2Smem, (cudaStream_t)stream>>>(
+                q, (const __half*)k, (const __half*)v, query_positions, key_positions, selected_blocks, query_heads, kv_heads, keys,
+                top_k, ids_stride, out);
+        } else
         attention_tc_kernel<<<dim3((unsigned)queries, (unsigned)kv_heads), 256, kTcSmem, (cudaStream_t)stream>>>(
             q, (const __half*)k, (const __half*)v, query_positions, key_positions, selected_blocks, query_heads, kv_heads, keys,
             top_k, ids_stride, out);
