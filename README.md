@@ -8,6 +8,9 @@ useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-
 
 **Updates**
 
+- 2026-11-04: MiniMax M3.1 Flash (UD-Q2_K_XL) on one Tesla V100 32 GB with `strata-m3`: decode 23-28 tok/s at short
+  context (exact routing), 12.3 tok/s at 128K, 6.0 tok/s at 512K; prefill 634-640 tok/s at 16K
+  ([MiniMax release notes](docs/MINIMAX_M31_RELEASE.md)).
 - 2026-10-24: GLM-5.3-Flash native FP4 on 2x Tesla V100 32 GB: prefill 780 tok/s, decode 41 tok/s (8K prompt,
   experimental [streamed prefill](docs/GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in)).
 
@@ -59,6 +62,23 @@ in four same-job pairs at a 12K context; the 800 tok/s target is met only in a 1
 - **Two-GPU runner and the simulator that planned it:** [GLM_TR16_RUNNER_PLAN.md](docs/GLM_TR16_RUNNER_PLAN.md),
   [GLM_RUNNER_SIM.md](docs/GLM_RUNNER_SIM.md), [MULTI_GPU.md](docs/MULTI_GPU.md)
 - **Terminal demo:** [simple ASCII chat with a decode-speed counter](demos/glm53_chat/README.md)
+
+**MiniMax M3.1 Flash** (`strata-m3`, Unsloth UD-Q2_K_XL, 124.7 GiB expert pack pinned in RAM, DSpark draft head; 2x Xeon Gold 6240,
+181 GB, Tesla V100 PCIe 32 GB). Single-stream decode in tokens per second; details in the
+[MiniMax release notes](docs/MINIMAX_M31_RELEASE.md):
+
+| context | configuration | decode | quality evidence |
+| --- | --- | ---: | --- |
+| short (335-token prompts) | exact routing (default), one V100 | 23-28 | 41/46 C++ tasks |
+| short | `--speed max` (top-2, VRAM-only experts), one V100 | 56 | 36-39/46 C++ tasks |
+| short | exact routing, two V100 (`STRATA_M3_GPU1=1`) | 39 | 41/46 C++ tasks |
+| 128K | FP8 K/V and FP8 index keys in VRAM (`--kv-fp8 --idx-fp8`) | 12.3 | needle found; KL 1.06e-3 on a 7K prompt |
+| 256K | FP8 K/V in host RAM + VRAM block cache (`--kv-host --kv-fp8`) | 8.5 | needle found |
+| 512K | same | 6.0 | needle found |
+
+Prefill is 634-640 tok/s for a 16K prompt and 541-547 tok/s at 8K. Short-context numbers are 200 generated tokens on four C++
+prompts, and the long-context numbers come from the answer to a needle-in-a-haystack prompt. 1M context does not fit next to the
+pinned expert pack in 181 GB and was not tested.
 
 **Acknowledgement.** Several ideas in this work were studied in
 **[Project Maya](https://github.com/mw00/project-maya)** by peasantsmith (MIT License), an independent Strata
