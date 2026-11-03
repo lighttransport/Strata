@@ -1031,6 +1031,7 @@ struct Engine {
     int32_t* d_arg = nullptr;    // argmax of the logits, on the device and pinned on the host
     int32_t* p_arg = nullptr;   // kMaxWin argmax results (pinned)
     int arg_rows[kMaxWin] = {};
+    int logit_rows = kWinDef;
     int nseq_reserve = 1;    // --seqs N: K/V caches for N - 1 more sequences, allocated before the expert slots are sized
     std::vector<std::unique_ptr<KvSet>> extra_seq;
     int32_t* qpos_h = nullptr;   // pinned staging of the rows' positions for a batch of sequences
@@ -1040,7 +1041,7 @@ struct Engine {
     bool tc_env = strata_env_truthy_default("STRATA_M3_TC", 1) != 0;
     bool tc_on = false;          // set by forward_multi for the steps it applies to
     void tc_convert(const float* xin, int n_in, int T) { K::native_f32_to_f16(xin, x16buf, (int64_t) T * n_in, st); }
-    bool tc_ok(const Mat& w, int T) const { return tc_on && T > 8 && K::native_tc_mmvq_supported(w.type, w.n_in, w.n_out, T); }
+    bool tc_ok(const Mat& w, int T) const { return tc_on && x16buf && T > 8 && K::native_tc_mmvq_supported(w.type, w.n_in, w.n_out, T); }
     void tc_run(const Mat& w, float* out, int T) { K::native_tc_mmvq(w.type, w.d, x16buf, out, w.n_in, w.n_out, T, st); }
     int win_cap = kWinDef;   // rows up to which a forward takes the decode lane (the lossy levers, the CPU lane); a batch of sequences raises it to kMaxWin
     // lossy decode levers (T <= win_cap only; the prompt's prefill stays exact): keep at most route_topk of the router's
@@ -1793,7 +1794,8 @@ struct Engine {
         lg = dalloc(T * (size_t) mm.n_expert);
         wts = dalloc(T * (size_t) mm.top_k);
         scores = dalloc(T * (size_t) mm.idx_heads * nblk);
-        logits = dalloc((size_t) kMaxWin * (size_t) mm.n_vocab);   // one row per token of a verify window
+        logit_rows = nseq_reserve > 1 ? kMaxWin : kWinDef;   // one row per token of a verify window (a batch step has more; the single-sequence engine keeps its VRAM for slots)
+        logits = dalloc((size_t) logit_rows * (size_t) mm.n_vocab);
         ids = dalloc_t<int32_t>(T * (size_t) mm.top_k);
         CK(cudaMalloc(&d_xids, kMaxWin * 4 * 4));
         CK(cudaMalloc(&d_xwts, kMaxWin * 4 * 4));
@@ -1832,7 +1834,7 @@ struct Engine {
             }
         }
         CK(cudaHostAlloc((void**) &qpos_h, kMaxWin * 4, 0));
-        {
+        if (nseq_reserve > 1) {   // only a batch needs it: the single-sequence engine's VRAM stays with the expert slots
             const size_t widest = std::max<size_t>(std::max<size_t>(QD, N), WF);
             CK(cudaMalloc(&x16buf, (size_t) kMaxWin * widest * 2));
             CK(cudaMemset(x16buf, 0, (size_t) kMaxWin * widest * 2));
@@ -2499,7 +2501,7 @@ struct Engine {
             rows += g.T;
             if (g.s->pos + g.T > ctx) { std::fprintf(stderr, "strata-m3: the context (%d) is full\n", ctx); std::exit(1); }
         }
-        if (rows > kMaxWin || rows > tmax) { std::fprintf(stderr, "strata-m3: a batch step of %d rows (limit %d)\n", rows, std::min(kMaxWin, tmax)); std::exit(1); }
+        if (rows > logit_rows || rows > tmax) { std::fprintf(stderr, "strata-m3: a batch step of %d rows (limit %d; start with --seqs)\n", rows, std::min(logit_rows, tmax)); std::exit(1); }
         const int win_saved = win_cap;
         win_cap = kMaxWin;
         tc_on = tc_env && rows > 8;

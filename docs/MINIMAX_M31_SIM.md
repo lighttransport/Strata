@@ -697,3 +697,10 @@ draft pass. The engine runs the draft once per sequence (7.3-7.5 ms each, 37 ms 
 to within 7 % up to 4 sequences (8 sequences: model 71, measured 81) and says what the next two engine changes are worth at 4 / 8 sequences (aggregate tok/s):
 a batched draft pass 88 / 95, plus one attention launch for all sequences 96 / 110, plus a second GPU 112 / 136. The longer-run table of the projection (steady state,
 3.8 tokens a sequence step, which the 4-sequence run does not reach because its sequences finish at different steps) is in `docs/benchmarks/minimax_m31_sim_20261103/fit.txt`.
+
+Quality and the default path (same day, one V100): the 46 C++ tasks decoded four at a time (`runb`, batches of 4, `--speed max` settings, draft 6) pass 39 of 46 at 72.7 tok/s
+aggregate (mean over the batches); the same settings one sequence at a time pass 36-37 of 46 at 56.8 tok/s and the exact path 41 of 46. The default single-sequence path is
+unchanged by the multi-sequence work: exact routing, admissions on, the four prompts' generated tokens hash to the same values as before (dijkstra 1ee67a8d, lru_cache 38fb7620,
+knapsack cd04cbf5, eval_expr e30269a7; 27.7 / 26.4 / 25.0 / 23.5 tok/s). One change was needed for that: the batch-sized buffers (32 logit rows, the fp16 activation buffer) are
+allocated only when `--seqs` is above 1, because the larger logits buffer alone cost the single-sequence engine one expert slot (1036 against 1037), which moved the exact-routing
+tokens of two prompts.
