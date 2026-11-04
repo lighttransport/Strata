@@ -947,8 +947,21 @@ fill time. At 128K host K/V is still slower than FP8 K/V in VRAM (12.4 tok/s), e
 
 **Both together at 128K** (draft head, host K/V, same-step cache): 695 slots, decode 15.1 tok/s (88 % accepted, 3.6 tokens a step),
 prefill 423 tok/s, answer tokens the same. That is the decode speed of the draft head with K/V in VRAM, without its prefill loss.
-The 256K run with both did not finish before the allocation ended. Not measured: two GPUs at long context, 512K with the new cache,
-a larger block cache.
+**256K and 512K** (second allocation, same day, same flags, `--kv-host --kv-fp8 --idx-fp8`, 2 GiB same-step cache):
+
+| prompt | setup | slots | prefill | decode | drafts accepted, tokens a step | cache hit |
+|---|---|---|---|---|---|---|
+| 256K needle | cache only (above) | 778 | 343 tok/s | 11.0 tok/s | | 82 % |
+| 256K needle | cache + draft head | 611 | 347 tok/s | **11.7 tok/s** | 71 %, 3.3 | 83 % |
+| 512K needle | cache only | 610 | 254 tok/s | **10.6 tok/s** (6.0 one step late, 2026-11-03) | | 77 % |
+| 512K needle | cache + draft head | 443 | 251 tok/s | **12.0 tok/s** | 84 %, 3.1 | 78 % |
+
+At 256K the answer tokens with the draft head are the same as without it (6e2cc426). At 512K both runs give the same needle answer;
+the draft head's run drops two tokens of one sentence (53 against 55 tokens), a near-tie moved by the batched verify. The draft head
+gains less here than at 128K (6 % and 13 %, against 22 %): fewer drafts are accepted and fewer slots are left. Prefill at 512K takes
+34 minutes. Not measured: two GPUs at long context, a larger block cache.
+
+Default path with this build: tokens identical (1ee67a8d, 38fb7620, cd04cbf5, e30269a7); 26.8 / 25.7 / 24.2 / 22.7 tok/s.
 
 Default path after the fixes (four C++ prompts, exact routing, 200 tokens): tokens identical (1ee67a8d, 38fb7620, cd04cbf5, e30269a7); decode
 26.9 / 25.8 / 24.3 / 22.9 tok/s, the same as the run before the fixes in this session (27.0 / 25.8 / 24.3 / 23.0). With the all-heads
