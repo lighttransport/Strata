@@ -98,6 +98,7 @@ inline hipError_t strata_device_get_attribute(int* v, hipDeviceAttribute_t a, in
 #define cudaDeviceSynchronize hipDeviceSynchronize
 #define cudaDeviceCanAccessPeer hipDeviceCanAccessPeer
 #define cudaDeviceEnablePeerAccess hipDeviceEnablePeerAccess
+#define cudaDeviceDisablePeerAccess hipDeviceDisablePeerAccess
 #define cudaDriverGetVersion hipDriverGetVersion
 #define cudaRuntimeGetVersion hipRuntimeGetVersion
 #define cudaSetDeviceFlags hipSetDeviceFlags
@@ -107,6 +108,7 @@ inline hipError_t strata_device_get_attribute(int* v, hipDeviceAttribute_t a, in
 #define cudaMemcpy hipMemcpy
 #define cudaMemcpyAsync hipMemcpyAsync
 #define cudaMemcpyPeerAsync hipMemcpyPeerAsync
+#define cudaMemcpyPeer hipMemcpyPeer
 #define cudaMemcpy2DAsync hipMemcpy2DAsync
 #define cudaMemset hipMemset
 #define cudaMemsetAsync hipMemsetAsync
@@ -165,6 +167,7 @@ inline hipError_t cudaFuncSetAttribute(Kernel kernel, hipFuncAttribute attribute
     return hipFuncSetAttribute(reinterpret_cast<const void*>(kernel), attribute, value);
 }
 #define cudaMemcpyToSymbol(sym, src, ...) hipMemcpyToSymbol(HIP_SYMBOL(sym), src, __VA_ARGS__)
+#define cudaMemcpyFromSymbol(dst, sym, ...) hipMemcpyFromSymbol(dst, HIP_SYMBOL(sym), __VA_ARGS__)
 
 // CUDA 12 has a 3-argument cudaGraphInstantiate(exec, graph, flags) and the older 5-argument one; HIP spells
 // the first hipGraphInstantiateWithFlags.  Both are used in the tree.

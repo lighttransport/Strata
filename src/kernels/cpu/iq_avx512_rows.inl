@@ -6,7 +6,14 @@ inline uint64_t u64(const uint8_t* p) { uint64_t v; std::memcpy(&v, p, 8); retur
 
 // E-2: the IQ3 grids by one AVX-512 gather (the same words, the same results) - measured 3-5% SLOWER than the scalar
 // lookups on a Ryzen 5 7600 (Zen 4 gathers are microcoded), so opt-in: STRATA_IQ_GATHER=1
-const bool gather = std::getenv("STRATA_IQ_GATHER") != nullptr;
+// 0.2.5: DEFAULT on where gathers are fast (Intel server and HEDT cores with AVX-512: cpu_gather_fast), off on Zen 4 (microcoded);
+// STRATA_IQ_GATHER=1 / 0 force it either way.  The same words are loaded, so the results are bit for bit the scalar decode's.
+const bool gather = [] {
+    const char* v = std::getenv("STRATA_IQ_GATHER");
+    return v != nullptr && v[0] != '\0' ? std::atoi(v) != 0 : cpu_gather_fast();
+}();
+// the grid lookups by one 64-bit gather of eight entries (IQ2_XXS / IQ2_XS / IQ2_S): `idx` = eight 32-bit indices
+inline __m512i gather64(__m256i idx, const void* grid) { return _mm512_i32gather_epi64(idx, grid, 8); }
 // E-2: software prefetch distance in bytes (STRATA_IQ_PREFETCH; 0 = off): -2-3% gate/up time on IQ3_S decode
 // (the rows are read at ~30 GB/s by 6 cores, near what DDR5 with 4 KB pages gives: the pool is memory-bound)
 const int prefetch_ahead = [] {
@@ -32,7 +39,8 @@ template <> struct Fmt<16> {   // IQ2_XXS: d, qs[32] u16
     static inline void decode(const uint8_t* b, int j, __m512i& g, __mmask64& m, __m512i& sc) {
         const uint8_t* q = b + 2 + 16 * j;
         const uint32_t a0 = u32(q), a1 = u32(q + 4), b0 = u32(q + 8), b1 = u32(q + 12);
-        g = _mm512_set_epi64((long long) iq2xxs_grid[b0 >> 24], (long long) iq2xxs_grid[(b0 >> 16) & 255],
+        g = gather ? gather64(_mm256_cvtepu8_epi32(_mm_cvtsi64_si128((long long) ((uint64_t) a0 | ((uint64_t) b0 << 32)))), iq2xxs_grid)
+                   : _mm512_set_epi64((long long) iq2xxs_grid[b0 >> 24], (long long) iq2xxs_grid[(b0 >> 16) & 255],
                              (long long) iq2xxs_grid[(b0 >> 8) & 255], (long long) iq2xxs_grid[b0 & 255],
                              (long long) iq2xxs_grid[a0 >> 24], (long long) iq2xxs_grid[(a0 >> 16) & 255],
                              (long long) iq2xxs_grid[(a0 >> 8) & 255], (long long) iq2xxs_grid[a0 & 255]);
@@ -57,7 +65,8 @@ template <> struct Fmt<17> {   // IQ2_XS: d, qs[32] u16 (9-bit grid index + 7-bi
         const uint8_t* q = b + 2 + 16 * j;
         uint16_t v[8];
         std::memcpy(v, q, 16);
-        g = _mm512_set_epi64((long long) iq2xs_grid[v[7] & 511], (long long) iq2xs_grid[v[6] & 511],
+        g = gather ? gather64(_mm256_and_si256(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i*) q)), _mm256_set1_epi32(511)), iq2xs_grid)
+                   : _mm512_set_epi64((long long) iq2xs_grid[v[7] & 511], (long long) iq2xs_grid[v[6] & 511],
                              (long long) iq2xs_grid[v[5] & 511], (long long) iq2xs_grid[v[4] & 511],
                              (long long) iq2xs_grid[v[3] & 511], (long long) iq2xs_grid[v[2] & 511],
                              (long long) iq2xs_grid[v[1] & 511], (long long) iq2xs_grid[v[0] & 511]);
@@ -80,6 +89,11 @@ template <> struct Fmt<22> {   // IQ2_S: d, qs[64] (32 grid bytes, 32 sign bytes
     static inline void decode(const uint8_t* b, int j, __m512i& g, __mmask64& m, __m512i& sc) {
         const uint8_t* qs = b + 2 + 8 * j;
         const uint8_t h0 = b[66 + 2 * j], h1 = b[66 + 2 * j + 1];
+        if (gather) {   // the 10-bit indices: the byte plus two high bits from qh (h0 for lanes 0-3, h1 for 4-7), one 64-bit gather
+            const __m256i hi = _mm256_and_si256(_mm256_sllv_epi32(_mm256_setr_epi32(h0, h0, h0, h0, h1, h1, h1, h1),
+                                                                   _mm256_setr_epi32(8, 6, 4, 2, 8, 6, 4, 2)), _mm256_set1_epi32(0x300));
+            g = gather64(_mm256_or_si256(_mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*) qs)), hi), iq2s_grid);
+        } else
         g = _mm512_set_epi64((long long) iq2s_grid[qs[7] | ((h1 << 2) & 0x300)], (long long) iq2s_grid[qs[6] | ((h1 << 4) & 0x300)],
                              (long long) iq2s_grid[qs[5] | ((h1 << 6) & 0x300)], (long long) iq2s_grid[qs[4] | ((h1 << 8) & 0x300)],
                              (long long) iq2s_grid[qs[3] | ((h0 << 2) & 0x300)], (long long) iq2s_grid[qs[2] | ((h0 << 4) & 0x300)],
@@ -141,10 +155,19 @@ template <> struct Fmt<21> {   // IQ3_S: d, qs[64], qh[8], signs[32], scales[4]
     }
 };
 
-template <int TY, int NT>
+template <bool Singleton> struct RowAccumulator;
+template <> struct RowAccumulator<false> { using Type = __m512; };
+template <> struct RowAccumulator<true> { using Type = __m256; };
+
+template <int TY, int NT, bool Singleton = false>
 inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
-    __m512 accf[NT];
-    for (int t = 0; t < NT; ++t) accf[t] = _mm512_setzero_ps();
+    // Decode weights once for the group; select the accumulation order at compile time.
+    using Acc = typename RowAccumulator<Singleton>::Type;
+    Acc accf[NT];
+    for (int t = 0; t < NT; ++t) {
+        if constexpr (Singleton) accf[t] = _mm256_setzero_ps();
+        else accf[t] = _mm512_setzero_ps();
+    }
     const __m512i zero = _mm512_setzero_si512();
     for (int i = 0; i < nblocks; ++i) {
         const uint8_t* blk = row + (size_t) i * Fmt<TY>::bytes;
@@ -167,9 +190,30 @@ inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y,
                 acci[t] = _mm512_add_epi32(acci[t], _mm512_madd_epi16(_mm512_maddubs_epi16(g, ys), sc));
             }
         }
-        const float dx = h2f(u16(blk)) * Fmt<TY>::K;
-        for (int t = 0; t < NT; ++t)
-            accf[t] = _mm512_fmadd_ps(_mm512_set1_ps(dx * y[t][i].d), _mm512_cvtepi32_ps(acci[t]), accf[t]);
+        if constexpr (Singleton) {
+            const float dx = h2f(u16(blk));
+            for (int t = 0; t < NT; ++t) {
+                // Preserve ggml AVX2's eight integer lanes BEFORE floating conversion.
+                const __m256i folded = _mm256_add_epi32(_mm512_castsi512_si256(acci[t]),
+                                                       _mm512_extracti64x4_epi64(acci[t], 1));
+                accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * y[t][i].d),
+                                         _mm256_cvtepi32_ps(folded), accf[t]);
+            }
+        } else {
+            const float dx = h2f(u16(blk)) * Fmt<TY>::K;
+            for (int t = 0; t < NT; ++t)
+                accf[t] = _mm512_fmadd_ps(_mm512_set1_ps(dx * y[t][i].d), _mm512_cvtepi32_ps(acci[t]), accf[t]);
+        }
     }
-    for (int t = 0; t < NT; ++t) res[t] = _mm512_reduce_add_ps(accf[t]);
+    if constexpr (Singleton) {
+        for (int t = 0; t < NT; ++t) {
+            __m128 sum = _mm256_extractf128_ps(accf[t], 1);
+            sum = _mm_add_ps(sum, _mm256_castps256_ps128(accf[t]));
+            sum = _mm_add_ps(sum, _mm_movehl_ps(sum, sum));
+            sum = _mm_add_ss(sum, _mm_movehdup_ps(sum));
+            res[t] = Fmt<TY>::K * _mm_cvtss_f32(sum);
+        }
+    } else {
+        for (int t = 0; t < NT; ++t) res[t] = _mm512_reduce_add_ps(accf[t]);
+    }
 }

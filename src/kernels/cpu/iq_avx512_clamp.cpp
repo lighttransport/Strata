@@ -2,6 +2,7 @@
 // Cascade Lake. This file is built without the wider unit's VNNI/VBMI floor.
 #include "strata/kernels/cpu/iq_avx512.hpp"
 #include "strata/kernels/cpu/iq_even_signs.hpp"
+#include "strata/kernels/cpu/expert_layout.hpp"   // cpu_gather_fast() (iq_avx512_rows.inl)
 #define GGML_COMMON_DECL_CPP
 #define GGML_COMMON_IMPL_CPP
 #include "ggml-common.h"

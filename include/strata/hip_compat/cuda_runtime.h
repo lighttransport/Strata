@@ -18,6 +18,8 @@
 #define cudaDevAttrMaxSharedMemoryPerBlockOptin hipDeviceAttributeMaxSharedMemoryPerBlock
 #define cudaDevAttrMultiProcessorCount hipDeviceAttributeMultiprocessorCount
 #define cudaDevAttrClockRate hipDeviceAttributeClockRate
+#define cudaDevAttrMemoryClockRate hipDeviceAttributeMemoryClockRate
+#define cudaDevAttrGlobalMemoryBusWidth hipDeviceAttributeMemoryBusWidth
 #define cudaDevAttrComputeCapabilityMajor hipDeviceAttributeComputeCapabilityMajor
 #define cudaDevAttrComputeCapabilityMinor hipDeviceAttributeComputeCapabilityMinor
 #define cudaDevAttrIntegrated hipDeviceAttributeIntegrated
@@ -26,6 +28,7 @@
 #define cudaDeviceCanAccessPeer hipDeviceCanAccessPeer
 #define cudaDeviceEnablePeerAccess hipDeviceEnablePeerAccess
 #define cudaDeviceGetPCIBusId hipDeviceGetPCIBusId
+#define cudaDeviceDisablePeerAccess hipDeviceDisablePeerAccess
 #define cudaDeviceProp hipDeviceProp_t
 #define cudaDeviceSynchronize hipDeviceSynchronize
 #define cudaDriverGetVersion hipDriverGetVersion
@@ -153,5 +156,6 @@ inline hipError_t cudaGraphInstantiate(hipGraphExec_t* exec, hipGraph_t graph,
 }
 #define __trap() __builtin_trap()   // the compiled-out sm_80 paths (never selected on AMD)
 #define cudaMemcpyToSymbol(symbol, ...) hipMemcpyToSymbol(HIP_SYMBOL(symbol), __VA_ARGS__)
+#define cudaMemcpyFromSymbol(dst, symbol, ...) hipMemcpyFromSymbol(dst, HIP_SYMBOL(symbol), __VA_ARGS__)
 
 #include "intrinsics.hpp"

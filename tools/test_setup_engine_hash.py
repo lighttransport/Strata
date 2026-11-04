@@ -295,14 +295,13 @@ class WhatARefusalDoesToTheCaller(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         (Path(self.tmp.name) / "engine").mkdir(parents=True, exist_ok=True)
-        (Path(self.tmp.name) / "CMakeLists.txt").write_text((ROOT / "CMakeLists.txt").read_text())
-        root = mock.patch.object(setup, "ROOT", Path(self.tmp.name))
-        root.start()
-        self.addCleanup(root.stop)
-        # get_prebuilt probes the archive with HEAD before download/hash verification.
-        head = mock.patch.object(setup.urllib.request, "urlopen")
-        self.head = head.start()
-        self.addCleanup(head.stop)
+        # get_prebuilt looks for the release with a HEAD request before it downloads (0.2.0), and keeps the engine in
+        # an engine folder of its own: no network, and never this checkout's engine folder.  A published release answers the probe.
+        self.head = mock.MagicMock(return_value=mock.MagicMock())   # the probe, so a test can check it was a HEAD
+        for patcher in (mock.patch.object(setup, "engine_dir", lambda toolkit=13: Path(self.tmp.name) / "engine"),
+                        mock.patch.object(setup, "_urlopen", self.head)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def fake_download(self, url, dst, what=None):
         with zipfile.ZipFile(dst, "w") as z:

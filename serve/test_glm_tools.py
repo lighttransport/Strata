@@ -114,10 +114,10 @@ class GlmToolCalls(unittest.TestCase):
         messages, _, _ = openai_to_messages(req, keep_ids=True)
         prompt = self.template.render(messages, tools=TOOLS)
         self.assertLess(prompt.index("FIRST"), prompt.index("SECOND"))
-        messages, _, _ = openai_to_messages(req)                 # without ids: the order the client sent
+        messages, _, _ = openai_to_messages(req)                 # without ids: upstream #3395 restores the calls' order too
         self.assertNotIn("tool_call_id", messages[2])
-        self.assertLess(self.template.render(messages, tools=TOOLS).index("SECOND"),
-                        self.template.render(messages, tools=TOOLS).index("FIRST"))
+        self.assertLess(self.template.render(messages, tools=TOOLS).index("FIRST"),
+                        self.template.render(messages, tools=TOOLS).index("SECOND"))
         anth = {"messages": [
             {"role": "user", "content": "go"},
             {"role": "assistant", "content": [{"type": "tool_use", "id": "u1", "name": "Bash", "input": {"command": "a"}},

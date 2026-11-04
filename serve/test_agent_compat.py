@@ -90,7 +90,10 @@ class AnthropicSdk(Agent):
         after = events[[d for _, d in events].index(sig[0]) + 1]
         self.assertEqual(after[0], "content_block_stop")
         delta = [d for n, d in events if n == "message_delta"][0]
-        self.assertEqual(delta["usage"]["cache_creation_input_tokens"], 0)
+        # upstream's final usage: input_tokens 1 and the rest of the prompt as cache_creation (no cache hit here)
+        u = delta["usage"]
+        self.assertEqual(u["input_tokens"] + u["cache_creation_input_tokens"] + u["cache_read_input_tokens"],
+                         events[0][1]["message"]["usage"]["input_tokens"])
         # collected (not streamed): the block carries the same signature
         status, _, raw = self.post("/v1/messages", {**body, "stream": False}, SDK)
         thinking = json.loads(raw)["content"][0]
@@ -100,7 +103,8 @@ class AnthropicSdk(Agent):
         body = {"model": "m", "max_tokens": 200, "stream": True, "messages": [{"role": "user", "content": "hi"}]}
         _, _, raw = self.post("/v1/messages", body)
         self.assertNotIn("signature_delta", raw)
-        self.assertNotIn("cache_creation_input_tokens", raw)
+        start = self.sse(raw)[0][1]["message"]["usage"]
+        self.assertNotIn("cache_creation_input_tokens", start)   # (upstream's message_delta always carries it)
         self.assertIn('"signature": ""', raw)
 
     def test_heartbeats_are_ping_events_for_an_sdk_client_and_comments_otherwise(self):
@@ -273,29 +277,8 @@ class ClientShapedRequests(Agent):
 
 
 class MaxQueue(Agent):
-    def test_a_full_queue_is_429_or_529_with_retry_after(self):
-        bodies = {"/v1/chat/completions": {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
-                  "/v1/messages": {"model": "m", "max_tokens": 20, "messages": [{"role": "user", "content": "hi"}]},
-                  "/v1/responses": {"model": "m", "input": "hi"}}
-        self.svc.max_queue = 1
-        with self.svc.status_lock:
-            self.svc.status.update(busy=True, queued=1)
-        try:
-            for path, body in bodies.items():
-                with self.subTest(path=path):
-                    status, r, raw = self.post(path, body)
-                    err = json.loads(raw)
-                    self.assertEqual((r.getheader("Retry-After"), r.getheader("x-should-retry")), ("5", "true"))
-                    if path == "/v1/messages":
-                        self.assertEqual((status, err["type"], err["error"]["type"]), (529, "error", "overloaded_error"))
-                    else:
-                        self.assertEqual((status, err["error"]["code"]), (429, "rate_limit_exceeded"))
-        finally:
-            with self.svc.status_lock:
-                self.svc.status.update(busy=False, queued=0)
-        for path, body in bodies.items():                   # room again: answered
-            self.assertEqual(self.post(path, body)[0], 200)
-
+    # The fork's 429/529 refusal of a full queue gave way to upstream's --max-queue (admission_full, which
+    # strata_cli/bench.py counts; serve/test_parallel.py covers it). check_queue stays a no-op when unset.
     def test_unset_means_no_limit(self):
         with self.svc.status_lock:
             self.svc.status.update(busy=True, queued=50)
