@@ -1,113 +1,140 @@
-# Resume DS41 two-node prefill optimization
+# Resume DeepSeek V4.1 Flash Coder work after reboot
 
-Continue implementing the approved plan below. This file replaces the old chronological handoff. Read AGENTS.md first, inspect the working tree, and preserve unrelated work. Do not mistake the protocol foundation for a working distributed prefill implementation.
+Updated 2026-11-04, about 10:00 UTC. This file replaces the old handoff entirely.
 
-## Objective and authorization
+Resume the user's paused optimization goal only when asked to resume. The goal is:
+**30+ decode tok/s with exact greedy output, 60+ tok/s in an explicitly lossy mode; speculative decoding is allowed. Engram lookup must not become the bottleneck.** The original work window was six hours; about three hours of active work remain. Check the goal tool for authoritative status/time. Neither target has been achieved. Do not mark the goal complete or describe a screen as qualification.
 
-Implement opt-in two-node DS41 whole-expert prefill, targeting **1,200+ tokens/s for one warm 8,192-token sequence** (at most 6.8267 seconds). Include router, Engram, staging, network, GPU work, reduction, and final logits in elapsed prefill time. Report cold setup, cache restoration, and true TTFT separately. A 16K prefix is secondary.
+## Scope and rules
 
-The user approved implementation and borrowing decode-cache VRAM during prefill, provided it is restored before decode. No new approximation is allowed: preserve weights, activation precision, routing and truncation. Measured FP32 implementation/reduction drift versus the current MMQ baseline is allowed only within the quality gates below.
+- Work in this Strata checkout. Read AGENTS.md and docs/AI_REFERENCE.md. Preserve unrelated dirty GLM/user files. No commits or push are authorized. Do not spawn subagents.
+- Target and drafter inference must run on the Threadripper 1950X GPU machine (16 cores/32 threads, 128 GB installed RAM, RX 9070 XT 16 GB, gfx1201). The B550 machine is for Engram/file serving only, over IB ucomm. No remote inference.
+- The user selected the Coder IQ2_XXS mixed pack. Do not substitute a different model/quantization.
+- Keep actual model paths, SSH settings and endpoints in ignored local configuration, not source/docs/reports. The authoritative connection settings are in `priv/dsv41-coder-remote/config.json`.
+- New features remain opt-in. Preserve the existing default path. Engine environment reads use glm_env helpers without changing their truthiness semantics.
+- Exact means identical greedy token IDs to the frozen full six-route reference, not numerical tolerance. Proposed qualification: single sequence, 32K total context, roughly 4K and near-32K active prefixes, ten coding prompts/context, 512 output tokens, five repetitions. This has NOT been completed.
+- Lossy quality floor is not selected. Measure the speed/correctness frontier before choosing a setting; do not enable a lossy setting silently.
+- Proposed Engram gate: exposed wait p95 <= 0.5 ms per committed token and <= 3% throughput cost against exact-row replay. Replay comparison is not implemented/qualified. Keep >= 1 GiB physical VRAM and >= 12 GiB host memory available.
 
-The user chose a frozen repository C++ prefix: tokenize decoder source from commit `89e439c7` into exactly 8,192 input IDs. Freeze tokenizer identity, source hash and token-ID hash. Repository prose and a 16K prefix are secondary fixtures. This fixture and a fresh matched baseline still need creating; historical timings are not comparable qualification evidence.
+## Reboot checkpoint
 
-Do not push. Prefill changes are uncommitted. No active goal was requested for this phase. Do not spawn subagents unless explicitly authorized by the user or applicable instructions.
+The user paused work for reboot. The owned calibration process group was terminated with SIGTERM after validating its process identity and ancestry. It was running the last task's top2 variant. The local API was already stopped for benchmarking, and the benchmark controller was stopped too, so its finally block did not restart the API.
 
-## Current implementation: foundation only
+The remote file-service parent was left running with **24 reader threads**, selected in the ignored config. It may survive a reboot of only the GPU machine. Its old PID is NOT a safe identity after reboot; use the launcher's identity cookie/status. Do not kill processes based on PIDs in old logs. There should be no local inference process left from this checkpoint. Confirm current state rather than assuming it.
 
-New files (currently untracked):
+`priv/dsv41-coder-remote/coding-calibration/INTERRUPTED_FOR_REBOOT.txt` marks the interruption. Preserve raw partial outputs. Existing benchmark directories reject overwrite; use a new directory or run only missing variants into new directories.
 
-- `include/strata/host/ds41_prefill_wire.h`
-- `src/host/ds41_prefill_wire.c`
-- `tools/ds41_prefill_wire_test.c`
+## Start here after reboot
 
-`CMakeLists.txt` adds the implementation to `strata_host` and registers `ds41_prefill_wire_test` with label `ds41` under `STRATA_BUILD_TESTS`.
+1. Check goal status and current hardware/process state. Review tracked changes with `git status --short --untracked-files=no`; the checkout has hundreds of unrelated untracked experiment files, so avoid dumping all of them.
+2. Read `priv/dsv41-coder-remote/OPTIMIZATION_STATE.md` for earlier diagnostics, then the latest checkpoint below. Use the virtualenv interpreter `priv/dsv41-coder-remote/venv/bin/python`; system Python lacks required dependencies. Do not use bare `python`.
+3. GPU/network commands require the available escalation mechanism. The HIP runtime is under `/opt/rocm/core-10.1`; existing ignored run config contains LD_LIBRARY_PATH. Do not print connection secrets/settings unnecessarily.
+4. Inspect `tools/dsv41/remote_engram.py status --config priv/dsv41-coder-remote/config.json` with the virtualenv Python. The remote parent validates/hashes the whole table on restart, which takes several minutes. A surviving parent avoids the rehash. Do not use generic launcher `stop` just to stop the local API: it stops the remote parent too.
+5. HIP and CUDA builds now include resident routing bias (built during the local commit audit). Its model runtime/quality checks have NOT been run. Rebuild if source changes before exercising it. Do not compile while timing inference. Existing configured build trees are `build-dsv41-remote` and `build-dsv41-remote-cuda`; target `strata-dsv41`. CUDA is compile-only SM86 here. There is no DSV41 SYCL target; shared CPU/SYCL execution is unvalidated.
+6. Grade the completed coding calibration outputs with the existing private script before making quality claims. Then decide the next controlled measurements. If restoring the API first, run the generic launcher `start`; it serves only localhost:8080, with the original six-route/no-drafter settings. Check logs for readiness, not just the PID.
 
-The C11 implementation provides:
+Useful commands (from repo root, substituting the virtualenv interpreter for PY):
 
-- STD3 magic, version 1 and capability validation for Q8 transport, weighted FP32 replies, phase transitions and requested geometry.
-- A 56-byte request with sequence number, operation, layer, absolute first token, token/route counts, hidden size, top-k, activation kind and payload byte count.
-- BEGIN / EXECUTE / END / DECODE_RAW validation and a phase state machine. Decode is rejected during prefill; replay and sequence overflow are rejected; invalid requests leave state unchanged. The caller must commit a transition only after GPU work and transfers complete.
-- Partial route counts, including zero, bounded by tokens times top-k. This is needed for expert partitions.
-- CPU Q8 repack reference: native `[column_block][row]` to wire `[row][column_block]`, bitwise copies, excludes native column padding, clears padding and caller-supplied tail on unpack. Buffers must be disjoint.
+```sh
+PY=priv/dsv41-coder-remote/venv/bin/python
+$PY tools/dsv41/remote_engram.py status --config priv/dsv41-coder-remote/config.json
+cmake --build build-dsv41-remote --target strata-dsv41 -j 4
+cmake --build build-dsv41-remote-cuda --target strata-dsv41 -j 4
+$PY -m unittest discover -s tests/terminal -p test_dsv41_remote_engram.py
+$PY -m unittest discover -s tools/dsv41 -p test_bench_decode.py
+```
 
-Important discovery: the original planned universal FP16 d/s wire representation was incorrect for mixed formats. Actual MMQ has three metadata layouts. The wire now declares logical 128-value blocks of **16 metadata bytes plus 128 signed quant bytes**, retaining all original bits:
+The grading script executes generated C++ only inside a bubblewrap namespace: no network, no home/repository mount, only system tools/libraries and the individual generated source. Bubblewrap namespace creation fails inside the default tool sandbox but passed outside it. Request escalation for the **isolated grading command**, keeping its bwrap isolation; do not remove isolation to run generated code with unrestricted access.
 
-- DS4 (activation enum Q8_1): four FP16 scale/sum pairs; IQ1_S uses this.
-- D4: four FP32 scales.
-- D2S6: two FP16 scales and six FP16 sums; Q2_K uses this, with 64-value quantization scale groups.
+```sh
+priv/dsv41-coder-remote/venv/bin/python priv/dsv41-coder-remote/grade_calibration.py
+```
 
-Never convert D4 metadata to FP16 or requantize on the worker. Inspect the current ggml MMQ quantizer and type-to-layout mapping before GPU implementation. Root quantization must match the baseline for each layer's weight format, not a universal substitute.
+That script is prepared but has NOT been run. It compiles the repository's independent training-task oracles, records diagnostics, and writes `coding-calibration/quality.json`. Partial/missing variants must remain unqualified.
 
-**Not implemented:** decoder/worker STD3 negotiation, setup serialization, request transport, reply validation, runtime feature flag, GPU Q8 pack/unpack, route partitioning, whole-expert worker MMQ, cache lending/restoration, cost model, fixtures, profiling, distributed benchmarks. The worker still accepts legacy STD1/STD2 only. No 1,200+ tokens/s claim exists.
+## Working deployment already implemented
 
-Checks completed for this foundation:
+Production `strata-dsv41` supports the six-shard Coder layout with five local shards and the combined IQ4_NL Engram table served remotely through native IB ucomm. It validates source size/SHA-256, preserves exact row bytes/order/duplicates, fails closed on incomplete reads, and sends idle heartbeats. The remote machine performs only file reads. A parent holds the verified table open and forks a fresh session child for each client.
 
-- CMake target and CTest pass in `build-glm` (CUDA-configured) and `build-hip-rocm101-tr16` (HIP-configured). These are CPU tests, not GPU execution or full backend builds.
-- Strict C11 and C++20 compile/run with `-Wall -Wextra -Werror` pass.
-- ASan/UBSan pass with `ASAN_OPTIONS=detect_leaks=0`; LeakSanitizer itself cannot run under the environment's ptrace setup. No leak-check claim.
-- Tests cover missing capabilities, invalid version and bounds, partial/zero routes, 100 repeated phase cycles, replay, decode interlock, sequence exhaustion, exact repack bytes and padding, insufficient capacity without writes.
-- `git diff --check -- CMakeLists.txt` passed.
+- Launcher: `tools/dsv41/remote_engram.py`
+- Private config: `priv/dsv41-coder-remote/config.json`
+- Generated engine config: `priv/dsv41-coder-remote/state/run.json`
+- Local API cookie/logs: `priv/dsv41-coder-remote/state/`
+- Pack: `priv/dsv41-coder-remote/pack`
+- Catalog: `data/dsv41/coder-set.json`
+- Docs: `docs/DSV41_REMOTE_ENGRAM.md`
+- Latest pre-routing-bias builds succeeded in `/tmp/ds4-lookup-fullscratch-hip-build.log` and `/tmp/ds4-lookup-fullscratch-cuda-build.log` (tmp logs may disappear at reboot).
 
-Review remaining protocol edge cases before runtime use: wire byte order/ABI, message length arithmetic, route payload validation, reply shape/status and errors, peer disconnects, sequence acknowledgement, and consistency of accepted hidden geometry with 128-value repack blocks. Capability validation is only a helper until actually exchanged before weights transfer.
+Original API settings remain CPU15, reserve3072 MiB, six experts, DSpark none, vision off, mmap on, prefill8192, total context32768, parallel1, read-only expert profile, 256 MiB Engram row cache. No experimental decode knob or resident routing bias was enabled in this API config.
 
-## Approved implementation sequence
+Earlier validation passed: 2053 ordered remote rows byte-identical to direct remote pread; idle/cancellation/failure/recovery checks; local pack default output unchanged. See private notebook/evidence for precise test scopes. Most recently, nine launcher tests and four decode-harness tests passed. Newly added routing bias has no build/runtime validation yet.
 
-1. Freeze fixtures and run fresh same-day baselines with the existing guarded path.
-2. Add opt-in `STRATA_DS41_PREFILL_EXPERT_PARALLEL=1` via `glm_env.h` helpers. Preserve the default path and STD1/STD2 wire behavior.
-3. Negotiate STD3/version/capabilities before any weights transfer. Keep existing whole-expert RAM ownership (approximately 48 GiB worker); do not redistribute weights per prompt.
-4. Keep root's layer-major 8K FFN pass and tiled trunk. Quantize baseline activations once for the layer format; send canonical logical Q8 blocks with unchanged metadata and quant bytes. Worker repacks without requantization. Use bounded pinned staging buffers; no GPUDirect requirement.
-5. Partition selected routes completely and disjointly. Exclude remote experts from root staging/producer readiness. Worker returns one router-weighted FP32 partial sum per token, rather than raw outputs for every route. Handle zero routes, tails, rcap splitting and absolute token offsets.
-6. Borrow decode GPU arenas only after synchronizing outstanding work. Retain shared RAM weights, bound temporary buffers, restore caches before decode, and measure restoration and actual TTFT. Exercise repeated transitions.
-7. Use a per-layer cost model to assign worker-owned experts to either GPU; experts unavailable on the worker stay local. Every route must execute exactly once.
-8. Profile actual active DMA, exposed waits, wire time, per-layer active rows and GPU computation. Remeasure interconnect bandwidth. Do not call event intervals containing idle waits active DMA.
-9. Only if still below target and IQ1_S products occupy at least 20% of exposed critical path: evaluate lossless GPU-side expansion, `main = 8 * scale * grid` (range +/-120), separate +/-scale delta correction, retain original FP16 base. Do not round a combined FP16 scale. At most two expanded buffers of 256 MiB each. Other formats retain ordinary MMQ. Adopt a geometry only with at least 10% chain improvement including expansion and a full-prefill improvement.
+## Implemented decode experiments
 
-## Engine integration map
+- `STRATA_IQ1M_DIRECT=1`: single-token IQ1_M vectors consumed immediately, avoiding the four-step decoded stack frame. Default unchanged. Row/expert pipeline bit checks passed; whole-model gain modest.
+- `DS4_IQ_PF_COLD`: existing nonzero flag now skips warm prefetch hints using Linux residency checks; its default semantics remain unchanged. `STRATA_IQ_PREFETCH=0` was separately screened.
+- `--dspark-vram-mib`: optional balanced drafter expert budget per GPU group; default -1 preserves prior drafter-first placement.
+- `--target-vram-counts`: fixed target residency per layer with shape/range/budget checks. Frozen target mask **f60dd546f883ae02**, counts **55 followed by 39 copies of 17**, 718/7680 resident. Physical free VRAM changes can make this fail closed; reserve2816 was needed in later screens.
+- `DS4_PLACE_HASH`, `DS4_CPU_HASH`: diagnostic placement and CPU-call hashes.
+- `DS4_TOKLOG`: exposed Engram wait p50/p95/max per committed token (round-amortized under speculation).
+- `--lookup-draft 0..15`, `--lookup-min 3..32`: weight-free greedy suffix drafting using the existing GLM SuffixDrafter; every proposal target-verified. One sequence, default off; sampled requests bypass it. Adapter test and original suffix test passed.
+- `--lookup-check`: serial/lookup/serial from one frozen prefix. Requires checkpoint(1) BEFORE pin(); pin alone does not snapshot. Fixed-length ignores EOS. Generic verifier scratch is now allocated lazily even without DSpark; earlier null-scratch fault was fixed. The last HIP/CUDA builds include that fix.
+- `tools/dsv41/bench_decode.py`: sequential CLI screens with raw outputs, hashes, explicit overrides, timing/wait/placement counters, immutable `--reference-ids` option, and error/token-count validation. Four unit tests passed.
+- Remote reader tuning: optional strict integer `remote_readers` 1..64 in launcher config; default preserves ambient remote environment or service default8. Saved process cookie/status report the count, or unknown for old cookies. Explicit mismatched count requires stop/restart. Nine tests passed, including owned-process lifecycle and ambient override handling. Docs updated.
 
-The actual DS41 engine is `src/program/ds41_decode.cpp`, not `glm_decode.cpp`.
+### Last experiment: resident routing bias — built, runtime untested
 
-- `include/strata/net/expert_tp.hpp`: existing setup/accept/weights/ready, STD1 row split and STD2 whole-expert ownership. Keep their layouts unchanged.
-- `connect_own()` around line 4855 rejects streamed prompts, peers and incompatible routing. Relax only for a negotiated new mode; do not broaden legacy STD2 implicitly.
-- Whole-owner setup around 4967 sends STD2 and appends owned IDs/profile counts. Worker receives setup near line 130; must reject incompatible STD3 before accepting weights.
-- Decoder `Remote` near line 390 sends F32 activations and full top-k jobs; legacy raw replies are per selected route. Do not reuse its unchecked sizing for STD3.
-- Long streamed FFN near line 6738 bypasses whole-owner acceleration. `stream_experts()` near 6212 groups routes by expert; route exclusion and producer readiness both need adjustment.
-- Existing `PREFILL_HALVES` condition around 2990 keeps tiled trunk and one long FFN pass; preserve row0/skip/absolute KV indices. Prompt chunk selection is near 9318.
-- `src/program/ds41_worker.cpp`: `use_mmq = !own && mq::built()` near 325 explicitly disables MMQ for STD2. Legacy maxT is 4096, rcap 8192; owned canonical scratch is only 64 tokens. Owned raw dispatch near 545 precedes ordinary MMQ near 714. Audit all capacities rather than changing one constant.
-- Worker existing ordinary MMQ groups routes, double-buffers layer weights, quantizes, runs gate/up, SwiGLU, down quantization, down MMQ and scatter. Reuse appropriate pieces while preserving whole-expert ownership and bounded memory.
-- `include/strata/prefill/moe_mmq.hpp`, `src/prefill/moe_mmq.cu`: activation padding to 512; native blocks are column-major over 128-value blocks. Product IDs require 128 readable initialized tail entries. `dst_rows` bounds diagnostics are pre-existing uncommitted work and must be retained.
-- ggml quantizer reference: `build-tr16-goal-20261010/ggml-reference/ggml/src/ggml-cuda/quantize.cu`, and `mmq.cuh` for `mmq_get_q8_1_ds_layout` and `block_q8_1_mmq`.
-- DS41 geometry: hidden 5120, FFN 2304, top-k 6, 40 layers, 384 experts, mixed quant formats.
+Just added `Options::resident_route_bias` (default0), CLI `--resident-route-bias X`, help, and docs. Files: `src/dsv41/ds4_model.hpp`, `ds4_main.cpp`, `ds4_model.cu`, `docs/DSV41_REMOTE_ENGRAM.md`.
 
-## Validation and qualification
+`apply_resident_route_bias()` runs after expert loading. Zero returns before device operations or allocations. Positive bias requires one GPU, `--no-expert-cache`, `--dspark none`, `--vision off`, and at least k resident experts per target layer. It reads each target layer's gate selection bias, subtracts X for nonresident experts, and uploads it. Selection changes in BOTH prefill and decode; route weights still use the selected experts' original gate scores before normalization. It emits an explicit LOSSY log. It does not modify files on disk. The CLI rejects malformed/nonfinite/negative numbers.
 
-- Bitwise GPU Q8 repack against the CPU reference for all metadata layouts; complete/disjoint routing; weighted sums; zero routes; rcap and padding; malformed protocol; 4K/8K/16K inputs and repeated phase transitions.
-- For each prompt, mean KL <= max(1e-4, 2 * baseline self-KL), and top-1 disagreement <= max(0.1%, 2 * baseline self-disagreement). Also report perplexity/accuracy. Do not loosen gates.
-- Run the C++ parse_u64 oracle (400,532 cases, fatal UBSan) after approximately 8K context on baseline and candidate.
-- Three paired baseline/candidate processes, each one cold and two warm passes. All six warm candidate passes aggregated must reach 1,200 tok/s; each process's warm median must also reach it. Scored runs have detailed profiling disabled. Prevent accidental prefix/KV reuse.
-- Build affected HIP/CUDA backends consistently with existing bounds hardening, check unchanged defaults and decode handoff regression. Report unavailable SYCL checks explicitly where applicable.
-- If the measured ceiling is below target, report target unmet; do not introduce lossy behavior.
+Purpose: measure speed/quality when favoring GPU-resident experts, including whether 60 tok/s has any usable-quality operating point. It may severely damage output. Do not present GPU-only gibberish as success. Review implementation, build both backends, test default0 unchanged and validation paths, then evaluate on coding tasks. It has not been enabled in inference. Current HIP/CUDA binaries recognize the flag; model runtime and quality validation remain outstanding.
 
-## Safety and environment
+## Measured evidence — screens, not final qualification
 
-- Use existing ignored local configuration for model, profile, remote connection and binary paths. Never add private endpoints or personal filesystem paths to source, reports or commits.
-- Relevant local configuration is under `experiment/ds41f_tr16_decode/logs/`, including `model.local`, `expert-profile.local`, `worker-bin.local`, and `reference-root.local`.
-- Local HIP build: `build-hip-rocm101-tr16`; CUDA build: `build-glm`. Alternate decode build helper: `experiment/ds41f_tr16_decode/build_alternate.py`.
-- Existing remote alias: `b550`. Its current worker build uses Makefiles, not Ninja. Discover actual source/build locations through existing local config or remote read-only inspection. Protocol/library/program updates must be deployed consistently.
-- Root RAM 128 GiB; worker RAM 64 GiB. The worker is shared. Respect current reservations and memory guards; no swap workaround or relaxed memory caps.
-- Keep the local desktop GPU free-memory floor at **2.5 GiB**, and inspect recent GPU faults. Do not bypass guards.
-- `tools/ds41f_prefill_guard.sh` is pre-existing untracked work. It needs deliberate forwarding of the new remote/prefill options; do not bypass its clean environment with arbitrary extra arguments.
-- Never edit an executing shell file in place. Use atomic replacement and preserve mode. Never use `pkill -f`; stop exact owned PIDs only. Never glob-delete shared weight caches.
-- Previous experiment processes were stopped and one specifically owned 48 GiB remote RAM cache was removed after ownership/no-use checks. A new experiment must refill it; inspect current state rather than assuming the worker is idle.
+All speeds are local single-sequence decode on the above hardware. Context, output length and placement matter; compare same-day controlled runs rather than mixing rows as a single progression.
 
-## Existing decode results and working-tree boundaries
+- Original full six-route baseline, about4028 prefix/256 output: **7.18 tok/s**, CPU about115 ms/token, warm Engram about0.15 ms.
+- CPU-thread and exact-kernel screens mostly **6.8–8.2 tok/s**. One direct+no-prefetch fixed-placement screen **7.92**, same128 IDs, Engram p95 **0.174 ms**.
+- Early reduced-routing screen: top4 **9.48**, top2 **14.62**, top1 **22.24**; outputs changed. No quality score from that screen.
+- Frozen-prefix serial/lookup/serial check: **7.144 / 7.110 / 7.422 tok/s**, all128 IDs identical. Lookup proposed12/accepted3 over3 rounds. Evidence `lookup-check-k4-m3-n128-r3/result.json`.
+- DSpark drafter staged locally with SHA verification. Bounded128 MiB drafter plus fixed target mask did not help: loaded-off **6.75**, draft1 **5.99**, draft2 **6.51**, draft4 **4.34**; first-position acceptance57%, about2.18 committed/round. Default drafter placement displaced target weights and slowed prefill badly. Keep disabled.
+- Stage14b: copy/interleave **7.46**; zero-copy PCIe streaming **8.72** with changed tokens. CPU/GPU expert lane output checks were not bit-identical (per32 q8_1 GPU versus per256 Q8_K CPU by default), so this cannot be called exact. 59.9 GB raw copies pinned successfully; >50 GB host headroom observed.
+- Stage15b (fixed mask, direct1/prefetch0, reserve2816): physical16 **6.84**, SMT24 **6.94**, SMT30 **4.87**, SMT32 **4.31**. More SMT threads did not help. Engram p95 respectively0.719/1.263/2.975/3.248 ms.
+- Stage16: remote readers24, same stage15 physical16 settings: **7.89 tok/s**,128 output, CPU103.76 ms/token, Engram mean1.04 ms and p95 **1.484 ms**. CPU compilation briefly overlapped part of this screen; not qualified. Parent was freshly restarted/hashed, so cache state differs. More readers are not established better. Default source remains8; ignored config currently explicitly24.
+- Private IQ1_M 80-byte prepacked prototypes: 65536 rows bit-identical versus ggml, 1.429x storage. Bit-plane layout/SIMD-sign variant showed only small variable gain (roughly9–12 ms vs10–12 ms per CPU test). Not integrated. Evidence `bitplane-probe-results.log`, `calibration-driver.log`. Do not consume extra12+ GB host RAM for this without convincing whole-model benefit.
 
-Local commit `89e439c7` (`ds41: add opt-in exact IQ1_S and external-merge decode fast paths`) completed the previous decode phase; it was not pushed.
+### Latest 4K coding calibration, interrupted for reboot
 
-- Exact candidate: paired 24.9935 / 26.1361 tok/s, mean 25.5648; another four grid-on runs mean 25.02755. Grid and paired IQ1_S paths have frozen parity checks.
-- Lossy trim 0.125 plus canonical budget 2304: 30.4605 / 30.5729, mean 30.5167 tok/s. Both modes passed the C++ oracle, but lossy six-prompt KL 0.0387–0.187 fails the earlier KL <= 0.08 numerical gate. Do not call that generally quality-qualified.
-- Committed summaries/presets: `experiment/ds41f_tr16_decode/CANDIDATES.md` and `results_2026-10-29.json`.
-- Historical single-node prefill around 645 tok/s used another fixture. Root transfer bandwidth around 12.2–13 GB/s and interconnect around 2.44 GB/s are context only, not fresh benchmark evidence.
+Uses the repository's three **training** specifications/oracles (`tools/glm_coding_quality.py`), not held-out tasks. Exactly4096 prompt tokens, greedy, 512-token maximum, direct1/prefetch0, CPU16, six/four/two/one experts, no adaptive expert movement. EOS can stop before512: `completed_requested_tokens=false` here usually means EOS, not inference failure. These are variable-length answer timings, not a fixed512-token qualification. No correctness grading has run yet.
 
-Pre-existing tracked edits include `docs/DS41F_PLAN.md`, kernel headers/CUDA files, parity tests, prefill GEMM/MMQ files, `src/program/glm_decode.cpp`, pack/quantization tools, and memory-bandwidth tools. There are also many untracked experiment trees. Preserve these; do not reset, broadly stage, or overwrite them. In particular, the prefill MMQ bounds hardening is necessary existing work. Inspect exact diffs before building or committing. This replacement handoff is intentionally updated, but the older detailed evidence remains in its original files.
+Artifacts: `priv/dsv41-coder-remote/coding-calibration/`, prepared/run/grade scripts in the same private parent directory.
 
-Next concrete work: finish protocol framing/reply validation and wire it into decoder/worker setup, implement GPU pack/unpack against the CPU oracle, then add guarded worker whole-expert MMQ dispatch and root route exclusion before attempting performance qualification. Do not stop at another documentation-only or protocol-only milestone when resuming implementation.
+| Task | Six experts | Four | Two | One |
+|---|---:|---:|---:|---:|
+| parse_u64 | 8.92 (171 tokens) | 12.26 (171) | 19.15 (163) | 25.51 (512 cap) |
+| checked_slice | 8.91 (130) | 13.35 (130) | 18.67 (153) | 25.49 (512 cap) |
+| reduce_routed | 8.41 (191) | 11.55 (191) | interrupted | not run |
+
+Parser six-route output was manually decoded and was a complete plausible C++ answer, but only execution of its independent oracle establishes correctness. Top1 hitting the cap may indicate degraded/repetitive output; inspect/grade it. Engram p95 in these runs ranged0.452–1.818 ms; the latency gate is not uniformly met. Do not claim quality scores, 30 tok/s exact, or 60 tok/s lossy from these results.
+
+## Important unresolved exactness issue
+
+Fresh repeated prefill can yield different eventual greedy sequences even with the same fixed target expert mask. CPU-call hashes first diverged at layer13 INPUT while earlier outputs matched; GPU prefix captures also showed differences. Serial decode from one frozen prefix repeated identically. Root cause is NOT established. Do not assert a proven pre-existing race.
+
+`ROCBLAS_DEFAULT_ATOMICS_MODE=0` was tested and both handles queried as mode0; it did not fix the discrepancy. `HSA_ENABLE_SDMA=0` diagnostic is prepared as stage12 but has NOT been run. Preserve `sub-*.bin` private raw captures; never add them to git. Changed CPU/GPU placement causing rounding differences is a separate, confirmed issue.
+
+## Next work after explicit resume
+
+1. Complete model runtime/default-parity and quality checks for resident routing bias before using it. HIP and CUDA compilation passed during the commit audit. Keep API defaults unchanged.
+2. Grade completed calibration results in bwrap, preserve interruption, and finish missing calibration variants in new output directories. Do not rerun the old all-task controller unchanged: it rejects existing output directories. Do not tune on the repository's held-outs.
+3. Screen small resident bias values with quality checks and honest changed-output labels. Record resident mask, CPU expert count, memory headroom, Engram tails, token count/EOS/cap, and native binary SHA. If quality collapses, report that instead of calling the speed target met.
+4. Continue exact decode using frozen-prefix comparisons. Investigate prefill nondeterminism separately; the current exact proof is only one128-token frozen-prefix case. More SMT, current DSpark settings and existing PCIe auto streaming did not solve the bottleneck.
+5. Engram reader24 is experimental. Compare controlled8/24 with equivalent cache state before retaining it; a service restart rehashes the entire source and changes page-cache state. Uniform sub0.5 ms p95 and the replay throughput gate remain unmet/unverified.
+6. Run representative short and near32K coding qualification only after finding promising settings. Keep final qualification separate from training/calibration and microbenchmarks.
+
+Never kill unrelated CPU/GPU jobs, rewrite unrelated files, commit model weights/raw captures, or claim unproduced measurements. An engine fault previously hung its HSA process; identify owned argv/ancestry before terminating it, and keep RLIMIT_CORE soft0 for private benchmark controllers.
+
+## Local commit/audit validation update
+
+The subsequent commit/pre-push audit rebuilt HIP and CUDA successfully, ran nine launcher tests, four decode-harness tests, thirteen pack tests, the lookup adapter test, and 67 server tests (one skipped). The native loopback transport test passed. A fresh IQ1_M exact-row check had zero bit differences across7136 rows. These are validation checks, not resumed optimization or speed qualification. Metal build wiring now includes the shared environment-helper source; Metal and SYCL builds cannot be validated in the available Linux toolchain. Routing-bias model execution remains untested. The user has not authorized a push.
