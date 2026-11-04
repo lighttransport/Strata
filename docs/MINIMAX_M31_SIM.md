@@ -945,7 +945,7 @@ cache into their slots with 16-byte loads, and the gather reads VRAM. The bytes 
 86 % (128K) and 82 % (256K) of the selected blocks come from VRAM; the misses (about 5 blocks per layer and step) are what is left of the
 fill time. At 128K host K/V is still slower than FP8 K/V in VRAM (12.4 tok/s), even with 380 more slots.
 
-**Both together at 128K** (draft head, host K/V, same-step cache; measured before the fix described below): 695 slots, decode 15.1 tok/s (88 % accepted, 3.6 tokens a step),
+**Both together at 128K** (draft head, host K/V, same-step cache): 695 slots, decode 15.1 tok/s (88 % accepted, 3.6 tokens a step),
 prefill 423 tok/s, answer tokens the same. That is the decode speed of the draft head with K/V in VRAM, without its prefill loss.
 **256K and 512K** (second allocation, same day, same flags, `--kv-host --kv-fp8 --idx-fp8`, 2 GiB same-step cache):
 
@@ -959,8 +959,11 @@ prefill 423 tok/s, answer tokens the same. That is the decode speed of the draft
 At 256K the answer tokens with the draft head are the same as without it (6e2cc426). At 512K both runs give the same needle answer;
 the draft head's run drops two tokens of one sentence (53 against 55 tokens). These draft-head runs used a build in which the block
 cache could keep a block that a verify step had completed with draft rows it then dropped; the later rewrite of those rows reached
-only the host copy. The fix caches a block only when it is complete in kept rows (one-token steps are unchanged). The two-token
-difference may come from that and is not yet re-measured with the fix. The draft head
+only the host copy. The fix caches a block only when it is complete in kept rows (one-token steps are unchanged). Rerun with the fix
+(next day, same flags): the same answer tokens at 512K (ed8419fc) and 256K (6e2cc426), and the same block-cache counts to the block, so
+the case did not occur in these runs and the two-token difference comes from the batched verify. Decode 10.9 tok/s at 512K and 12.2 at
+256K in that session; its prefill was also 16 % (512K) and 12 % (256K) slower than the day before on the same build flags, so the spread
+is the session's, not the fix's. The draft head
 gains less here than at 128K (6 % and 13 %, against 22 %): fewer drafts are accepted and fewer slots are left. Prefill at 512K takes
 34 minutes. Not measured: two GPUs at long context, a larger block cache.
 
