@@ -413,8 +413,9 @@ inline bool resident_sampled(const void* p, size_t bytes, int samples = 8) {
 /// prefetch() of the ranges that do not look resident (resident_sampled) - on Windows, where PrefetchVirtualMemory walks
 /// every page of a resident range (0.34 ms a 6.3 MB expert matrix on a Strix Halo); Linux's madvise(WILLNEED) on cached
 /// pages costs ~1 us a matrix (a Core i5-12600T), less than the residency check (2.5 us): every range there
-inline void prefetch_cold(const std::vector<std::pair<const void*, size_t>>& ranges) {
+inline void prefetch_cold(const std::vector<std::pair<const void*, size_t>>& ranges, bool check_resident = false) {
 #if defined(_WIN32)
+    (void) check_resident;
     static const bool all = [] {   // (DS4_PF_ALL=1: every range, as before)
         const char* v = std::getenv("DS4_PF_ALL");
         return v != nullptr && std::atoi(v) != 0;
@@ -425,7 +426,12 @@ inline void prefetch_cold(const std::vector<std::pair<const void*, size_t>>& ran
         if (!resident_sampled(x.first, x.second)) cold.push_back(x);
     prefetch(cold);
 #else
-    prefetch(ranges);
+    // Opt-in for the IQ lane: a warm WILLNEED still walks the mapping. Keep other callers' existing behavior.
+    if (!check_resident) return prefetch(ranges);
+    std::vector<std::pair<const void*, size_t>> cold;
+    for (const auto& x : ranges)
+        if (!resident(x.first, x.second)) cold.push_back(x);
+    prefetch(cold);
 #endif
 }
 

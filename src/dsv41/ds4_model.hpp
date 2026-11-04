@@ -24,6 +24,7 @@
 namespace strata::ds4 {
 
 struct Options {
+    std::string engram_remote;        // opt-in Linux ucomm endpoint
     std::string pack;                 // <model>/maya-ds4
     int64_t max_context = 32768;
     std::vector<int> gpus;            // empty: every visible GPU
@@ -55,6 +56,9 @@ struct Options {
     bool dspark_auto = true;
     bool dspark = true;              // load the DSpark drafter (the checkpoint's mtp.* blocks) for speculative decoding
     int dspark_block = 0;             // at most this many drafts a round (--dspark-block N; 0: the pack's block size)
+    int64_t dspark_vram_mib = -1;      // opt-in drafter expert budget per GPU group; -1 keeps drafter-first placement
+    std::vector<int> target_vram_counts;  // opt-in fixed resident counts per target layer; fail if they do not fit
+    float resident_route_bias = 0.0f;    // lossy experiment: subtract from selection bias of nonresident experts
     float dspark_conf = 0.5f;         // a draft is verified while its confidence (sigmoid) is at least this
     // tensor parallelism: runs of tp GPUs of one kind (the same memory) take the same layers, each a share of the
     // heads, of the output projection and of every expert's FFN, summed through host-mapped memory (a GPU unlike the

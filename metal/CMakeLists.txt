@@ -136,6 +136,7 @@ set(DS4 ${STRATA_ROOT}/src/dsv41)
 # The DeepSeek engine's sources.  Every .cu compiles as C++ through include/metal_compat; the EXL3 legacy path is left out
 # (the 2.25bpw text model never calls it) and the vision tower is included because ds4_model.cu references it.
 set(STRATA_DS4_SOURCES
+  ${S}/host/glm_env.c
   ${DS4}/ds4_main.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/ds4_finish.cpp ${DS4}/ds4_model.cu ${DS4}/ds4_gguf.cu ${DS4}/ds4_iq.cu ${DS4}/ds4_kernels.cu ${DS4}/ds4_tq.cu
   ${DS4}/ds4_vision.cu
   ${DS4}/vendor/exl3.cu ${DS4}/vendor/exl3_cpu.cpp ${DS4}/vendor/moe_win.cu ${DS4}/vendor/sampler.cu

@@ -19,6 +19,9 @@
 #include "ds4_pick_rule.hpp"
 #include "ds4_experts_rule.hpp"
 #include "ds4_engram_io.hpp"
+#ifdef STRATA_DSV41_REMOTE_ENGRAM
+#include "ds4_engram_remote.hpp"
+#endif
 
 #include "ds4_gguf.cuh"
 #include "ds4_iq.cuh"
@@ -37,6 +40,7 @@
 #include "strata/dsv41/exl3_cpu.hpp"
 #include "strata/dsv41/exl3.hpp"
 #include "strata/kernels/f16_bits.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/dsv41/moe_win.hpp"
 #include "strata/dsv41/sampler.hpp"
 #if defined(STRATA_USE_HIP)
@@ -358,6 +362,7 @@ struct Pack {
     // format gguf (tools/ds4/pack_gguf.py): the files are a GGUF's shards, every one mapped at load (map()) - the
     // routed experts are always read in place (the OS page cache their RAM tier, the disk the rest)
     bool gguf = false;
+    int remote_file = -1;
 
     std::vector<std::pair<uint8_t*, size_t>> maps;   // file -> its read-only mapping (map(): the experts in place)
     std::vector<os::fd_t> dfds;   // (gguf) file -> unbuffered (os::open_direct; kBadFd: buffered reads only)
@@ -433,7 +438,20 @@ struct Pack {
             t.emplace(name, std::move(x));
         }
         std::fclose(f);
+        remote_file = int(num("engram_remote_file", -1));
+        if (remote_file >= 0) {
+#ifndef STRATA_DSV41_REMOTE_ENGRAM
+            err = "this pack requires a Linux remote Engram build"; return false;
+#else
+            if (size_t(remote_file) >= files.size()) {err="invalid remote Engram file index";return false;}
+            for (const auto& item : t) if (item.second.file == remote_file &&
+                (item.first.find(".engram.embed.weight") == std::string::npos || item.second.dtype != "IQ4_NL")) {
+                err="remote file must contain only IQ4_NL Engram lookup tensors";return false;
+            }
+#endif
+        }
         for (const std::string& fn : files) {
+            if (int(fds.size()) == remote_file) {fds.push_back(os::kBadFd);continue;}
             const std::string p = model_dir + "/" + fn;
             const os::fd_t fd = os::open_ro(p);
             if (fd == os::kBadFd) {
@@ -445,6 +463,7 @@ struct Pack {
         gguf = str("format") == "gguf";
         if (gguf)
             for (size_t i = 0; i < fds.size(); ++i) {
+                if (int(i)==remote_file) {dfds.push_back(os::kBadFd);pfds.push_back(os::kBadFd);continue;}
                 if (map((int) i) == nullptr) {
                     err = model_dir + "/" + files[i] + ": cannot map";
                     return false;
@@ -535,6 +554,7 @@ struct Pack {
                 m = {nullptr, 0};
             }
         for (size_t i = 0; i < fds.size(); ++i) {
+            if (int(i)==remote_file) continue;
             const std::string path = model_dir + "/" + files[i];
             os::close_fd(fds[i]);
             fds[i] = os::open_ro(path);
@@ -1242,6 +1262,9 @@ struct Model::Impl {
     uint8_t* h_eg = nullptr;          // the window's Engram rows: [engram layer][token] of [cols][hd] then the scales
     // the Engram rows' reader (its own threads and file handles), the rows already fetched, the window's batches (one
     // an Engram layer: asked for when the window's tokens are known, collected right before that layer)
+#ifdef STRATA_DSV41_REMOTE_ENGRAM
+    std::unique_ptr<EngramRemote> eg_remote;
+#endif
     EgReader eg_io;
     EgRowCache eg_cache;
     std::mutex eg_cache_mu;
@@ -2652,6 +2675,7 @@ struct Model::Impl {
         o = opt;
         const double t0 = now_ms();
         if (!pk.load(o.pack, err)) return false;
+        if ((pk.remote_file >= 0) != !o.engram_remote.empty()) {err="remote Engram pack and --engram-remote must be used together";return false;}
         g.from(pk);
         if (g.dim == 0 || g.nl == 0 || (int) g.ratios.size() < g.nl) {
             err = o.pack + "/ds4.txt: incomplete geometry";
@@ -3443,6 +3467,21 @@ struct Model::Impl {
                     }
             }
 #endif
+#ifdef STRATA_DSV41_REMOTE_ENGRAM
+            if (pk.remote_file >= 0) {
+                eg_remote = std::make_unique<EngramRemote>();
+                if (!eg_remote->connect(o.engram_remote, std::strtoull(pk.str("engram_remote_size").c_str(),nullptr,10), pk.str("engram_remote_sha256"),err)) return false;
+                if (const char* timeout = std::getenv("UCOMM_TIMEOUT_MS")) {
+                    const int ms = std::atoi(timeout);
+                    if (ms > 0) eg_io.remote_keepalive_ms = std::max(1, std::min(20000, ms / 3));
+                }
+                nth=1;
+                eg_io.remote_read=[this](EgRead* reads,size_t n) {
+                    for(size_t i=0;i<n;++i)if(reads[i].file!=pk.remote_file)return false;
+                    return eg_remote->read(reads,n);
+                };
+            }
+#endif
             eg_io.start(paths, nth, eg_direct);
             for (int li = 0; li < pk.eg_layers; ++li) {
                 eg_win.emplace_back(new EgBatch());
@@ -3626,6 +3665,7 @@ struct Model::Impl {
         if (!lane_alloc(err)) return false;
         if (!place_experts(err)) return false;
         if (!load_experts(err)) return false;
+        if (!apply_resident_route_bias(err)) return false;
         if (pk.gguf) make_pools();
         if (chunk > 0) {
             // the CPU lane's parts pinned (the chunks stream them to the GPUs by DMA), each layer's virtual slots
@@ -5370,6 +5410,20 @@ struct Model::Impl {
     }
 
     bool place_experts(std::string& err) {
+        const bool fixed_target = !o.target_vram_counts.empty();
+        if (fixed_target) {
+            if (o.target_vram_counts.size() != (size_t) g.nl) {
+                err = "target VRAM counts must contain one count per target layer";
+                return false;
+            }
+            for (const Layer& l : L) if (!l.mtp) {
+                const int n = o.target_vram_counts[(size_t) l.il];
+                if (n < 0 || n > l.n_exp || (l.cpu_only && n != 0)) {
+                    err = "target VRAM count is invalid for layer " + std::to_string(l.il);
+                    return false;
+                }
+            }
+        }
         // a lending device (Chunk::borrow) whose experts' room would hardly hold the prompt path's (a GPU with little
         // left for experts, --vram-experts near 0): its own room after all, taken before the experts' as before
         for (size_t di = 0; di < devs.size() && chunk > 0; ++di) {
@@ -5449,6 +5503,21 @@ struct Model::Impl {
                     l.n_vram = std::min(l.n_exp, (int) std::floor(budget_t / (double) ucount(l)));
                     budget_t -= (double) l.n_vram * ucount(l);
                 }
+            if (o.dspark_vram_mib >= 0) {
+                double draft_want = 0;
+                for (const Layer& l : L)
+                    if (l.grp == (int) gi && l.mtp) draft_want += ucount(l) * l.n_exp;
+                const double cap = std::min(budget, (double) o.dspark_vram_mib * 1048576.0);
+                const double share = draft_want > 0 ? std::min(1.0, cap / draft_want) : 0;
+                budget_t = budget;
+                for (Layer& l : L)
+                    if (l.grp == (int) gi && l.mtp) {
+                        l.n_vram = std::min(l.n_exp, (int) std::floor(share * l.n_exp));
+                        budget_t -= ucount(l) * l.n_vram;
+                    }
+                std::fprintf(stderr, "ds4: group %zu drafter expert budget %.0f MiB, placed %.0f MiB\n", gi,
+                             cap / 1048576.0, (budget - budget_t) / 1048576.0);
+            }
             double want = 0;
             for (const Layer& l : L)
                 if (l.grp == (int) gi && !l.mtp && !l.cpu_only) want += (double) ucount(l) * l.n_exp;
@@ -5464,11 +5533,20 @@ struct Model::Impl {
                 while (l.n_vram > 0 && (double) ucount(l) * l.n_vram > budget) --l.n_vram;
             }
             double used = 0;
+            if (fixed_target)
+                for (Layer& l : L)
+                    if (l.grp == (int) gi && !l.mtp) l.n_vram = o.target_vram_counts[(size_t) l.il];
             for (Layer& l : L)
                 if (l.grp == (int) gi) used += (double) ucount(l) * l.n_vram;
+            if (fixed_target && used > budget) {
+                err = "fixed target placement and drafter experts exceed the GPU group budget; reduce drafter residency or reserve";
+                return false;
+            }
             // what the floors left: whole experts, layer by layer
             for (Layer& l : L) {
                 if (l.grp != (int) gi || l.cpu_only) continue;
+                if (fixed_target && !l.mtp) continue;
+                if (l.mtp && o.dspark_vram_mib >= 0) continue;
                 while (l.n_vram < l.n_exp && used + (double) ucount(l) <= budget) {
                     ++l.n_vram;
                     used += (double) ucount(l);
@@ -6401,6 +6479,35 @@ struct Model::Impl {
         return true;
     }
 
+    // Deliberately lossy, fixed-placement experiment. Selection changes, but
+    // route_kernel still computes the selected experts' original gate weights.
+    // Zero returns before any device operation or allocation.
+    bool apply_resident_route_bias(std::string& err) {
+        if (o.resident_route_bias == 0.0f) return true;
+        if (!std::isfinite(o.resident_route_bias) || o.resident_route_bias < 0.0f ||
+            devs.size() != 1 || o.expert_cache || o.dspark || o.vision) {
+            err = "resident routing bias requires a finite positive bias, one GPU, --no-expert-cache, --dspark none and --vision off";
+            return false;
+        }
+        // Validate every layer before modifying any gate bias.
+        for (const Layer& l : L) if (!l.mtp &&
+            (l.gate_bias == nullptr || l.n_vram < l.k_exp)) {
+            err = "resident routing bias requires at least the routed expert count resident in every target layer";
+            return false;
+        }
+        CK(cudaSetDevice(devs[0].id));
+        for (const Layer& l : L) if (!l.mtp) {
+            std::vector<float> bias((size_t) l.n_exp);
+            CK(cudaMemcpy(bias.data(), l.gate_bias, bias.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            for (int e = 0; e < l.n_exp; ++e)
+                if (l.slot[(size_t) e] < 0) bias[(size_t) e] -= o.resident_route_bias;
+            CK(cudaMemcpy(l.gate_bias, bias.data(), bias.size() * sizeof(float), cudaMemcpyHostToDevice));
+        }
+        std::fprintf(stderr, "ds4: LOSSY resident routing bias %.6g (fixed placement; changes expert selection)\n",
+                     (double) o.resident_route_bias);
+        return true;
+    }
+
     std::string describe() const {
         std::ostringstream s;
         for (size_t di = 0; di < devs.size(); ++di) {
@@ -6441,6 +6548,19 @@ struct Model::Impl {
             char hl[96];
             std::snprintf(hl, sizeof hl, "ds4: placement hash %016llx\n", (unsigned long long) h);
             s << hl;
+            uint64_t target_h = 1469598103934665603ull;
+            for (const Layer& l : L) {
+                if (l.mtp) continue;
+                for (int e = 0; e < l.n_exp; ++e) {
+                    target_h ^= (uint64_t) (l.slot[(size_t) e] >= 0 ? 1 + l.il * 1000 + e : 0);
+                    target_h *= 1099511628211ull;
+                }
+            }
+            std::snprintf(hl, sizeof hl, "ds4: target placement hash %016llx\n", (unsigned long long) target_h);
+            s << hl;
+            s << "ds4: target VRAM expert counts";
+            for (const Layer& l : L) if (!l.mtp) s << ' ' << l.n_vram;
+            s << '\n';
         }
         char line[200];
         if (copy_mode)
@@ -7657,7 +7777,7 @@ struct Model::Impl {
         id << " ds4.txt:" << size_of(pk.dir + "/ds4.txt") << " engram.bin:" << size_of(pk.dir + "/engram.bin")
            << " tensors.txt:" << size_of(pk.dir + "/tensors.txt");
         for (size_t i = 0; i < pk.files.size(); ++i)
-            id << " " << pk.files[i] << ":" << os::file_size(pk.fds[i]);
+            id << " " << pk.files[i] << ":" << (int(i)==pk.remote_file ? pk.str("engram_remote_sha256") : std::to_string(os::file_size(pk.fds[i])));
         return id.str();
     }
 
@@ -8169,6 +8289,20 @@ struct Model::Impl {
         constexpr int RB = 64;   // rows a job
         const int E = g.dim, FF = g.ff, FFh = FF / NH, Eh = E / NH;
         const int GB = (FFh + RB - 1) / RB, DB = (Eh + RB - 1) / RB, ne = (int) ents.size();
+        static const bool hash_rows = strata_env_truthy_nonempty("DS4_CPU_HASH") != 0;
+        auto hash_bytes = [](uint64_t h, const void* ptr, size_t n) {
+            const auto* p = (const uint8_t*) ptr;
+            for (size_t i = 0; i < n; ++i) { h ^= p[i]; h *= 1099511628211ull; }
+            return h;
+        };
+        uint64_t input_hash = 1469598103934665603ull;
+        if (hash_rows) for (const Ent& en : ents) {
+            input_hash = hash_bytes(input_hash, &en.e, sizeof(en.e));
+            for (int i = 0; i < en.n; ++i) {
+                input_hash = hash_bytes(input_hash, &en.tok[i], sizeof(en.tok[i]));
+                input_hash = hash_bytes(input_hash, x + (size_t) en.tok[i] * ldx, (size_t) E * sizeof(float));
+            }
+        }
         gg::IqCpu fm;
         std::string ferr;
         if (!gg::iq_cpu_fmt(gg::expert_type(l.lay, 0), gg::expert_type(l.lay, 2), E, FF, fm, ferr) ||
@@ -8193,7 +8327,7 @@ struct Model::Impl {
             for (const Ent& en : ents)
                 if (!store && (l.ram.empty() || l.ram[(size_t) en.e] < 0))
                     for (int r = 0; r < 3; ++r) want.push_back({mx_mat(l, en.e, r), mx_part_bytes(l, r)});
-            static const bool pf_all = std::getenv("DS4_IQ_PF_COLD") == nullptr || std::atoi(std::getenv("DS4_IQ_PF_COLD")) == 0;
+            static const bool pf_all = !strata_env_truthy_number("DS4_IQ_PF_COLD");
 #if defined(__APPLE__)   // (macOS: the cold reads of a call's matrices in parallel, and a page-cache census under DS4_CPU_LOG)
             if (pf_all && ds4_dbg("DS4_CPU_LOG")) {   // how many of the experts' matrices are in the page cache (mincore, the first 64 pages)
                 static long cold_n = 0, warm_n = 0; static double cold_ms = 0, warm_ms = 0; static bool reg2 = false;
@@ -8217,10 +8351,10 @@ struct Model::Impl {
                 run_nodes((int) want.size(), pf);
             } else
             if (pf_all) os::prefetch(want);
-            else os::prefetch_cold(want);
+            else os::prefetch_cold(want, true);
 #else
             if (pf_all) os::prefetch(want);
-            else os::prefetch_cold(want);
+            else os::prefetch_cold(want, true);
 #endif
         }
         double tp1 = now_ms(); if (cpulog) t_pre += tp1 - tp0;
@@ -8280,6 +8414,15 @@ struct Model::Impl {
             };
         run_nodes(ne * DB, f);
         if (cpulog) t_r2 += now_ms() - tq2;
+        if (hash_rows) {
+            uint64_t output_hash = 1469598103934665603ull;
+            for (const Ent& en : ents)
+                for (int i = 0; i < en.n; ++i)
+                    output_hash = hash_bytes(output_hash, c_yd.data() + (size_t) (en.slot0 + i) * E,
+                                             (size_t) E * sizeof(float));
+            std::fprintf(stderr, "ds4 CPU hash: layer %d entries %d input %016llx output %016llx\n", l.il, ne,
+                         (unsigned long long) input_hash, (unsigned long long) output_hash);
+        }
         {   // DS4_PROF: where the CPU lane's time goes (act prep + prefetch, gate/up, h quant, down), summed
             static const bool on = std::getenv("DS4_PROF") != nullptr;
             if (on) {
@@ -11246,6 +11389,26 @@ struct Model::Impl {
     // residual max(0, p - q) - so each kept token is distributed as the trunk's own draw.
     bool verify(int y, const std::vector<int>& drafts, float temperature, float top_p, int top_k, float min_p,
                 uint64_t seed, uint64_t counter, int& accepted, int& next, std::string& err) {
+        Dev& hd = devs[(size_t) head_dev];
+        CK(cudaSetDevice(hd.id));
+        // A weight-free drafter can verify without loading DSpark's confidence/Markov weights.
+        if (d_ints == nullptr) {
+            for (int il = 0; il < g.nl; ++il)
+                for (int mi = 0; mi < L[(size_t) il].nm; ++mi) {
+                    Layer& l = member(L[(size_t) il], mi);
+                    Dev& d = devs[(size_t) l.dev];
+                    CK(cudaSetDevice(d.id));
+                    if (l.ring_bak == nullptr && !dalloc(d, l.ring_bak, (size_t) kWin * win_rb(), err)) return false;
+                    if (l.kv_src && l.ratio > 1) {
+                        if (l.c_snap == nullptr &&
+                            !dalloc(d, l.c_snap, (size_t) 2 * l.ratio * g.hd * (size_t) std::max(1, o.seqs), err)) return false;
+                        if (l.c_rows == nullptr && !dalloc(d, l.c_rows, (size_t) 2 * kWin * g.hd, err)) return false;
+                    }
+                }
+            CK(cudaSetDevice(hd.id));
+            if (!dalloc(hd, d_ints, 64, err)) return false;
+        }
+        if (temperature > 0 && d_specq == nullptr && !dalloc(hd, d_specq, kWin, err)) return false;
         const int n = (int) std::min<size_t>(drafts.size(), (size_t) kWin - 1);
         const int T = n + 1, V = g.vocab;
         const int64_t p0 = pos;
@@ -11258,7 +11421,6 @@ struct Model::Impl {
         st.verify_ms += now_ms() - tv;
         spec_win = false;
         if (!ok) return false;
-        Dev& hd = devs[(size_t) head_dev];
         cudaSetDevice(hd.id);
         int m = 0;
         // (penalties: row t counts the tokens up to its own position - y and the drafts before it, toks[0 .. p0 + 1 + t))

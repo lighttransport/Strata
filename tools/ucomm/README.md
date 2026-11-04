@@ -463,3 +463,7 @@ Evidence: [baseline](../../docs/benchmarks/ucomm_relay_inline_20261019/baseline.
 [paired](../../docs/benchmarks/ucomm_relay_inline_20261019/paired.json),
 [direct](../../docs/benchmarks/ucomm_relay_inline_20261019/direct.json), and
 [native integrity checks](../../docs/benchmarks/ucomm_relay_inline_20261019/verified.json).
+
+## Remote Engram rows
+
+The opt-in `UCOMM_BUILD_ENGRAM=ON` CMake setting builds `strata-dsv41-engram`, a read-only table service for the production DeepSeek engine. It adds OpenSSL and C++ build dependencies; the normal ucomm build keeps its existing dependencies. The service hashes its source, serves bounded ordered byte ranges, and starts a fresh session child after a disconnect. See [the setup and validation guide](../../docs/DSV41_REMOTE_ENGRAM.md).

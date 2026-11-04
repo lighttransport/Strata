@@ -1,0 +1,17 @@
+{
+  "ssh_host": "engram-node",
+  "remote_exe": "~/.cache/strata-engram-src/strata-dsv41-engram",
+  "remote_file": "/models/coder/DeepSeek-V4.1-Flash-Engram-IQ4_NL.gguf",
+  "remote_state_dir": "~/.cache/strata-engram-coder-run",
+  "engram_endpoint": "192.0.2.2:29576",
+  "engine_exe": "build-dsv41-remote/strata-dsv41",
+  "helper": "build-dsv41-remote/tools/ucomm/strata-dsv41-engram",
+  "model_dir": "models/coder/IQ2_XXS",
+  "pack_dir": "priv/coder-remote/pack",
+  "state_dir": "priv/coder-remote/state",
+  "port": 8080,
+  "env": {
+    "UCOMM_BACKEND": "ib",
+    "UCOMM_TIMEOUT_MS": "60000"
+  }
+}

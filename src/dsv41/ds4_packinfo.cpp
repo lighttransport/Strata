@@ -123,6 +123,12 @@ int pack_info(const std::string& dir, std::FILE* out) {
     const std::string md = kv.count("model_dir") ? kv["model_dir"] : "";
     int missing = 0;
     for (const auto& [i, n] : need) {
+        if (kv.count("engram_remote_file") && i == std::atoi(kv["engram_remote_file"].c_str())) {
+            const uint64_t size = std::strtoull(kv["engram_remote_size"].c_str(),nullptr,10);
+            if (size < n || kv["engram_remote_sha256"].size()!=64) {++missing;std::fprintf(out,"  INVALID remote Engram descriptor\n");}
+            else std::fprintf(out,"  REMOTE Engram: %.2f GB (descriptor only; service checked at startup)\n",size/1e9);
+            continue;
+        }
         const std::string name = (size_t) i < files.size() ? files[(size_t) i] : "";
         if (name.empty()) {
             std::fprintf(out, "  file %d: no name in tensors.txt\n", i);
@@ -266,7 +272,9 @@ int pack_info(const std::string& dir, std::FILE* out) {
                           "the weights)\n", missing, need.size());
         return 2;
     }
-    std::fprintf(out, "  files: %zu, all present and long enough\n", need.size());
+    if (kv.count("engram_remote_file"))
+        std::fprintf(out, "  files: %zu, local files present and remote descriptors checked\n", need.size());
+    else std::fprintf(out, "  files: %zu, all present and long enough\n", need.size());
     return 0;
 }
 

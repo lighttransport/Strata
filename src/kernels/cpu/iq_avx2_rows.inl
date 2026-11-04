@@ -228,7 +228,7 @@ STRATA_ROWS_FN inline void iq1m_pre_build(const block_q8_K* y, int nblocks, int1
                                 _mm256_maddubs_epi16(one8, _mm256_loadu_si256((const __m256i*) (y[i].qs + 32 * c))));
 }
 
-template <int NT> STRATA_ROWS_FN
+template <int NT, bool DIRECT = false> STRATA_ROWS_FN
 inline void row_dot_iq1m(const uint8_t* row, int nblocks, const block_q8_K* const* y, const int16_t* const* P, float* res) {
     const __m256i mask = _mm256_set1_epi16(0x7);
     const __m256i mone = _mm256_set1_epi16(1);
@@ -256,6 +256,7 @@ inline void row_dot_iq1m(const uint8_t* row, int nblocks, const block_q8_K* cons
         // accumulators in registers (NT tokens' worth of accumulators and decode together do not fit 16 registers)
         struct Dec { __m256i a1, g1, a2, g2, sa, sb, ssa, ssb; };
         Dec dec[4];
+        __m256i direct_s1 = _mm256_setzero_si256(), direct_s2 = _mm256_setzero_si256();
         for (int it = 0; it < 4; ++it) {
             const __m256i v8 = _mm256_srlv_epi32(_mm256_set1_epi32((int) u32(qh + 4 * it)), nib_shift);   // group k's qh nibble
             const __m256i idx = _mm256_or_si256(_mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*) (qs + 8 * it))),
@@ -271,15 +272,27 @@ inline void row_dot_iq1m(const uint8_t* row, int nblocks, const block_q8_K* cons
             const __m256i n2 = _mm256_cvtepi32_epi64(_mm256_extracti128_si256(neg, 1));
             const __m256i sc_a = _mm256_shuffle_epi8(scales, sidx1);
             const __m256i sc_b = _mm256_shuffle_epi8(scales, sidx2);
-            dec[it] = Dec{_mm256_sign_epi8(g1, g1), g1, _mm256_sign_epi8(g2, g2), g2, sc_a, sc_b,
+            const Dec dc{_mm256_sign_epi8(g1, g1), g1, _mm256_sign_epi8(g2, g2), g2, sc_a, sc_b,
                           _mm256_sign_epi16(sc_a, _mm256_or_si256(n1, mone)), _mm256_sign_epi16(sc_b, _mm256_or_si256(n2, mone))};
+            if constexpr (DIRECT && NT == 1) {
+                // A single token consumes the decoded vectors immediately, avoiding the four-step stack frame.
+                const __m256i qa = _mm256_loadu_si256((const __m256i*) (y[0][i].qs + 64 * it));
+                const __m256i qb = _mm256_loadu_si256((const __m256i*) (y[0][i].qs + 64 * it + 32));
+                direct_s1 = _mm256_add_epi32(direct_s1, _mm256_add_epi32(
+                    _mm256_madd_epi16(_mm256_maddubs_epi16(dc.a1, _mm256_sign_epi8(qa, dc.g1)), dc.sa),
+                    _mm256_madd_epi16(_mm256_maddubs_epi16(dc.a2, _mm256_sign_epi8(qb, dc.g2)), dc.sb)));
+                const int16_t* pp = P[0] + ((size_t) i * 8 + 2 * it) * 16;
+                direct_s2 = _mm256_add_epi32(direct_s2, _mm256_add_epi32(
+                    _mm256_madd_epi16(_mm256_loadu_si256((const __m256i*) pp), dc.ssa),
+                    _mm256_madd_epi16(_mm256_loadu_si256((const __m256i*) (pp + 16)), dc.ssb)));
+            } else dec[it] = dc;
             sidx1 = _mm256_add_epi8(sidx1, mtwo8);
             sidx2 = _mm256_add_epi8(sidx2, mtwo8);
         }
         const float dx = h2f(d16);
         for (int t = 0; t < NT; ++t) {
-            __m256i s1 = _mm256_setzero_si256(), s2 = _mm256_setzero_si256();
-            for (int it = 0; it < 4; ++it) {
+            __m256i s1 = direct_s1, s2 = direct_s2;
+            if constexpr (!(DIRECT && NT == 1)) for (int it = 0; it < 4; ++it) {
                 const Dec& dc = dec[it];
                 const __m256i q8a = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + 64 * it));
                 const __m256i q8b = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + 64 * it + 32));
@@ -425,7 +438,13 @@ inline void row_dot_iq1s_pair(const uint8_t* gate, const uint8_t* up, int nblock
 template <int TY, int NT, bool EX = false> STRATA_ROWS_FN
 inline void row_dot_any(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res,
                         const int16_t* const* aux = nullptr) {
-    if constexpr (TY == 29) row_dot_iq1m<NT>(row, nblocks, y, aux, res);
+    if constexpr (TY == 29) {
+        static const bool direct = strata_env_truthy_one("STRATA_IQ1M_DIRECT") != 0;
+        if constexpr (NT == 1) {
+            if (direct) { row_dot_iq1m<NT, true>(row, nblocks, y, aux, res); return; }
+        }
+        row_dot_iq1m<NT>(row, nblocks, y, aux, res);
+    }
     else if constexpr (TY == 17) row_dot_iq2xs<NT, EX>(row, nblocks, y, res);
     else if constexpr (TY == 19 && !EX) { if (iq1s_fast()) row_dot_iq1s<NT>(row, nblocks, y, res); else row_dot<TY, NT>(row, nblocks, y, res); }
     else if constexpr (TY == 219 && !EX) row_dot_iq1s_vidx<NT>(row, nblocks, y, res);

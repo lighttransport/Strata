@@ -17,9 +17,11 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -130,6 +132,8 @@ struct EgBatch {
 class EgReader {
 public:
     ~EgReader() { stop(); }
+    std::function<bool(EgRead*, size_t)> remote_read;
+    int remote_keepalive_ms = 20000;
     /// direct[i]: file i read unbuffered (Windows, a file nothing maps: os::open_unbuffered), else buffered
     void start(const std::vector<std::string>& paths, int threads, std::vector<char> direct = {}) {
         paths_ = paths;
@@ -159,7 +163,7 @@ public:
         const int n = (int) b.reads.size();
         if (n == 0) return;
         // a token's rows one job each; a prompt chunk's in runs (fewer trips through the queue's lock)
-        const int step = std::max(1, std::min(32, n / (int) (th_.size() * 4)));
+        const int step = remote_read ? 8192 : std::max(1, std::min(32, n / (int) (th_.size() * 4)));
         int jobs = 0;
         {
             std::lock_guard<std::mutex> lk(mu_);
@@ -186,13 +190,23 @@ private:
             Job job;
             {
                 std::unique_lock<std::mutex> lk(mu_);
-                cv_.wait(lk, [&] { return quit_ || !q_.empty(); });
+                if (remote_read) {
+                    if (!cv_.wait_for(lk, std::chrono::milliseconds(remote_keepalive_ms), [&] { return quit_ || !q_.empty(); })) {
+                        lk.unlock();
+                        if (!remote_read(nullptr, 0)) {std::fprintf(stderr,"fatal: remote Engram heartbeat failed\n");std::_Exit(1);}
+                        continue;
+                    }
+                } else cv_.wait(lk, [&] { return quit_ || !q_.empty(); });
                 if (quit_ && q_.empty()) break;
                 job = q_.front();
                 q_.pop_front();
             }
             EgBatch& b = *job.b;
-            for (int i = job.i0; i < job.i1; ++i) b.ok[(size_t) i] = read(fds, ufds, al, b.reads[(size_t) i], buf) ? 1 : 0;
+            if (remote_read) {
+                const bool ok = remote_read(b.reads.data() + job.i0, size_t(job.i1 - job.i0));
+                if (!ok) { std::fprintf(stderr,"fatal: remote Engram batch failed; sequence discarded\n"); std::_Exit(1); }
+                for (int i=job.i0; i<job.i1; ++i) b.ok[size_t(i)]=1;
+            } else for (int i = job.i0; i < job.i1; ++i) b.ok[(size_t) i] = read(fds, ufds, al, b.reads[(size_t) i], buf) ? 1 : 0;
             const int64_t t = now_ns();
             for (int64_t prev = b.t1.load(); t > prev && !b.t1.compare_exchange_weak(prev, t);) {
             }

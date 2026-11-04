@@ -30,6 +30,7 @@ v1.1.17 put it) when it is whole.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import pathlib
@@ -60,9 +61,9 @@ ENGRAM_SETS = ("Engram",)
 class Gguf:
     """One GGUF shard's metadata and tensor infos (offsets absolute in the file)."""
 
-    def __init__(self, path: pathlib.Path):
+    def __init__(self, path: pathlib.Path, header: bytes | None = None):
         self.path = path
-        with path.open("rb") as f:
+        with (io.BytesIO(header) if header is not None else path.open("rb")) as f:
             self.f = f
             magic = f.read(4)
             if magic != b"GGUF":
@@ -454,6 +455,26 @@ def write_tokenizer(out: pathlib.Path, kv: dict, template: str | None):
         (out / "chat_template.jinja").write_text(template, encoding="utf-8")
 
 
+def remote_engram_manifest(manifest, model):
+    remote = json.loads(pathlib.Path(manifest).read_text())
+    if remote.get("version") != 1 or type(remote.get("size")) is not int or not 0 < remote["size"] < (1 << 63):
+        raise SystemExit("invalid remote Engram descriptor")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(remote.get("sha256", ""))):
+        raise SystemExit("invalid remote Engram SHA-256")
+    header = bytes.fromhex(remote["header_hex"])
+    if len(header) > 16384:
+        raise SystemExit("remote Engram header exceeds protocol limit")
+    remote_g = Gguf(model / "remote-engram.gguf", header)
+    if len(header) < remote_g.data_start or remote_g.version != 3:
+        raise SystemExit("incomplete remote Engram header")
+    if len(remote_g.tensors) != 1 or remote_g.tensors[0][0] != "per_layer_token_embd.weight" or remote_g.tensors[0][1] != 20:
+        raise SystemExit("remote Engram supports the combined IQ4_NL table only")
+    _, _, dims, off = remote_g.tensors[0]
+    if len(dims) != 2 or dims[0] != 256 or remote_g.data_start + off + dims[1] * 144 != remote["size"]:
+        raise SystemExit("remote Engram size/geometry mismatch")
+    return remote, remote_g
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True, help="the directory of the GGUF's shards")
@@ -485,6 +506,7 @@ def main() -> int:
     ap.add_argument("--engram", help="the folder of the Engram tables' GGUF set, or the one Engram file (ISTA-DASLab's six-shard sets: it is their "
                                      "sixth shard, so --shards names only the five others), for a quant that leaves them out "
                                      "(default: <model>/../Engram, when it is whole)")
+    ap.add_argument("--engram-remote-manifest", help="descriptor from strata-dsv41-engram describe; no local table required")
     ap.add_argument("--engram-meta", help="a GGUF whose metadata carries the Engram's hash parameters (llama.cpp's ple.* / "
                                           "engram.*: layers, head offsets, vocab sizes, multipliers, token map), for a quant whose own "
                                           "shards leave them out (the ISTA-DAS sets name the Engram only in deepseek41.engram_* keys and "
@@ -510,8 +532,14 @@ def main() -> int:
         raise SystemExit("%s: not a DeepSeek-V4.1 GGUF (architecture %r)" % (model, arch))
     if a.config_json:
         apply_source_config(kv, json.loads(pathlib.Path(a.config_json).expanduser().read_text()))
+    remote = None
+    remote_g = None
+    if a.engram_remote_manifest:
+        if a.engram:
+            raise SystemExit("--engram and --engram-remote-manifest are mutually exclusive")
+        remote, remote_g = remote_engram_manifest(a.engram_remote_manifest, model)
     split = int(kv.get("split.count", 1))
-    here = len(shards) + engram_is_last_shard(a.engram, split, shards)
+    here = len(shards) + (1 if remote_g is not None else engram_is_last_shard(a.engram, split, shards))
     if split != here:
         counts = sorted({m.group(1) for m in (re.search(r"-of-(\d{5})\.gguf$", p.name) for p in shards) if m})
         raise SystemExit("%s: %d of the %d shards are here" % (model, here, split) if len(counts) < 2 else
@@ -555,7 +583,12 @@ def main() -> int:
         return False
     lacking = not layers or any(not has_part(il, part, have)
                                 for il in layers for part in ("engram_embd", "engram_kv", "engram_gate"))
-    eg_dir, egs = engram_set(model, a.engram) if lacking or a.engram else (None, [])
+    if remote_g is not None:
+        if remote_g.kv.get("split.no") != split - 1 or remote_g.kv.get("split.count") != split:
+            raise SystemExit("remote Engram split does not match the model")
+        eg_dir, egs = model, [remote_g]
+    else:
+        eg_dir, egs = engram_set(model, a.engram) if lacking or a.engram else (None, [])
     eg_from = {}
     if eg_dir is not None:
         eshards = [g.path for g in egs]
@@ -937,6 +970,14 @@ def main() -> int:
             f.write("%s %s\n" % (k, v))
         f.write("format gguf\n")
         f.write("model_dir %s\n" % model)
+        if remote_g is not None:
+            remote_index = gs_all.index(remote_g)
+            remote_tensors = [t for t in tensors if t[2] == remote_index]
+            if len(remote_tensors) != 2 or any(".engram.embed.weight" not in t[0] for t in remote_tensors):
+                raise SystemExit("remote descriptor did not produce exactly two Engram tables")
+            f.write("engram_remote_file %d\n" % remote_index)
+            f.write("engram_remote_size %d\n" % remote["size"])
+            f.write("engram_remote_sha256 %s\n" % remote["sha256"])
     with (out / "tensors.txt").open("w") as f:
         for i, name in enumerate(files):
             f.write("file %d %s\n" % (i, name))

@@ -33,6 +33,8 @@
 #include "ds4_model.hpp"
 #include "ds4_experts_rule.hpp"
 #include "ds4_os.hpp"
+#include "strata/host/glm_env.h"
+#include "strata/dsv41/lookup_drafter.hpp"
 #include "strata/platform/io_priority.hpp"
 #include "ds4_packinfo.hpp"
 #include "ds4_slotmeta.hpp"
@@ -116,7 +118,13 @@ void usage() {
     std::fprintf(stderr,
                  "maya-ds4 --pack <model>/maya-ds4 [--gpus 0,1,...] [--max-context N] [--reserve-mib N]\n"
                  "           [--vram-experts F] [--cpu-threads N] [--expert-profile FILE|none] [--profile-readonly] [--ssd-cache GB] [--ssd-policy lru|lfu|lfulru] [--no-expert-cache] [--verbose]\n"
+                 "           [--engram-remote HOST:PORT (Linux opt-in build)]\n"
                  "           [--tp N] [--threads on|off] [--prefill-chunk N] [--dspark on|off|none|auto] [--dspark-block N] [--dspark-conf F] [--experts N|auto]\n"
+                 "           [--dspark-vram-mib N (drafter experts per GPU group; remaining experts use the existing host path)]\n"
+                 "           [--target-vram-counts N,N,... (fixed target resident counts, one per layer)]\n"
+                 "           [--resident-route-bias X (LOSSY: penalize CPU expert selection; default 0)]\n"
+                 "           [--lookup-draft 0..15] [--lookup-min 3..32 (greedy suffix lookup, every proposal target-verified)]\n"
+                 "           [--lookup-check (fixed-length serial/lookup/serial check from one frozen text prefix)]\n"
                  "           [--vision on|off] [--vision-resident (--serve: keep the picture tower on the card; default: in RAM between pictures)] [--mmap-experts on|off|auto] [--parallel N (--serve: N conversations at once)]\n"
                  "           (--ids I,J,... [--images FILE] [--n N] [--dump-logits FILE] | --serve\n"
                  "           | --encode-image FILE.rgb --size WxH --dump-image OUT\n"
@@ -227,6 +235,8 @@ std::string per_position(const strata::ds4::Stats& s0, const strata::ds4::Stats&
 static std::FILE* g_round_log = nullptr;
 static std::string g_round_tag;
 static int g_spec_depth = 64;   // --dspark-depth: at most this many drafts a round
+static int g_lookup_max = 0, g_lookup_min = 6;   // opt-in, greedy-only suffix proposals, verified by the target
+static long long g_lookup_rounds = 0, g_lookup_offered = 0, g_lookup_accepted = 0;
 static std::vector<float> g_round_conf;
 static int g_round_nd = 0;
 
@@ -284,6 +294,33 @@ bool round(strata::ds4::Model& m, int tok, int room, bool spec, float conf_min, 
            int& accepted, std::string& err, float cum_min = -1.0f) {
     out.clear();
     offered = accepted = 0;
+    if (g_lookup_max > 0 && temperature <= 0.0f && room > 1) {
+        const int available = (int) std::min<int64_t>(15, m.max_context() - m.pos() - 1);
+        const int count = std::min({g_lookup_max, room - 1, available});
+        static thread_local strata::dsv41::LookupDrafter lookup(g_lookup_min);
+        const auto drafts = lookup.propose(m.tokens(), tok, count);
+        if (!drafts.empty()) {
+            int acc = 0, next = -1;
+            const double tv = rt_now();
+            if (!m.verify(tok, drafts, temperature, top_p, top_k, min_p, seed, counter, acc, next, err)) return false;
+            if (acc < 0 || (size_t) acc > drafts.size() || next < 0) {
+                err = "lookup target verification returned an invalid result";
+                return false;
+            }
+            g_rt.verify += rt_now() - tv;
+            ++g_rt.rounds;
+            ++g_rt.spec_rounds;
+            ++g_lookup_rounds;
+            g_lookup_offered += (long long) drafts.size();
+            g_lookup_accepted += acc;
+            counter += (unsigned long long) acc + 1;
+            out.insert(out.end(), drafts.begin(), drafts.begin() + acc);
+            out.push_back(next);
+            offered = (int) drafts.size();
+            accepted = acc;
+            return true;
+        }
+    }
     if (spec && room > 1 && m.draft_block() > 0) {
         std::vector<int> drafts;
         std::vector<float> conf;
@@ -2475,6 +2512,78 @@ int check_multi(strata::ds4::Model& m, const std::vector<int>& ids, int n) {
     return tokens_same && spec_same && same_rows == rows ? 0 : 1;
 }
 
+// Compare serial decode and lookup from one frozen prefill state, then repeat serial decode warm.
+int check_lookup(strata::ds4::Model& m, const std::vector<int>& ids, int n) {
+    std::string err;
+    if (ids.empty() || n < 2 || g_lookup_max <= 0 || m.seq_count() != 1 || m.draft_block() > 0 ||
+        (int64_t) ids.size() + n > m.max_context()) {
+        std::fprintf(stderr, "lookup check needs IDs, --n >= 2, --lookup-draft > 0, --parallel 1, --dspark none, and context room\n");
+        return 2;
+    }
+    m.begin_request();
+    const int unit = std::max(1, m.feed_unit());
+    for (size_t from = 0; from < ids.size();) {
+        const int count = (int) std::min<size_t>(unit, ids.size() - from);
+        if (!m.feed(ids.data() + from, count, from + count == ids.size() ? 1 : 0, err)) {
+            std::fprintf(stderr, "lookup check prefill: %s\n", err.c_str());
+            return 1;
+        }
+        from += count;
+    }
+    const int64_t prefix = m.pos();
+    m.checkpoint(1);
+    m.pin();
+    const int seed = m.sample(0, 1, 1, 0, 1, 0);
+    if (seed < 0) return 1;
+    const int requested = g_lookup_max;
+    std::vector<int> output[3];
+    double elapsed[3] = {}, eg_wait[3] = {};
+    long long lookup_offered = 0, lookup_accepted = 0, lookup_rounds = 0;
+    for (int pass = 0; pass < 3; ++pass) {
+        if (pass && (!m.restore(prefix) || m.pos() != prefix)) {
+            std::fprintf(stderr, "lookup check: frozen prefix could not be restored\n");
+            return 1;
+        }
+        g_lookup_max = pass == 1 ? requested : 0;
+        g_lookup_rounds = g_lookup_offered = g_lookup_accepted = 0;
+        int tok = seed;
+        unsigned long long counter = 1;
+        const double eg0 = m.stats().engram_ms, t0 = now_ms();
+        while ((int) output[pass].size() < n) {
+            output[pass].push_back(tok);
+            if ((int) output[pass].size() == n) break;
+            std::vector<int> got;
+            int offered = 0, accepted = 0;
+            if (!round(m, tok, n - (int) output[pass].size(), false, 0, 0, 1, 1, 0, 1,
+                       counter, got, offered, accepted, err) || got.empty()) {
+                std::fprintf(stderr, "lookup check decode: %s\n", err.c_str());
+                g_lookup_max = requested;
+                return 1;
+            }
+            for (size_t i = 0; i + 1 < got.size(); ++i) output[pass].push_back(got[i]);
+            tok = got.back();
+        }
+        elapsed[pass] = now_ms() - t0;
+        eg_wait[pass] = (m.stats().engram_ms - eg0) / (n - 1);
+        if (pass == 1) {
+            lookup_offered = g_lookup_offered;
+            lookup_accepted = g_lookup_accepted;
+            lookup_rounds = g_lookup_rounds;
+        }
+        std::printf("lookup check tokens %d:", pass);
+        for (int t : output[pass]) std::printf("%d,", t);
+        std::printf("\n");
+        std::fprintf(stderr, "lookup check pass %d: %d tokens, %.3f ms, %.3f tok/s, Engram exposed %.3f ms/token\n",
+                     pass, n, elapsed[pass], 1000.0 * (n - 1) / elapsed[pass], eg_wait[pass]);
+    }
+    g_lookup_max = requested;
+    const bool plain_same = output[0] == output[2], lookup_same = output[0] == output[1];
+    std::fprintf(stderr, "lookup check: same frozen prefix %lld; serial repeat %s; lookup tokens %s; %lld rounds, %lld offered, %lld accepted\n",
+                 (long long) prefix, plain_same ? "yes" : "NO", lookup_same ? "same" : "DIFFERENT",
+                 lookup_rounds, lookup_offered, lookup_accepted);
+    return plain_same && lookup_same ? 0 : 1;
+}
+
 }  // namespace
 
 #ifndef DS4_BUILD_ID
@@ -2504,7 +2613,7 @@ int main(int argc, char** argv) {
     float temp = 0.0f;   // the CLI's sampling (0: greedy)
     unsigned long long cli_seed = 1;
     bool serve_mode = false, multi_check = false, vision_resident = false, vision_lazy_asked = false;   // (--vision-lazy: the default now, still accepted)
-    bool pack_info_mode = false;
+    bool pack_info_mode = false, lookup_check = false;
     std::string images, enc_rgb, enc_out;
     std::string score_ids, score_out, prof_ids, spec_ids;
     int enc_w = 0, enc_h = 0;
@@ -2544,6 +2653,19 @@ int main(int argc, char** argv) {
             o.experts = v == "auto" ? -1 : std::max(1, std::atoi(v.c_str()));
         }
         else if (a == "--dspark-block") o.dspark_block = std::max(0, std::atoi(val("--dspark-block").c_str()));
+        else if (a == "--dspark-vram-mib") o.dspark_vram_mib = std::max<int64_t>(0, std::atoll(val("--dspark-vram-mib").c_str()));
+        else if (a == "--target-vram-counts") o.target_vram_counts = parse_ids(val("--target-vram-counts"));
+        else if (a == "--resident-route-bias") {
+            const std::string v = val("--resident-route-bias");
+            char* end = nullptr;
+            o.resident_route_bias = std::strtof(v.c_str(), &end);
+            if (end == v.c_str() || *end || !std::isfinite(o.resident_route_bias) || o.resident_route_bias < 0) {
+                std::fprintf(stderr, "--resident-route-bias must be a finite nonnegative number\n");
+                return 2;
+            }
+        }
+        else if (a == "--lookup-draft") g_lookup_max = std::max(0, std::min(15, std::atoi(val("--lookup-draft").c_str())));
+        else if (a == "--lookup-min") g_lookup_min = std::max(3, std::min(32, std::atoi(val("--lookup-min").c_str())));
         else if (a == "--dspark-depth") g_spec_depth = std::max(1, std::atoi(val("--dspark-depth").c_str()));
         else if (a == "--tp") o.tp = std::max(1, std::atoi(val("--tp").c_str()));
         else if (a == "--prefill-chunk") o.prefill_chunk = std::max(0, std::atoi(val("--prefill-chunk").c_str()));
@@ -2551,6 +2673,7 @@ int main(int argc, char** argv) {
         else if (a == "--vision") o.vision = val("--vision") != "off";
         else if (a == "--vision-resident") vision_resident = true;
         else if (a == "--vision-lazy") (void) (vision_lazy_asked = true);
+        else if (a == "--engram-remote") o.engram_remote = val("--engram-remote");
         else if (a == "--mmap-experts") {
             const std::string v = val("--mmap-experts");
             o.mmap_experts = v == "on" ? 1 : v == "off" ? 0 : -1;
@@ -2587,6 +2710,7 @@ int main(int argc, char** argv) {
                 return 2;
             }
         }
+        else if (a == "--lookup-check") lookup_check = true;
         else if (a == "--multi-check") multi_check = true;   // (tests: --parallel's rows against each alone)
         else if (a == "--pack-info") pack_info_mode = true;
         else if (a == "--layer-split") (void) val("--layer-split");   // the server's (this engine balances its own split)
@@ -2605,6 +2729,10 @@ int main(int argc, char** argv) {
             return 2;
         }
         return strata::ds4::pack_info(o.pack, stdout);
+    }
+    if (g_lookup_max > 0 && o.seqs != 1) {
+        std::fprintf(stderr, "suffix lookup currently requires --parallel 1\n");
+        return 2;
     }
     if (multi_check && (o.seqs < 2 || ids_s.empty())) {
         std::fprintf(stderr, "--multi-check needs --parallel 2..8 and --ids\n");
@@ -2666,6 +2794,10 @@ int main(int argc, char** argv) {
         ids_s = ss.str();
     }
     const std::vector<int> ids = parse_ids(ids_s);
+    if (lookup_check) {
+        if (temp != 0 || !images.empty()) { std::fprintf(stderr, "lookup check requires greedy text decode\n"); return 2; }
+        return check_lookup(m, ids, n);
+    }
     if (multi_check) return check_multi(m, ids, std::max(2, n));
     if (!images.empty()) {   // --images: a GENI file's pictures, for the prompt's spans
         std::vector<Pic> pics;
@@ -2719,6 +2851,8 @@ int main(int argc, char** argv) {
     const long long io0 = io_read_bytes();
     std::vector<int> out;
     std::vector<double> tok_ms;   // (DS4_TOKLOG: each token's time since the one before - the latency ledger)
+    const bool log_engram_wait = strata_env_is_set("DS4_TOKLOG") != 0;
+    std::vector<double> eg_token_ms;
     double t_prev = t1;
     unsigned long long counter = 0;
     long long d_off = 0, d_acc = 0, rounds = 0;
@@ -2751,10 +2885,20 @@ int main(int argc, char** argv) {
             if (got.empty()) {
                 int off = 0, acc = 0;
                 const bool try_spec = spec && !cool;
+                const double eg_before = log_engram_wait ? m.stats().engram_ms : 0;
                 if (!round(m, tok, n - (int) out.size(), try_spec, o.dspark_conf, temp, 1.0f, temp > 0 ? 64 : 1, 0.0f,
                            cli_seed, counter, got, off, acc, err)) {
                     std::fprintf(stderr, "maya-ds4: %s\n", err.c_str());
                     return 1;
+                }
+                if (log_engram_wait && !got.empty()) {
+                    size_t committed = got.size();
+                    if (!strata_env_is_set("DS4_NO_EOS")) {
+                        const auto eos_at = std::find(got.begin(), got.end(), 1);
+                        if (eos_at != got.end()) committed = (size_t) (eos_at - got.begin()) + 1;
+                    }
+                    const double wait = (m.stats().engram_ms - eg_before) / (double) committed;
+                    eg_token_ms.insert(eg_token_ms.end(), committed, wait);
                 }
                 d_off += off;
                 d_acc += acc;
@@ -2771,18 +2915,27 @@ int main(int argc, char** argv) {
     if (spec && rounds > 0) {
         const auto& s1 = m.stats();
         const double nv = (double) std::max<int64_t>(1, s1.drafts_rounds - s0.drafts_rounds);
-        std::fprintf(stderr, "dspark: %lld rounds, %lld drafts offered, %lld accepted (%.2f tokens a round); drafting "
+        std::fprintf(stderr, "%s: %lld rounds, %lld drafts offered, %lld accepted (%.2f tokens a round); drafting "
                              "%.2f ms a round, verifying %.1f ms in all (%lld windows)\n",
-                     rounds, d_off, d_acc, (double) out.size() / (double) rounds, (s1.draft_ms - s0.draft_ms) / nv,
+                     g_lookup_max > 0 ? "speculative" : "dspark", rounds, d_off, d_acc, (double) out.size() / (double) rounds, (s1.draft_ms - s0.draft_ms) / nv,
                      s1.verify_ms - s0.verify_ms, (long long) (s1.drafts_offered > 0 ? 0 : 0));
-        std::fprintf(stderr, "dspark %s\n", per_position(s0, s1).c_str());
+        std::fprintf(stderr, "%s %s\n", g_lookup_max > 0 ? "speculative" : "dspark", per_position(s0, s1).c_str());
     }
+    if (g_lookup_max > 0)
+        std::fprintf(stderr, "lookup: %lld target-verified rounds, %lld offered, %lld accepted\n",
+                     g_lookup_rounds, g_lookup_offered, g_lookup_accepted);
     if (std::getenv("DS4_TOKLOG") != nullptr && tok_ms.size() > 8) {   // the decode's tokens after the first (which carries the prompt's tail)
         std::vector<double> v(tok_ms.begin() + 1, tok_ms.end());
         std::sort(v.begin(), v.end());
         std::fprintf(stderr, "token latency ms: p50 %.0f p95 %.0f p99 %.0f max %.0f mean %.0f (%zu tokens)\n", v[v.size() / 2],
                      v[(size_t) ((double) v.size() * 0.95)], v[(size_t) ((double) v.size() * 0.99)], v.back(),
                      std::accumulate(v.begin(), v.end(), 0.0) / (double) v.size(), v.size());
+    }
+    if (!eg_token_ms.empty()) {
+        std::sort(eg_token_ms.begin(), eg_token_ms.end());
+        std::fprintf(stderr, "Engram exposed wait ms per committed token (round-amortized): p50 %.3f p95 %.3f max %.3f (%zu tokens)\n",
+                     eg_token_ms[eg_token_ms.size() / 2], eg_token_ms[(size_t) (eg_token_ms.size() * 0.95)],
+                     eg_token_ms.back(), eg_token_ms.size());
     }
     const double t2 = now_ms();
     const auto& s = m.stats();

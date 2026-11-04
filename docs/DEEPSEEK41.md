@@ -93,6 +93,8 @@ for the Coder; 0.104, 0.108, 0.202, 0.303, 0.138 for 2.00. One run per cell unle
 engines): on an Apple M5 Max 19 to 22 tokens a second with all 7,680 experts in memory (a 6,054-token needle read at 300 tokens a second), and on a Ryzen AI Max (Strix Halo, Windows, 64 GB of RAM)
 19 to 22 tokens a second with 7,734 of 8,064 experts in graphics memory.
 
+For a Linux Coder setup whose Engram table is on another machine, the opt-in [remote Engram reader](DSV41_REMOTE_ENGRAM.md) fetches rows over InfiniBand through ucomm. It needs a source build and the combined IQ4_NL table. The normal installer continues to use a local table.
+
 ## Install
 
 ```

@@ -1442,6 +1442,10 @@ class StrataEngine:
             tail = wide[-4096:]
         except (OSError, TypeError):
             pass
+        final_line = next((line.strip() for line in reversed(tail.splitlines()) if line.strip()), "")
+        if final_line.startswith("fatal: remote Engram "):
+            return ("The remote Engram service failed, so the engine discarded the sequence. Check the table machine "
+                    "and InfiniBand connection. The next request reconnects and starts a fresh sequence.")
         # #1705: STRATA_VERIFY_TRACE dumps are ~30 KB and push the watchdog's line out of a 4 KB tail
         for line in reversed(wide.splitlines()):
             if "issue #29" in line:
