@@ -249,7 +249,7 @@ __global__ void k_kv8_gather(const uint8_t* q8k, const float* sck, const uint8_t
 /// STRATA_M3_KV_BCACHE_SYNC=1: this step's selection of layer li against the device block map, in one thread (the host bc_update's
 /// CLOCK, entry for entry): hits set their reference bit, a complete block that missed takes a slot and goes on the fill list. The map is
 /// updated here, so the gather that follows on the same stream reads every listed block from VRAM.
-__global__ void k_bc_resolve(const int32_t* sel, int n, int n_pos, int32_t* map_all, int li, int nblk, int32_t* owner, uint8_t* ref,
+__global__ void k_bc_resolve(const int32_t* sel, int n, int n_full, int32_t* map_all, int li, int nblk, int32_t* owner, uint8_t* ref,
                              int* hand, int slots, int2* fill, int* fill_n, unsigned long long* cnt) {
     if (threadIdx.x != 0 || blockIdx.x != 0) return;
     int32_t* map = map_all + (size_t) li * nblk;
@@ -261,7 +261,7 @@ __global__ void k_bc_resolve(const int32_t* sel, int n, int n_pos, int32_t* map_
         if (blk < 0 || blk >= nblk) continue;
         if (map[blk] >= 0) { ++hit; ref[map[blk]] = 1; continue; }
         ++miss;
-        if ((blk + 1) * 128 > n_pos) continue;   // the newest block is still growing: read from the host
+        if ((blk + 1) * 128 > n_full) continue;   // still growing, or holds draft rows a verify may drop: read from the host
         int s = -1;
         for (int tries = 0; tries < 2 * slots; ++tries) {
             const int c = h;
@@ -2100,6 +2100,10 @@ struct Engine {
             const double gib = g ? std::atof(g) : 2.0;
             const size_t unit = (size_t) 128 * KD * 2 + (size_t) 128 * mm.HKV * 4 * 2;
             bc_slots = (int) (gib * (double) (1ull << 30) / (double) unit);
+            if (bc_slots > 0 && mm.idx_top_k > 16) {   // the selection buffers below hold 16 blocks a head and row
+                std::fprintf(stderr, "strata-m3: no K/V block cache: indexer top-k %d is above 16\n", mm.idx_top_k);
+                bc_slots = 0;
+            }
             if (bc_slots > 0) {
                 bc_nblk = (ctx + 127) / 128 + 1;
                 CK(cudaMalloc(&bc_k, (size_t) bc_slots * 128 * KD));
@@ -2117,6 +2121,11 @@ struct Engine {
                 bc_ev.resize((size_t) mm.n_layers);
                 for (auto& e : bc_ev) CK(cudaEventCreateWithFlags(&e, cudaEventDisableTiming));
                 bc_sync = strata_env_truthy_one("STRATA_M3_KV_BCACHE_SYNC") != 0;
+                if (bc_sync && bc_slots < 2 * kMaxWin * mm.HKV * 16) {   // one step's fills must not take a slot twice
+                    std::fprintf(stderr, "strata-m3: STRATA_M3_KV_BCACHE_SYNC needs %d block cache slots (have %d): filled one step late\n",
+                                 2 * kMaxWin * mm.HKV * 16, bc_slots);
+                    bc_sync = false;
+                }
                 if (bc_sync) {
                     CK(cudaMalloc(&bc_owner_d, (size_t) bc_slots * 4));
                     CK(cudaMemset(bc_owner_d, 0xff, (size_t) bc_slots * 4));
@@ -2484,9 +2493,12 @@ struct Engine {
                 k_kv8_load<<<grid1((int64_t) n_pos * HKV * 32), kThreads, 0, st>>>(vq_d[li], vs_d[li], reinterpret_cast<__half*>(vstage), n_pos, HKV);
             } else {
                 const int32_t* bmap = nullptr;
+                // a block is cached only when complete in committed rows: row 0 of a step is always kept, rows past it may be draft
+                // rows that a verify drops and a later step overwrites in the host cache (one-token steps: the whole context)
+                const int bc_full = std::min(n_pos, p0 + 1);
                 if (bc_slots > 0 && bc_sync) {
                     const int n = T * HKV * topk;
-                    k_bc_resolve<<<1, 32, 0, st>>>(sel, n, n_pos, bc_map_d, (int) li, bc_nblk, bc_owner_d, bc_ref_d, bc_hand_d, bc_slots,
+                    k_bc_resolve<<<1, 32, 0, st>>>(sel, n, bc_full, bc_map_d, (int) li, bc_nblk, bc_owner_d, bc_ref_d, bc_hand_d, bc_slots,
                                                     bc_fill_d, bc_fill_n_d, bc_cnt_d);
                     k_bc_fill<<<dim3((unsigned) n, 8), 256, 0, st>>>(bc_fill_d, bc_fill_n_d, kq_d[li], ks_d[li], vq_d[li], vs_d[li],
                                                                    bc_k, bc_ks, bc_v, bc_vs, HKV);
@@ -2504,7 +2516,7 @@ struct Engine {
                     CK(cudaMemcpyAsync(bc_sel_h + li * (size_t) kMaxWin * HKV * 16, sel, (size_t) n * 4, cudaMemcpyDeviceToHost, st));
                     CK(cudaEventRecord(bc_ev[li], st));
                     bc_sel_n[li] = n;
-                    bc_sel_pos[li] = n_pos;
+                    bc_sel_pos[li] = bc_full;
                 }
             }
             pmark("attn: fp8 K/V expand (layer or selected blocks)");
