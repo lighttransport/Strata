@@ -1,0 +1,49 @@
+{
+ "date": "2026-11-04",
+ "machine": "2x Xeon Gold 6240, 181 GB allocation, 2x Tesla V100 PCIe 32 GB",
+ "model": "MiniMax M3.1 Flash UD-Q2_K_XL, expert pack pinned in RAM, DSpark Q8_0 draft head",
+ "engine": "strata-m3 --repl --preload-experts --cpu-experts --dspark FILE --kv-f16, STRATA_M3_GPU1=1 (second GPU as expert cache, 1794 slots), STRATA_M3_STREAM=1",
+ "requests": {
+  "exact2": "run prompt=dijkstra n=500 (exact routing; second of two identical requests)",
+  "max2": "run prompt=dijkstra n=500 topk=2 missk=0 (the --speed max settings; second of two)"
+ },
+ "first_runs": {
+  "exact1_tok_s": 39.725,
+  "max1_tok_s": 65.06
+ },
+ "gif": "docs/media/minimax-m31-v100x2-exact-vs-max.gif: rendered by tools/minimax_demo_render.py from the M3_STREAM step timestamps, each panel from its own decode start at original speed",
+ "runs": {
+  "exact2": {
+   "decode_tokens": 405,
+   "decode_ms": 10048.6,
+   "decode_tok_s": 40.205,
+   "prompt_tokens": 335,
+   "prompt_ms": 12902.3,
+   "spec_steps": 97,
+   "drafted": 333,
+   "accepted": 308,
+   "tokens_per_step": 4.18,
+   "expert_hits": 47728,
+   "expert_misses": 6279,
+   "cpp_task": "dijkstra",
+   "cpp_result": "pass",
+   "stream_steps": 97
+  },
+  "max2": {
+   "decode_tokens": 386,
+   "decode_ms": 5909.2,
+   "decode_tok_s": 65.152,
+   "prompt_tokens": 335,
+   "prompt_ms": 12893.0,
+   "spec_steps": 90,
+   "drafted": 325,
+   "accepted": 296,
+   "tokens_per_step": 4.29,
+   "expert_hits": 23098,
+   "expert_misses": 6272,
+   "cpp_task": "dijkstra",
+   "cpp_result": "pass",
+   "stream_steps": 90
+  }
+ }
+}

@@ -556,6 +556,19 @@ With the stream default at 4 only the max-mode rows were measured at 4 (not the 
 
 ### A second V100 as extra expert cache (`STRATA_M3_GPU1=1`, opt-in; measured 2026-11-03, two V100 PCIe on different sockets)
 
+<p align="center">
+<a href="media/minimax-m31-v100x2-exact-vs-max.gif"><img src="media/minimax-m31-v100x2-exact-vs-max.gif" width="900" alt="MiniMax M3.1 Flash on two V100s writing Dijkstra in C++: exact routing at 40.2 tok/s, --speed max at 65.2 tok/s"></a>
+</p>
+
+**Demo (2026-11-04).** The same C++ task (Dijkstra, from the 46-task benchmark) on two V100s with `STRATA_M3_GPU1=1` and the DSpark head:
+exact routing (left, the default) at **40.2 tok/s**, and the `--speed max` settings (top-2, experts that miss VRAM dropped; REPL `topk=2
+missk=0`, right) at **65.2 tok/s**. Both answers compile and pass the task's tests. The engine printed every decode step's tokens and time
+(`STRATA_M3_STREAM=1`, opt-in), and `tools/minimax_demo_render.py` drew the frames from those timestamps. Each panel plays from its own
+decode start at the measured speed; the 12.9 s of prompt processing before it is not shown. Both are the second of two identical requests
+to one engine (first: 39.7 and 65.1 tok/s), with 92.5 % and 91.1 % of the drafted tokens accepted (4.2 and 4.3 tokens a step). Record:
+[demos/minimax_m31/v100x2_measurement.json](../demos/minimax_m31/v100x2_measurement.json).
+
+
 GPU 0 keeps everything it had (dense weights, K/V, draft head, prefill, its own slots). GPU 1 holds only expert slots (1800 of 17.3 MiB, so
 2.9k slots in total instead of 1.1k) and its own copy stream; the warm-up after the prefill fills it with the experts the prompt used most. A
 decode-window layer sends the q8_1 image of `h` to GPU 1 by peer copy, runs the experts resident there on GPU 1's side streams (the same

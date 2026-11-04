@@ -3629,6 +3629,16 @@ int strata::minimax::run(int argc, char** argv) {
     for (int i = 0; i < 5; ++i) std::printf(" %d:%.4f", top[(size_t) i].second, top[(size_t) i].first);
     std::printf("\n");
     const auto t1 = Clock::now();
+    // STRATA_M3_STREAM=1 (opt-in, for live displays): after every decode step, the tokens it added and the time since the decode started
+    const bool stream_out = strata_env_truthy_one("STRATA_M3_STREAM") != 0;
+    size_t streamed = 0;
+    auto stream_emit = [&]() {
+        if (!stream_out || streamed >= out.size()) return;
+        std::printf("M3_STREAM %.3f", ms_since(t1));
+        for (; streamed < out.size(); ++streamed) std::printf(" %d", out[streamed]);
+        std::printf("\n");
+        std::fflush(stdout);
+    };
     int force_n = 0, force_agree = 0;
     long long spec_steps = 0, spec_drafted = 0, spec_accepted = 0;
     const bool speculate = (rs.spec == "ngram" || rs.spec == "dspark") && rs.forced.empty() && (rs.spec != "dspark" || ds) && rs.draft > 0 && rs.draft < kWinDef;
@@ -3669,6 +3679,7 @@ int strata::minimax::run(int argc, char** argv) {
             }
             const int32_t next = (!rs.forced.empty() && (size_t) i < rs.forced.size()) ? rs.forced[(size_t) i] : pred;
             out.push_back(next);
+            stream_emit();
             if ((next == eos && !ignore_eos) || i + 1 == n_gen) break;
             E.forward(&next, 1, lg, rs.dump != nullptr);   // the logits cross to the host only when they are dumped
         }
@@ -3689,7 +3700,7 @@ int strata::minimax::run(int argc, char** argv) {
             spec_drafted += D;
             out.push_back(cur);
             hist.push_back(cur);
-            if (cur == eos && !ignore_eos) { E.pos = pos0 + 1; break; }
+            if (cur == eos && !ignore_eos) { E.pos = pos0 + 1; stream_emit(); break; }
             int a = 0;
             while (a < D && (int) out.size() < n_gen && E.arg_rows[a] == d[(size_t) a]) {
                 out.push_back(d[(size_t) a]);
@@ -3701,6 +3712,7 @@ int strata::minimax::run(int argc, char** argv) {
             E.pos = pos0 + 1 + a;           // the rows past the accepted prefix are dropped
             if (ds) ds->inject(E, a + 1, pos0);   // the accepted rows' target features become draft context
             cur = E.arg_rows[a];
+            stream_emit();
             if (!out.empty() && out.back() == eos && !ignore_eos) break;
         }
     }
