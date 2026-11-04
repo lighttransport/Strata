@@ -1,16 +1,25 @@
-# Strata-GLM53F: GLM-5.3-Flash on desktops and budget servers
+# Strata-fork of GLM-5.3-Flash and MiniMax M3.1 Flash runner
 
-This fork runs **GLM-5.3-Flash** (a mixture-of-experts model, about 321B parameters with about 18B active per
-token) from ordinary RAM with one or two consumer GPUs. Fixed layers, attention and batched prompt processing run on the GPU; the routed experts
-run from RAM on the CPU, with a GPU-resident tier for the hottest ones and GPU-drafted speculative decoding.
-The model is served in the fork's own Q2/Q3 expert quantization ("Q23"), either complete or with the least
+This fork runs two mixture-of-experts models from ordinary RAM with one or two GPUs (consumer cards or Tesla
+V100s): **GLM-5.3-Flash** (about 321B parameters with about 18B active per token) with the `strata-glm` engine,
+and **MiniMax M3.1 Flash** (Unsloth UD-Q2_K_XL) with the `strata-m3` engine. Fixed layers, attention and batched
+prompt processing run on the GPU; the routed experts run from RAM on the CPU, with a GPU-resident tier for the
+hottest ones and GPU-drafted speculative decoding.
+
+GLM-5.3-Flash is served in the fork's own Q2/Q3 expert quantization ("Q23"), either complete or with the least
 useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-50: 144 experts, 63 GB).
+MiniMax M3.1 Flash pins a 124.7 GiB expert pack in RAM and uses the DSpark draft head, with FP8 K/V options for
+long context. *The branch is still named `glm53f` (kept for now); it carries both runners.*
 
 **Updates**
 
 - 2026-11-04: MiniMax M3.1 Flash (UD-Q2_K_XL) on one Tesla V100 32 GB with `strata-m3`: decode 23-28 tok/s at short
   context (exact routing), 12.8 tok/s at 128K, 6.0 tok/s at 512K; prefill 634-640 tok/s at 16K
   ([MiniMax release notes](docs/MINIMAX_M31_RELEASE.md)).
+- 2026-11-04: MiniMax M3.1 Flash two-V100 demo: exact routing **40.2 tok/s** and `--speed max` **65.2 tok/s** on
+  the same C++ task ([GIF](docs/media/minimax-m31-v100x2-exact-vs-max.gif),
+  [measurement](demos/minimax_m31/v100x2_measurement.json)); exact routing passes 41/46 C++ tasks, `--speed max`
+  38/46.
 - 2026-10-24: GLM-5.3-Flash native FP4 on 2x Tesla V100 32 GB: prefill 780 tok/s, decode 41 tok/s (8K prompt,
   experimental [streamed prefill](docs/GLM_FP4_V100_PREFILL.md#streamed-prefill-opt-in)).
 
@@ -26,8 +35,8 @@ three passed). This setting scored 145/164 on HumanEval, below the 152 floor, so
 qualified profile. [Timing](demos/glm53_chat/tr16_9070xt_measurement.json),
 [how it was recorded](demos/glm53_chat/README.md).
 
-**How fast** (single-stream decode and prompt processing, tokens per second; details, trials and the quality
-evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
+**GLM-5.3-Flash: how fast** (single-stream decode and prompt processing, tokens per second; details, trials and
+the quality evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
 
 | machine | weights | decode | prompt | quality evidence |
 | --- | --- | ---: | ---: | --- |
@@ -63,22 +72,33 @@ in four same-job pairs at a 12K context; the 800 tok/s target is met only in a 1
   [GLM_RUNNER_SIM.md](docs/GLM_RUNNER_SIM.md), [MULTI_GPU.md](docs/MULTI_GPU.md)
 - **Terminal demo:** [simple ASCII chat with a decode-speed counter](demos/glm53_chat/README.md)
 
-**MiniMax M3.1 Flash** (`strata-m3`, Unsloth UD-Q2_K_XL, 124.7 GiB expert pack pinned in RAM, DSpark draft head; 2x Xeon Gold 6240,
-181 GB, Tesla V100 PCIe 32 GB). Single-stream decode in tokens per second; details in the
-[MiniMax release notes](docs/MINIMAX_M31_RELEASE.md):
+**MiniMax M3.1 Flash: how fast** (`strata-m3`, Unsloth UD-Q2_K_XL, 124.7 GiB expert pack pinned in RAM, DSpark
+draft head; 2x Xeon Gold 6240, 181 GB, one or two Tesla V100 PCIe 32 GB). Single-stream decode in tokens per
+second; details in the [MiniMax release notes](docs/MINIMAX_M31_RELEASE.md):
+
+<p align="center">
+<a href="docs/media/minimax-m31-v100x2-exact-vs-max.gif"><img src="docs/media/minimax-m31-v100x2-exact-vs-max.gif" width="720" alt="Two Tesla V100s decoding the same C++ task: exact routing at 40.2 tokens/s and --speed max at 65.2 tokens/s"></a>
+</p>
+
+**Two V100s, same C++ task, two settings.** Both panels run the same 335-token `dijkstra` request: exact routing
+at **40.2 tok/s** and `--speed max` at **65.2 tok/s**, each from its own decode start at original speed, over 500
+generated tokens. Both answers pass the task. On two V100s, `--speed max` passes 38 of 46 C++ tasks versus 41 for
+exact routing. [Measurement](demos/minimax_m31/v100x2_measurement.json).
 
 | context | configuration | decode | quality evidence |
 | --- | --- | ---: | --- |
 | short (335-token prompts) | exact routing (default), one V100 | 23-28 | 41/46 C++ tasks |
 | short | `--speed max` (top-2, VRAM-only experts), one V100 | 56 | 36-39/46 C++ tasks |
-| short | exact routing, two V100 (`STRATA_M3_GPU1=1`) | 39 | 41/46 C++ tasks |
+| short | exact routing, two V100 (`STRATA_M3_GPU1=1`) | 38.7-40.2 | 41/46 C++ tasks |
+| short | `--speed max`, two V100 | 59.3-65.2 | 38/46 C++ tasks |
 | 128K | FP8 K/V and FP8 index keys in VRAM (`--kv-fp8 --idx-fp8`) | 12.8 | needle found; KL 1.06e-3 on a 7K prompt |
 | 256K | FP8 K/V in host RAM + VRAM block cache (`--kv-host --kv-fp8`) | 8.5 | needle found |
 | 512K | same | 6.0 | needle found |
 
-Prefill is 634-640 tok/s for a 16K prompt and 541-547 tok/s at 8K. Short-context numbers are 200 generated tokens on four C++
-prompts, and the long-context numbers come from the answer to a needle-in-a-haystack prompt. 1M context does not fit next to the
-pinned expert pack in 181 GB and was not tested.
+Prefill is 634-640 tok/s for a 16K prompt and 541-547 tok/s at 8K. Short-context numbers are 200 generated tokens on
+four C++ prompts; the two-V100 demo rows use 500 generated tokens on the `dijkstra` prompt. The long-context numbers
+come from the answer to a needle-in-a-haystack prompt. 1M context does not fit next to the pinned expert pack in
+181 GB and was not tested.
 
 **Acknowledgement.** Several ideas in this work were studied in
 **[Project Maya](https://github.com/mw00/project-maya)** by peasantsmith (MIT License), an independent Strata
@@ -89,7 +109,7 @@ informed our designs. No Maya code or weights are used here; how the two project
 
 ## Original Strata README: Qwen3.8-Flash-Next
 
-The existing README is preserved below. Its Qwen installation flow, performance claims and model requirements describe the original engine. Use the GLM guide above for this fork's current GLM configuration and results.
+The existing README is preserved below. Its Qwen installation flow, performance claims and model requirements describe the original engine. Use the GLM and MiniMax sections above for this fork's current configuration and results.
 
 ---
 
@@ -108,8 +128,9 @@ Strata runs **[Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Nex
 large, smart AI model that usually needs a server. It chats, writes code, reads pictures and works with your apps
 and coding agents. Nothing leaves your PC.
 
-An experimental native GGUF backend for **GLM-5.3-Flash** is available for CUDA and HIP builds.
-See [the GLM-5.3-Flash release notes](docs/GLM53F_RELEASE.md).
+Experimental native GGUF backends for **GLM-5.3-Flash** (CUDA and HIP) and **MiniMax M3.1 Flash** (CUDA) are
+available. See [the GLM-5.3-Flash release notes](docs/GLM53F_RELEASE.md) and
+[the MiniMax M3.1 Flash release notes](docs/MINIMAX_M31_RELEASE.md).
 
 ## How fast is it?
 
