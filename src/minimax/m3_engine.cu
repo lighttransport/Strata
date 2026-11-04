@@ -246,6 +246,64 @@ __global__ void k_kv8_gather(const uint8_t* q8k, const float* sck, const uint8_t
     }
 }
 
+/// STRATA_M3_KV_BCACHE_SYNC=1: this step's selection of layer li against the device block map, in one thread (the host bc_update's
+/// CLOCK, entry for entry): hits set their reference bit, a complete block that missed takes a slot and goes on the fill list. The map is
+/// updated here, so the gather that follows on the same stream reads every listed block from VRAM.
+__global__ void k_bc_resolve(const int32_t* sel, int n, int n_pos, int32_t* map_all, int li, int nblk, int32_t* owner, uint8_t* ref,
+                             int* hand, int slots, int2* fill, int* fill_n, unsigned long long* cnt) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+    int32_t* map = map_all + (size_t) li * nblk;
+    int nf = 0;
+    unsigned long long hit = 0, miss = 0;
+    int h = *hand;
+    for (int i = 0; i < n; ++i) {
+        const int blk = sel[i];
+        if (blk < 0 || blk >= nblk) continue;
+        if (map[blk] >= 0) { ++hit; ref[map[blk]] = 1; continue; }
+        ++miss;
+        if ((blk + 1) * 128 > n_pos) continue;   // the newest block is still growing: read from the host
+        int s = -1;
+        for (int tries = 0; tries < 2 * slots; ++tries) {
+            const int c = h;
+            h = h + 1 == slots ? 0 : h + 1;
+            if (ref[c]) { ref[c] = 0; continue; }
+            s = c;
+            break;
+        }
+        if (s < 0) break;
+        if (owner[s] >= 0) map_all[owner[s]] = -1;
+        owner[s] = li * nblk + blk;
+        map[blk] = s;
+        ref[s] = 1;
+        fill[nf++] = make_int2(blk, s);
+    }
+    *hand = h;
+    *fill_n = nf;
+    cnt[0] += hit;
+    cnt[1] += miss;
+    cnt[2] += (unsigned long long) nf;
+}
+
+/// The fill list's blocks from the mapped host cache into their VRAM slots: blockIdx.x = list entry, blockIdx.y = part of the block's
+/// K bytes, V bytes and scales; 16-byte loads. The bytes are the host's, so every later read gives the same values.
+__global__ void k_bc_fill(const int2* fill, const int* fill_n, const uint8_t* q8k, const float* sck, const uint8_t* q8v, const float* scv,
+                          uint8_t* poolk, float* poolks, uint8_t* poolv, float* poolvs, int HKV) {
+    if ((int) blockIdx.x >= *fill_n) return;
+    const int2 f = fill[blockIdx.x];
+    const size_t bytes = (size_t) 128 * HKV * 128, n16 = bytes / 16;
+    const uint4* sk = reinterpret_cast<const uint4*>(q8k + (size_t) f.x * bytes);
+    const uint4* sv = reinterpret_cast<const uint4*>(q8v + (size_t) f.x * bytes);
+    uint4* dk = reinterpret_cast<uint4*>(poolk + (size_t) f.y * bytes);
+    uint4* dv = reinterpret_cast<uint4*>(poolv + (size_t) f.y * bytes);
+    const size_t stride = (size_t) gridDim.y * blockDim.x;
+    for (size_t i = (size_t) blockIdx.y * blockDim.x + threadIdx.x; i < n16; i += stride) { dk[i] = sk[i]; dv[i] = sv[i]; }
+    const size_t ns = (size_t) 128 * HKV;
+    for (size_t i = (size_t) blockIdx.y * blockDim.x + threadIdx.x; i < ns; i += stride) {
+        poolks[(size_t) f.y * ns + i] = sck[(size_t) f.x * ns + i];
+        poolvs[(size_t) f.y * ns + i] = scv[(size_t) f.x * ns + i];
+    }
+}
+
 /// swigluoai: g = min(gate, limit), u = clamp(up, -limit, limit), out = g * sigmoid(alpha * g) * (1 + u).
 __global__ void k_swiglu_oai(const float* gate, const float* up, float* out, int64_t n, float alpha, float limit) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
@@ -1066,6 +1124,21 @@ struct Engine {
     std::vector<int> bc_sel_n, bc_sel_pos;     // rows * HKV * topk of that selection, and the context length then
     std::vector<cudaEvent_t> bc_ev;
     long long bc_hit = 0, bc_miss = 0, bc_fill = 0;
+    // STRATA_M3_KV_BCACHE_SYNC=1 (opt-in): the same CLOCK on the device, filled in the same step before the gather (no host syncs, a miss read
+    // once); bc_map_d is then the only map, and the counters are read when the statistics are printed
+    bool bc_sync = false;
+    int32_t* bc_owner_d = nullptr;
+    uint8_t* bc_ref_d = nullptr;
+    int* bc_hand_d = nullptr;
+    int2* bc_fill_d = nullptr;
+    int* bc_fill_n_d = nullptr;
+    unsigned long long* bc_cnt_d = nullptr;
+    void bc_counts() {   // the device counters into bc_hit / bc_miss / bc_fill
+        if (!bc_sync || bc_slots <= 0) return;
+        unsigned long long c[3] = {0, 0, 0};
+        CK(cudaMemcpy(c, bc_cnt_d, sizeof c, cudaMemcpyDeviceToHost));
+        bc_hit = (long long) c[0]; bc_miss = (long long) c[1]; bc_fill = (long long) c[2];
+    }
     // --idx-fp8 (opt-in, with --kv-f16): the indexer keys as E4M3 bytes + one scale per position (half the VRAM of FP16); one FP16 working image
     // shared by the layers serves the prompt chunks' tensor-core block scores, one-token / window steps score the FP8 keys directly
     bool idx_fp8 = false;
@@ -1887,7 +1960,9 @@ struct Engine {
     }
 #endif
 
-    void init(const Model& mm, int ctx_, int chunk, double expert_vram_gib) {
+    /// after_bytes: device memory the caller allocates after this (the draft head's feature rows); slots give way only where the
+    /// reserve would otherwise be left with less than 256 MiB, so a configuration that fitted keeps its slot count
+    void init(const Model& mm, int ctx_, int chunk, double expert_vram_gib, size_t after_bytes = 0) {
         m = &mm;
         ctx = ctx_;
         tmax = chunk;
@@ -2041,6 +2116,20 @@ struct Engine {
                 bc_sel_pos.assign((size_t) mm.n_layers, 0);
                 bc_ev.resize((size_t) mm.n_layers);
                 for (auto& e : bc_ev) CK(cudaEventCreateWithFlags(&e, cudaEventDisableTiming));
+                bc_sync = strata_env_truthy_one("STRATA_M3_KV_BCACHE_SYNC") != 0;
+                if (bc_sync) {
+                    CK(cudaMalloc(&bc_owner_d, (size_t) bc_slots * 4));
+                    CK(cudaMemset(bc_owner_d, 0xff, (size_t) bc_slots * 4));
+                    CK(cudaMalloc(&bc_ref_d, (size_t) bc_slots));
+                    CK(cudaMemset(bc_ref_d, 0, (size_t) bc_slots));
+                    CK(cudaMalloc(&bc_hand_d, 4));
+                    CK(cudaMemset(bc_hand_d, 0, 4));
+                    CK(cudaMalloc(&bc_fill_d, (size_t) kMaxWin * mm.HKV * 16 * sizeof(int2)));
+                    CK(cudaMalloc(&bc_fill_n_d, 4));
+                    CK(cudaMalloc(&bc_cnt_d, 3 * sizeof(unsigned long long)));
+                    CK(cudaMemset(bc_cnt_d, 0, 3 * sizeof(unsigned long long)));
+                    std::fprintf(stderr, "strata-m3: K/V block cache filled on the GPU in the same step (STRATA_M3_KV_BCACHE_SYNC=1)\n");
+                }
                 std::fprintf(stderr, "strata-m3: K/V block cache in VRAM: %d blocks of 128 positions (%.2f GiB)\n", bc_slots, (double) bc_slots * unit / (1 << 30));
             }
         }
@@ -2090,6 +2179,17 @@ struct Engine {
         const int n_big = n_big_layers ? std::min(8, mm.n_expert) : 0;   // the large class: a few slots, LRU like the rest (24 -> 8 frees ~370 MB for small slots)
         const size_t big_bytes = (size_t) n_big * slot_bytes_big;
         n_small = (int) std::min<size_t>((size_t) total, budget > big_bytes ? (budget - big_bytes) / slot_bytes : 0);
+        if (after_bytes > 0) {   // the shortfall only: free VRAM after the slots must still hold after_bytes + 256 MiB
+            const size_t keep = after_bytes + (256ull << 20);
+            const size_t used_now = (size_t) n_small * slot_bytes + big_bytes;
+            const size_t left = fr > used_now ? fr - used_now : 0;
+            if (left < keep) {
+                const int give = (int) ((keep - left + slot_bytes - 1) / slot_bytes);
+                std::fprintf(stderr, "strata-m3: %d fewer expert slots to leave %.0f MiB for the draft head's feature rows\n", give,
+                             (double) after_bytes / (1 << 20));
+                n_small = std::max(0, n_small - give);
+            }
+        }
         n_slots = n_small + n_big;
         if (n_small < mm.n_expert) {
             std::fprintf(stderr, "strata-m3: %d expert slots do not hold one layer's %d experts (%.2f GiB free)\n",
@@ -2238,6 +2338,12 @@ struct Engine {
         std::fill(bc_ref.begin(), bc_ref.end(), 0);
         std::fill(bc_sel_n.begin(), bc_sel_n.end(), 0);
         bc_hit = bc_miss = bc_fill = 0;
+        if (bc_sync) {
+            CK(cudaMemsetAsync(bc_owner_d, 0xff, (size_t) bc_slots * 4, st));
+            CK(cudaMemsetAsync(bc_ref_d, 0, (size_t) bc_slots, st));
+            CK(cudaMemsetAsync(bc_hand_d, 0, 4, st));
+            CK(cudaMemsetAsync(bc_cnt_d, 0, 3 * sizeof(unsigned long long), st));
+        }
         CK(cudaMemcpyAsync(bc_map_d, bc_map.data(), bc_map.size() * 4, cudaMemcpyHostToDevice, st));
         CK(cudaStreamSynchronize(st));
     }
@@ -2378,13 +2484,22 @@ struct Engine {
                 k_kv8_load<<<grid1((int64_t) n_pos * HKV * 32), kThreads, 0, st>>>(vq_d[li], vs_d[li], reinterpret_cast<__half*>(vstage), n_pos, HKV);
             } else {
                 const int32_t* bmap = nullptr;
+                if (bc_slots > 0 && bc_sync) {
+                    const int n = T * HKV * topk;
+                    k_bc_resolve<<<1, 32, 0, st>>>(sel, n, n_pos, bc_map_d, (int) li, bc_nblk, bc_owner_d, bc_ref_d, bc_hand_d, bc_slots,
+                                                    bc_fill_d, bc_fill_n_d, bc_cnt_d);
+                    k_bc_fill<<<dim3((unsigned) n, 8), 256, 0, st>>>(bc_fill_d, bc_fill_n_d, kq_d[li], ks_d[li], vq_d[li], vs_d[li],
+                                                                   bc_k, bc_ks, bc_v, bc_vs, HKV);
+                    bmap = bc_map_d + li * (size_t) bc_nblk;
+                    pmark("attn: kv block cache resolve + fill");
+                } else
                 if (bc_slots > 0) {
                     bc_update(li);
                     bmap = bc_map_d + li * (size_t) bc_nblk;
                 }
                 k_kv8_gather<<<dim3((unsigned) topk * 8, (unsigned) (2 * HKV), (unsigned) T), 128, 0, st>>>(kq_d[li], ks_d[li], vq_d[li], vs_d[li],
                     reinterpret_cast<__half*>(kstage), reinterpret_cast<__half*>(vstage), sel, HKV, topk, n_pos, bmap, bc_k, bc_ks, bc_v, bc_vs);
-                if (bc_slots > 0) {   // this step's selection to the host, for the next step's fill
+                if (bc_slots > 0 && !bc_sync) {   // this step's selection to the host, for the next step's fill
                     const int n = T * HKV * topk;
                     CK(cudaMemcpyAsync(bc_sel_h + li * (size_t) kMaxWin * HKV * 16, sel, (size_t) n * 4, cudaMemcpyDeviceToHost, st));
                     CK(cudaEventRecord(bc_ev[li], st));
@@ -3461,10 +3576,11 @@ int strata::minimax::run(int argc, char** argv) {
     }
     E.nseq_reserve = seqs_opt;
     if (kv_f16_opt) std::fprintf(stderr, "strata-m3: K/V and indexer-key caches in FP16\n");
-    E.init(m, ctx, chunk, expert_vram);
+    const size_t feat_n = ds ? (size_t) std::max(chunk, kMaxWin) * ds->target_layers.size() * (size_t) m.N : 0;
+    E.init(m, ctx, chunk, expert_vram, feat_n * 4);
     if (ds) {
         E.feat_layers = ds->target_layers;
-        E.feat = dalloc((size_t) std::max(chunk, kMaxWin) * ds->target_layers.size() * (size_t) m.N);
+        E.feat = dalloc(feat_n);
     }
 #if defined(STRATA_M3_CPU_POOL)
     if (cpu_experts) {
@@ -3796,6 +3912,7 @@ int strata::minimax::run(int argc, char** argv) {
 #endif
         std::printf("M3_DECODE_CACHE resident %lld of %lld expert uses (hit rate %.1f %%)\n", hit_n, all_n,
                     100.0 * (double) hit_n / (double) std::max<long long>(1, all_n));
+        if (E.bc_slots > 0) E.bc_counts();
         if (E.bc_slots > 0)
             std::printf("M3_KV_BCACHE selected blocks: %lld from VRAM, %lld through PCIe (%.1f %% hit), %lld blocks filled; %d slots\n", E.bc_hit, E.bc_miss,
                         100.0 * (double) E.bc_hit / (double) std::max<long long>(1, E.bc_hit + E.bc_miss), E.bc_fill, E.bc_slots);

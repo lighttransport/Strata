@@ -912,6 +912,44 @@ its timeline marks, against 15.7 us back to back in the standalone test. Default
 What is left at 128K: block selection (1.6 ms), the block scores (3.2 ms, above a bandwidth bound of about 1-2 ms), and the experts that the smaller slot
 count sends to the CPU.
 
+### The draft head at long context, and a same-step K/V block cache (measured 2026-11-04, one V100, build of the merge with upstream 0.2.10)
+
+**The draft head fits at 135168 context.** `--dspark` used to fail there: the slot cache took all free VRAM but 512 MiB, and the draft
+head's feature rows (`max(chunk, 8) * 3 target layers * hidden` floats: 960 MiB at chunk 8192) were allocated after it. `Engine::init`
+now takes that size and gives up slots only for the part the 512 MiB reserve does not cover. Where the engine fitted before, the slot
+count does not change: 1037 slots at the default 8192 context, and the four default hashes are unchanged (1ee67a8d, 38fb7620, cd04cbf5,
+e30269a7; 27.0 / 25.7 / 24.4 / 22.8 tok/s). Exact routing, FP8 K/V and FP8 index keys in VRAM, `--pf-gemm --pf-prefetch --chunk 8192`,
+`STRATA_MSA_TC2=1 STRATA_M3_PF_INJECT=1`, same session:
+
+| prompt | plain (483 slots) | draft head (315 slots) | drafts accepted, tokens a step | answer tokens |
+|---|---|---|---|---|
+| 335 tokens | 14.7 tok/s | 20.8 tok/s | 90 %, 4.1 | differ (speculation moves near-ties) |
+| 32K needle | 12.5 | 16.4 | 97 %, 3.9 | the same |
+| 128K needle | 12.4 | **15.1** | 92 %, 3.6 | the same |
+
+The cost is prefill: 228 tok/s at 128K with the draft head against 441 without. It comes from the slot count, not from the draft head:
+a 32K prompt reads at 245 tok/s with the head (injection 1.6 s of 131 s), 248 tok/s without it at the same 304-315 slots
+(`--expert-vram 5.32`), and 341 tok/s with the head at `--chunk 4096` (480 MiB of feature rows, 435 slots; decode 14.4 tok/s).
+
+**Same-step block cache for host K/V (`STRATA_M3_KV_BCACHE_SYNC=1`, opt-in).** With `--kv-host --kv-fp8` the VRAM block cache was
+filled one step late on the host (a sync and a map upload per layer), and each miss was read by the gather through PCIe in 4-byte reads.
+Now one thread on the GPU runs the same CLOCK over this step's selection, the missed complete blocks are copied from the mapped host
+cache into their slots with 16-byte loads, and the gather reads VRAM. The bytes are the same, and so are the answer tokens. 2 GiB cache,
+200-token answers:
+
+| | one step late (before) | same step | K/V expand + fill a step |
+|---|---|---|---|
+| 128K needle, 862 slots | 10.8 tok/s | 11.8 tok/s | 17.4 ms -> 2.0 + 5.7 ms |
+| 256K needle, 778 slots | 9.4 tok/s | 11.0 tok/s (8.5 in the run of 2026-11-03) | 21.4 ms -> 2.5 + 7.3 ms |
+
+86 % (128K) and 82 % (256K) of the selected blocks come from VRAM; the misses (about 5 blocks per layer and step) are what is left of the
+fill time. At 128K host K/V is still slower than FP8 K/V in VRAM (12.4 tok/s), even with 380 more slots.
+
+**Both together at 128K** (draft head, host K/V, same-step cache): 695 slots, decode 15.1 tok/s (88 % accepted, 3.6 tokens a step),
+prefill 423 tok/s, answer tokens the same. That is the decode speed of the draft head with K/V in VRAM, without its prefill loss.
+The 256K run with both did not finish before the allocation ended. Not measured: two GPUs at long context, 512K with the new cache,
+a larger block cache.
+
 Default path after the fixes (four C++ prompts, exact routing, 200 tokens): tokens identical (1ee67a8d, 38fb7620, cd04cbf5, e30269a7); decode
 26.9 / 25.8 / 24.3 / 22.9 tok/s, the same as the run before the fixes in this session (27.0 / 25.8 / 24.3 / 23.0). With the all-heads
 kernel at every context length, short-prompt decode was about 3 % slower, so it starts at 128 key blocks.
