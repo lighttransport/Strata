@@ -2979,6 +2979,34 @@ struct Runner {
         const float w_scale = 1.0f / std::sqrt(float(D * H));
         std::vector<int> toff(static_cast<size_t>(T) + 1, 0);
         for (int i = 0; i < T; ++i) toff[size_t(i) + 1] = toff[size_t(i)] + int(own[size_t(i)].size());
+        // one key row's score: the heads' dots in the all-reduce's rank order over the old head partitions.
+        // (STRATA_DS41_IDX_HEADS=1) the heads' dots by dot_heads, 6 heads per pass over the row (each head's bits are
+        // dot()'s; the row loaded once for 6 heads, 6 independent FMA chains), the sums after them in the same order
+        static const bool idx_heads_env = strata_env_truthy_one("STRATA_DS41_IDX_HEADS");
+        auto row_score = [&](const float *k, const float *iq, const float *iw) -> float {
+#if defined(__ARM_FEATURE_SVE) && __ARM_FEATURE_SVE_BITS == 512
+            if (idx_heads_env && D % 64 == 0 && H <= 64) {
+                float d[64];
+                for (int h0 = 0; h0 < H; h0 += 6) dot_heads<6>(iq + size_t(h0) * D, k, D, d + h0, std::min(6, H - h0));
+                float sum = 0;
+                for (int rank = 0; rank < W; ++rank) {
+                    float part = 0;
+                    for (int hh = H * rank / W; hh < H * (rank + 1) / W; ++hh)
+                        part += std::max(d[hh], 0.0f) * (iw[size_t(hh)] * w_scale);
+                    sum += part;
+                }
+                return sum;
+            }
+#endif
+            float sum = 0;
+            for (int rank = 0; rank < W; ++rank) {
+                float part = 0;
+                for (int hh = H * rank / W; hh < H * (rank + 1) / W; ++hh)
+                    part += std::max(dot(k, iq + size_t(hh) * D, D), 0.0f) * (iw[size_t(hh)] * w_scale);
+                sum += part;
+            }
+            return sum;
+        };
         // (STRATA_DS41_INDEX_ROWS, one sequence, T >= 64) each owned key row loaded once for 16 queries; every token's
         // owned rows are a prefix of the longest list, and each score keeps its head order and partition sums
         static const bool index_rows_env = strata_env_truthy_one("STRATA_DS41_INDEX_ROWS");
@@ -3002,14 +3030,7 @@ struct Runner {
                         for (int i = i0; i < i1; ++i) {
                             if (size_t(j) >= own[size_t(i)].size()) continue;
                             const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
-                            float sum = 0;
-                            for (int rank = 0; rank < W; ++rank) {
-                                float part = 0;
-                                for (int hh = H * rank / W; hh < H * (rank + 1) / W; ++hh)
-                                    part += std::max(dot(k, iq + size_t(hh) * D, D), 0.0f) * (iw[size_t(hh)] * w_scale);
-                                sum += part;
-                            }
-                            sc[size_t(i)][size_t(j)] = sum;
+                            sc[size_t(i)][size_t(j)] = row_score(k, iq, iw);
                         }
                     }
                 }
@@ -3023,14 +3044,7 @@ struct Runner {
                 const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
                 float kt[256];
                 const float *k = crow(*E[size_t(i)].s, src, r, c.head_dim, c.index_dim, kt);
-                float sum = 0;
-                for (int rank = 0; rank < W; ++rank) {   // the all-reduce's rank order over the old head partitions
-                    float part = 0;
-                    for (int hh = H * rank / W; hh < H * (rank + 1) / W; ++hh)
-                        part += std::max(dot(k, iq + size_t(hh) * D, D), 0.0f) * (iw[size_t(hh)] * w_scale);
-                    sum += part;
-                }
-                sc[size_t(i)][size_t(j)] = sum;
+                sc[size_t(i)][size_t(j)] = row_score(k, iq, iw);
             }
         });
         lap("idx.scores");
