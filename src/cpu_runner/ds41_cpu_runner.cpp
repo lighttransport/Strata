@@ -728,11 +728,69 @@ std::vector<int> top_k_small_skip(const float *v, int n, int k) {
 }
 // the rows of top_k(v, n, k) in ascending row order: the k-th key by a radix select on order-preserving keys, then a
 // scan by row (equal keys at the threshold: the lowest rows, top_k's tie order)
+// STRATA_DS41_TOPK_PAR=1 (opt-in): top_k_rows over many rows (n >= 65536, outside a parallel region) by the team: the
+// same keys, the same per-pass histograms (summed per thread), the same threshold and the same rows (equal keys at the
+// threshold still the lowest rows); the long-context indexer's selection (one thread over 262K rows: ~4 ms per layer)
+static bool top_k_rows_par(const float *v, int n, int k, std::vector<int> &out) {
+    static const bool on = strata_env_is_one("STRATA_DS41_TOPK_PAR");
+    static const int nmin = std::getenv("STRATA_DS41_TOPK_PAR_MIN") ? std::max(1024, std::atoi(std::getenv("STRATA_DS41_TOPK_PAR_MIN"))) : 65536;
+    if (!on || n < nmin || omp_in_parallel()) return false;
+    std::vector<uint32_t> key(static_cast<size_t>(n));
+    const int nth = omp_get_max_threads();
+    std::vector<int> hist(size_t(nth) * 2048);
+    uint32_t prefix = 0, mask = 0;
+    int need = k;
+    const int shifts[3] = {21, 10, 0}, widths[3] = {11, 11, 10};
+    std::vector<int> gt(size_t(nth) + 1, 0), eq(size_t(nth) + 1, 0);
+    std::vector<std::vector<int>> part(static_cast<size_t>(nth));
+#pragma omp parallel num_threads(nth)
+    {
+        const int t = omp_get_thread_num(), nt = omp_get_num_threads(), a = int(int64_t(n) * t / nt), b = int(int64_t(n) * (t + 1) / nt);
+        for (int i = a; i < b; ++i) {
+            uint32_t u;
+            std::memcpy(&u, v + i, 4);
+            if (u == 0x80000000u) u = 0;
+            key[size_t(i)] = (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+        }
+        for (int pass = 0; pass < 3; ++pass) {
+            const int sh = shifts[pass], nb = 1 << widths[pass];
+            int *h = hist.data() + size_t(t) * 2048;
+            std::fill(h, h + nb, 0);
+            for (int i = a; i < b; ++i)
+                if ((key[size_t(i)] & mask) == prefix) ++h[size_t((key[size_t(i)] >> sh) & uint32_t(nb - 1))];
+#pragma omp barrier
+#pragma omp single
+            {
+                for (int d = 0; d < nb; ++d)
+                    for (int q = 1; q < nt; ++q) hist[size_t(d)] += hist[size_t(q) * 2048 + d];
+                int d = nb - 1;
+                for (; d > 0 && hist[size_t(d)] < need; --d) need -= hist[size_t(d)];
+                prefix |= uint32_t(d) << sh, mask |= uint32_t(nb - 1) << sh;
+            }
+        }
+        int g = 0, e = 0;
+        for (int i = a; i < b; ++i) g += key[size_t(i)] > prefix, e += key[size_t(i)] == prefix;
+        gt[size_t(t) + 1] = g, eq[size_t(t) + 1] = e;
+#pragma omp barrier
+#pragma omp single
+        for (int q = 0; q < nt; ++q) gt[size_t(q) + 1] += gt[size_t(q)], eq[size_t(q) + 1] += eq[size_t(q)];
+        int left = std::max(0, std::min(e, need - eq[size_t(t)]));   // this chunk's share of the lowest equal rows
+        auto &o = part[size_t(t)];
+        for (int i = a; i < b; ++i) {
+            const uint32_t kk = key[size_t(i)];
+            if (kk > prefix) o.push_back(i);
+            else if (kk == prefix && left > 0) o.push_back(i), --left;
+        }
+    }
+    for (auto &o : part) out.insert(out.end(), o.begin(), o.end());
+    return true;
+}
 void top_k_rows(const float *v, int n, int k, std::vector<int> &out) {
     out.clear();
     k = std::min(k, n);
     if (k <= 0) return;
     if (k == n) { for (int t = 0; t < n; ++t) out.push_back(t); return; }
+    if (top_k_rows_par(v, n, k, out)) return;
     std::vector<uint32_t> key(static_cast<size_t>(n));
     for (int t = 0; t < n; ++t) {
         uint32_t u;
