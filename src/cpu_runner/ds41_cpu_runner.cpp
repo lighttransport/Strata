@@ -819,6 +819,52 @@ void top_k_rows(const float *v, int n, int k, std::vector<int> &out) {
         else if (kk == prefix && need > 0) out.push_back(t), --need;
     }
 }
+// top_k_rows' set over (value, id) pairs in any order: the ids of the k largest values (equal values at the threshold:
+// the lowest ids), ascending; -inf values dropped. The same rows as top_k_rows over the values placed in id order, without
+// sorting all pairs (IDX_SHARD's merge of the ranks' candidates: a sort of ~6K pairs cost ~0.4 ms per layer at T = 1)
+void top_k_ids(const float *v, const int *id, int n, int k, std::vector<int> &out) {
+    out.clear();
+    k = std::min(k, n);
+    if (k <= 0) return;
+    std::vector<uint32_t> key(static_cast<size_t>(n));
+    for (int t = 0; t < n; ++t) {
+        uint32_t u;
+        std::memcpy(&u, v + t, 4);
+        if (u == 0x80000000u) u = 0;
+        key[size_t(t)] = (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+    }
+    uint32_t prefix = 0, mask = 0;
+    int need = k;
+    if (k < n) {
+        const int shifts[3] = {21, 10, 0}, widths[3] = {11, 11, 10};
+        std::vector<int> hist(2048);
+        for (int pass = 0; pass < 3; ++pass) {
+            const int sh = shifts[pass], nb = 1 << widths[pass];
+            std::fill(hist.begin(), hist.begin() + nb, 0);
+            for (int t = 0; t < n; ++t)
+                if ((key[size_t(t)] & mask) == prefix) ++hist[size_t((key[size_t(t)] >> sh) & uint32_t(nb - 1))];
+            int d = nb - 1;
+            for (; d > 0 && hist[size_t(d)] < need; --d) need -= hist[size_t(d)];
+            prefix |= uint32_t(d) << sh, mask |= uint32_t(nb - 1) << sh;
+        }
+    } else prefix = 0, need = n;   // k == n: every pair (threshold below every key)
+    std::vector<int> eq;
+    for (int t = 0; t < n; ++t) {
+        const uint32_t kk = key[size_t(t)];
+        if (k < n ? kk > prefix : true) out.push_back(t);
+        else if (kk == prefix) eq.push_back(id[t]);
+    }
+    if (k < n && need > 0) {
+        std::sort(eq.begin(), eq.end());
+        eq.resize(size_t(std::min<int>(need, int(eq.size()))));
+    } else eq.clear();
+    const uint32_t ninf = 0x007FFFFFu;   // the key of -inf
+    size_t w = 0;
+    for (int t : out) if (key[size_t(t)] != ninf) out[w++] = id[t];
+    out.resize(w);
+    if (!eq.empty() && prefix != ninf) out.insert(out.end(), eq.begin(), eq.end());
+    std::sort(out.begin(), out.end());
+}
 std::vector<int> top_k(const float *v, int n, int k) {
     std::vector<int> idx(static_cast<size_t>(n));
     std::iota(idx.begin(), idx.end(), 0);
@@ -921,6 +967,9 @@ struct Runner {
     }
     struct Seq {
         std::vector<Vec> window, cache, stash_v, stash_s;
+        std::vector<std::vector<uint16_t>> c16;   // STRATA_DS41_KV_F16: the compressed cache as IEEE halves (cache left empty)
+        std::vector<std::vector<uint16_t>> w16;   // STRATA_DS41_WIN_F16: the window rings as IEEE halves (window left empty)
+        std::map<int, std::pair<std::vector<int>, Vec>> g16;   // (KV_F16, multi-sequence passes) per KV source: this pass's rows in F32
         std::vector<int> hist;
         int cmg = -1;   // the CMG its KV lives on (batched decode: its attention runs there); -1: spread over all
     };
@@ -947,6 +996,8 @@ struct Runner {
         }
     }
     int ringcap = 0;
+    std::map<int, std::pair<std::vector<int>, Vec>> kv_gather_;   // (KV_SHARD) per KV source: this pass's gathered rows
+    std::map<int, int> kv_gather_l_;
     Seq seq0;                 // step()'s sequence
     std::vector<Ent> ents_;   // step()'s pass
     std::map<std::string, double> timers;
@@ -984,9 +1035,11 @@ struct Runner {
         for (int l = 0; l < layers; ++l) load_layer(l);
         // state
         ringcap = ring + pass_max() - 1;
+        if (kv_shard_env() && !(kv16_env() && idx_shard_env()))
+            throw std::runtime_error("ds41: STRATA_DS41_KV_SHARD needs STRATA_DS41_KV_F16=1 and STRATA_DS41_IDX_SHARD=1");
         init_seq(seq0);
         // (an owner's out_a shard: up to 11 x 8192 at B=128; a long pass: its owners' entries x the widest row)
-        if (ag_bits() || entry_shard_env())
+        if (ag_bits() || entry_shard_env() || kv_shard_env())
             comm.xc_init(std::max(131072, (pass_max() / comm.world + 2) * std::max(c.hidden, c.out_groups * c.out_rank)));   // (collective: every rank builds the target Runner)
     }
     // --dspark: the DSpark drafter's blocks (llama.cpp's dflash GGUF) with the target's geometry in `cfg` (draft_config),
@@ -1150,6 +1203,47 @@ struct Runner {
             std::cerr << "DS41 loaded layer " << l << " resident " << g_resident / 1e9 << " GB\n";
     }
     int row_width() const { return c.head_dim + c.index_dim; }
+    // STRATA_DS41_KV_F16=1 (opt-in): the compressed KV / index-key cache stored as IEEE halves (half the memory; values are
+    // rounded to F16 once when written, then read back exactly as those halves): long contexts (256K-1M) per rank
+    // STRATA_DS41_IDX_SHARD=1 (opt-in): the indexer scores rows, not heads: each rank scores the rows of the candidate blocks
+    // it owns (block b on rank b mod W) with every indexer head (the rank-ordered head-partition sum of the all-reduce, so
+    // the same bits), keeps its local top-k, and a merge gives every rank the global selection (the same rows). No score
+    // all-reduce of one float per row: at 1M context that was 4 MB per index layer per token.
+    static bool idx_shard_env() { static const bool v = strata_env_is_one("STRATA_DS41_IDX_SHARD"); return v; }
+    // STRATA_DS41_KV_SHARD=1 (opt-in, needs KV_F16 and IDX_SHARD): each rank stores only the compressed rows of the
+    // candidate blocks it owns (block b on rank b mod W, as IDX_SHARD scores them); attention all-reduces the selected
+    // rows from their owners (others add zeros). One sequence per pass (prefill, B=1 decode).
+    static bool kv_shard_env() { static const bool v = strata_env_is_one("STRATA_DS41_KV_SHARD"); return v; }
+    int kv_bs() const { return c.candidate_block > 0 ? c.candidate_block : 8; }
+    int kv_owner(int g) const { return (g / kv_bs()) % comm.world; }
+    int kv_local(int g) const { const int bs = kv_bs(); return (g / bs / comm.world) * bs + g % bs; }
+    // STRATA_DS41_WIN_F16=1 (opt-in): the sliding-window key rings stored as IEEE halves (rounded once when written); each
+    // layer's attention converts, per sequence, the contiguous range of ring rows its tokens read
+    static bool win16_env() { static const bool v = strata_env_is_one("STRATA_DS41_WIN_F16"); return v; }
+    static bool kv16_env() { static const bool v = strata_env_is_one("STRATA_DS41_KV_F16"); return v; }
+    static float h2f(uint16_t h) { __fp16 v; std::memcpy(&v, &h, 2); return float(v); }
+    static uint16_t f2h(float f) { __fp16 v = __fp16(f); uint16_t h; std::memcpy(&h, &v, 2); return h; }
+    // n halves to floats / floats to halves through __fp16 arrays (vectorized conversions; the same values as h2f / f2h)
+    static void h2f_n(const uint16_t *h, float *o, int n) {
+        const __fp16 *hp = reinterpret_cast<const __fp16 *>(h);
+        for (int i = 0; i < n; ++i) o[i] = float(hp[i]);
+    }
+    static void f2h_n(const float *f, uint16_t *h, int n) {
+        __fp16 *hp = reinterpret_cast<__fp16 *>(h);
+        for (int i = 0; i < n; ++i) hp[i] = __fp16(f[i]);
+    }
+    int cache_rows(const Seq &q, int l) const {
+        if (kv_shard_env()) return context / c.ratio[size_t(l)] + 1;
+        return int((kv16_env() ? q.c16[size_t(l)].size() : q.cache[size_t(l)].size()) / size_t(row_width()));
+    }
+    // n values of cache row r of source layer src from column off: a pointer into the F32 cache, or (F16) converted into tmp
+    const float *crow(const Seq &q, int src, int r, int off, int n, float *tmp) const {
+        if (!kv16_env()) return q.cache[size_t(src)].data() + size_t(r) * row_width() + off;
+        if (kv_shard_env()) r = kv_local(r);
+        const uint16_t *h = q.c16[size_t(src)].data() + size_t(r) * row_width() + off;
+        h2f_n(h, tmp, n);
+        return tmp;
+    }
 
     // STRATA_DS41_TP (1): after the load (and the image), the trunk's large attention projections become this rank's
     // slices: heads [h0, h1) (q_b rows, the attention itself), out_a's 256-column blocks of those heads (a partial
@@ -1561,7 +1655,7 @@ struct Runner {
             ih0 = c.index_heads * R / W, ih1 = c.index_heads * (R + 1) / W;
             if (Y.idx_q_b.p) {
                 Y.idx_q_b_t = copy_rows(Y.idx_q_b, ih0 * c.index_dim, (ih1 - ih0) * c.index_dim);
-                if (es_index_env()) {
+                if (es_index_env() || idx_shard_env()) {
                     Y.idx_q_b_full = Y.idx_q_b;
                     index_full_bytes_ += Y.idx_q_b.rb * size_t(Y.idx_q_b.rows);
                     Y.idx_q_b.p = nullptr;   // retain the original full allocation instead of copying it
@@ -2565,8 +2659,11 @@ struct Runner {
                     v[j] = q.stash_v[size_t(l)][size_t(j)] * (e0 * inv) + v[j] * (e1 * inv);
                 }
             const int g = pos / ratio, first = pos - (ratio - 1);
-            if (g >= int(q.cache[size_t(l)].size() / size_t(row_width()))) throw std::runtime_error("ds41: --context too small");
-            float *row = q.cache[size_t(l)].data() + size_t(g) * row_width();
+            if (g >= cache_rows(q, l)) throw std::runtime_error("ds41: --context too small");
+            if (kv_shard_env() && kv_owner(g) != comm.rank) continue;   // another rank stores it
+            Vec row16;
+            if (kv16_env()) row16.assign(size_t(row_width()), 0.f);
+            float *row = kv16_env() ? row16.data() : q.cache[size_t(l)].data() + size_t(g) * row_width();
             rms_norm(v, Y.comp_norm.data(), row, hd, c.rms_eps);
             Vec k(static_cast<size_t>(c.index_dim));
             gemv(Y.idx_k, row, k.data(), "idx_k");
@@ -2574,6 +2671,10 @@ struct Runner {
             const float *t = e.table(first == pos ? 2 : 4);
             rope(row + hd + c.index_dim - c.rope_dim, c.rope_dim / 2, t);
             rope(row + hd - c.rope_dim, c.rope_dim / 2, t);
+            if (kv16_env()) {
+                uint16_t *h = q.c16[size_t(l)].data() + size_t(kv_shard_env() ? kv_local(g) : g) * row_width();
+                f2h_n(row, h, row_width());
+            }
         }
     }
 
@@ -2618,7 +2719,8 @@ struct Runner {
             for (int r = ra; r < rb; ++r) {
                 while (r >= offsets[size_t(i) + 1]) ++i;
                 const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
-                const float *k = E[size_t(i)].s->cache[size_t(src)].data() + c.head_dim + size_t(r - offsets[size_t(i)]) * row_width();
+                float kt[256];
+                const float *k = crow(*E[size_t(i)].s, src, r - offsets[size_t(i)], c.head_dim, c.index_dim, kt);
                 float tot = 0;
                 for (int hh = 0; hh < ni; ++hh)
                     tot += std::max(dot(k, iq + size_t(hh) * D, D), 0.0f) * (iw[size_t(ih0 + hh)] * w_scale);
@@ -2668,7 +2770,8 @@ struct Runner {
             for (int r = ra; r < rb; ++r) {
                 while (r >= off[size_t(i) + 1]) ++i;
                 const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
-                const float *k = E[size_t(a + i)].s->cache[size_t(src)].data() + c.head_dim + size_t(r - off[size_t(i)]) * row_width();
+                float kt[256];
+                const float *k = crow(*E[size_t(a + i)].s, src, r - off[size_t(i)], c.head_dim, c.index_dim, kt);
                 float sum = 0;
                 for (int rank = 0; rank < W; ++rank) {
                     float part = 0;
@@ -2750,7 +2853,10 @@ struct Runner {
     // an index source layer's top-k of each token's visible compressed rows (ds41_decode.cpp index + host_select)
     void index(int l, std::vector<Ent> &E, const float *QR, const float *X) {
         const Layer &Y = L[size_t(l)];
+        if (kv_shard_env() && !(idx_shard_env() && Y.idx_q_b_full.p && !es_on_))
+            throw std::runtime_error("ds41: STRATA_DS41_KV_SHARD needs STRATA_DS41_IDX_SHARD (and not ES_INDEX)");
         if (es_on_ && Y.idx_q_b_full.p) { index_owned(l, E, QR, X); return; }
+        if (idx_shard_env() && Y.idx_q_b_full.p) { index_shard(l, E, QR, X); return; }
         const int ratio = c.ratio[size_t(l)], H = c.index_heads, D = c.index_dim, src = c.kv_src[size_t(l)], T = int(E.size());
         const int ia = ih0, ni = ih1 - ih0;   // this rank's indexer heads (partial scores, all-reduced)
         const Mat &iqb = Y.idx_q_b_t;
@@ -2785,7 +2891,8 @@ struct Runner {
                     for (int i = i0; i < i1; ++i) max_rows = std::max(max_rows, vis[size_t(i)]);
                     const int ra = int(int64_t(max_rows) * t / nth), rb = int(int64_t(max_rows) * (t + 1) / nth);
                     for (int r = ra; r < rb; ++r) {
-                        const float *k = E[0].s->cache[size_t(src)].data() + c.head_dim + size_t(r) * row_width();
+                        float kt[256];
+                        const float *k = crow(*E[0].s, src, r, c.head_dim, c.index_dim, kt);
                         for (int i = i0; i < i1; ++i) {
                             if (r >= vis[size_t(i)]) continue;
                             const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
@@ -2802,7 +2909,8 @@ struct Runner {
             for (int r = ra; r < rb; ++r) {
                 while (r >= off[size_t(i) + 1]) ++i;
                 const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
-                const float *k = E[size_t(i)].s->cache[size_t(src)].data() + c.head_dim + size_t(r - off[size_t(i)]) * row_width();
+                float kt[256];
+                const float *k = crow(*E[size_t(i)].s, src, r - off[size_t(i)], c.head_dim, c.index_dim, kt);
                 float tot = 0;
                 for (int hh = 0; hh < ni; ++hh) tot += std::max(dot(k, iq + size_t(hh) * D, D), 0.0f) * (iw[size_t(ia + hh)] * w_scale);
                 s[size_t(r)] = tot;
@@ -2838,6 +2946,267 @@ struct Runner {
         if (T == 1) select(0);
         else team_for(T, [&](int a, int b) { for (int i = a; i < b; ++i) select(i); });
         lap("idx.select");
+    }
+
+    // (STRATA_DS41_IDX_SHARD) the row-sharded indexer; see idx_shard_env()
+    void index_shard(int l, std::vector<Ent> &E, const float *QR, const float *X) {
+        const Layer &Y = L[size_t(l)];
+        const int ratio = c.ratio[size_t(l)], H = c.index_heads, D = c.index_dim, src = c.kv_src[size_t(l)], T = int(E.size());
+        const int W = comm.world, R = comm.rank, bs = c.candidate_block > 0 ? c.candidate_block : 8;
+        const Mat &iqb = Y.idx_q_b_full;
+        if (iqb.rows != H * D) throw std::runtime_error("ds41: IDX_SHARD needs the full indexer projection");
+        Vec IQ(size_t(iqb.rows) * T), IW(size_t(Y.idx_proj.rows) * T);
+        const GJob ij[2] = {{&iqb, QR, IQ.data(), 0, iqb.rows, T, size_t(c.q_rank), size_t(iqb.rows)},
+                            {&Y.idx_proj, X, IW.data(), 0, Y.idx_proj.rows, T, size_t(c.hidden), size_t(Y.idx_proj.rows)}};
+        double ti = now();
+        auto lap = [&](const char *k) { const double t2 = now(); tm(k) += t2 - ti; ti = t2; };
+        gemv_multi(ij, 2, "idx_shard_q_b+proj");
+        lap("idx.proj");
+        std::vector<int> vis(static_cast<size_t>(T));
+        for (int i = 0; i < T; ++i) {
+            vis[size_t(i)] = std::max(0, (E[size_t(i)].pos + 1) / ratio);
+            for (int hh = 0; hh < H; ++hh) rope(IQ.data() + size_t(i) * iqb.rows + size_t(hh) * D + D - c.rope_dim, c.rope_dim / 2, E[size_t(i)].table(2));
+        }
+        // this rank's rows of token i: blocks b = R, R + W, ...; row lists per token (global rows, ascending)
+        std::vector<std::vector<int>> own(static_cast<size_t>(T));
+        std::vector<Vec> sc(static_cast<size_t>(T));
+        for (int i = 0; i < T; ++i) {
+            const int v = vis[size_t(i)];
+            for (int b = R; b * bs < v; b += W)
+                for (int r = b * bs; r < std::min(v, (b + 1) * bs); ++r) own[size_t(i)].push_back(r);
+            sc[size_t(i)].assign(own[size_t(i)].size(), 0.f);
+        }
+        const float w_scale = 1.0f / std::sqrt(float(D * H));
+        std::vector<int> toff(static_cast<size_t>(T) + 1, 0);
+        for (int i = 0; i < T; ++i) toff[size_t(i) + 1] = toff[size_t(i)] + int(own[size_t(i)].size());
+        // (STRATA_DS41_INDEX_ROWS, one sequence, T >= 64) each owned key row loaded once for 16 queries; every token's
+        // owned rows are a prefix of the longest list, and each score keeps its head order and partition sums
+        static const bool index_rows_env = strata_env_truthy_one("STRATA_DS41_INDEX_ROWS");
+        bool rows_tile = index_rows_env && T >= 64;
+        for (int i = 1; i < T && rows_tile; ++i) rows_tile = E[size_t(i)].s == E[0].s;
+        if (rows_tile) {
+            int longest = 0;
+            for (int i = 1; i < T; ++i) if (own[size_t(i)].size() > own[size_t(longest)].size()) longest = i;
+            const auto &all_rows = own[size_t(longest)];
+            team_run([&] {
+                const int t = omp_get_thread_num(), nth = omp_get_num_threads();
+                constexpr int tile = 16;
+                for (int i0 = 0; i0 < T; i0 += tile) {
+                    const int i1 = std::min(T, i0 + tile);
+                    size_t mx = 0;
+                    for (int i = i0; i < i1; ++i) mx = std::max(mx, own[size_t(i)].size());
+                    const int ja = int(int64_t(mx) * t / nth), jb = int(int64_t(mx) * (t + 1) / nth);
+                    for (int j = ja; j < jb; ++j) {
+                        float kt[256];
+                        const float *k = crow(*E[0].s, src, all_rows[size_t(j)], c.head_dim, c.index_dim, kt);
+                        for (int i = i0; i < i1; ++i) {
+                            if (size_t(j) >= own[size_t(i)].size()) continue;
+                            const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
+                            float sum = 0;
+                            for (int rank = 0; rank < W; ++rank) {
+                                float part = 0;
+                                for (int hh = H * rank / W; hh < H * (rank + 1) / W; ++hh)
+                                    part += std::max(dot(k, iq + size_t(hh) * D, D), 0.0f) * (iw[size_t(hh)] * w_scale);
+                                sum += part;
+                            }
+                            sc[size_t(i)][size_t(j)] = sum;
+                        }
+                    }
+                }
+            });
+        } else
+        team_for(toff[size_t(T)], [&](int ra, int rb) {
+            int i = 0;
+            for (int q = ra; q < rb; ++q) {
+                while (q >= toff[size_t(i) + 1]) ++i;
+                const int j = q - toff[size_t(i)], r = own[size_t(i)][size_t(j)];
+                const float *iq = IQ.data() + size_t(i) * iqb.rows, *iw = IW.data() + size_t(i) * Y.idx_proj.rows;
+                float kt[256];
+                const float *k = crow(*E[size_t(i)].s, src, r, c.head_dim, c.index_dim, kt);
+                float sum = 0;
+                for (int rank = 0; rank < W; ++rank) {   // the all-reduce's rank order over the old head partitions
+                    float part = 0;
+                    for (int hh = H * rank / W; hh < H * (rank + 1) / W; ++hh)
+                        part += std::max(dot(k, iq + size_t(hh) * D, D), 0.0f) * (iw[size_t(hh)] * w_scale);
+                    sum += part;
+                }
+                sc[size_t(i)][size_t(j)] = sum;
+            }
+        });
+        lap("idx.scores");
+        auto pfor = [&](int n, auto &&fn) { if (n == 1) fn(0); else team_for(n, [&](int ia, int ib) { for (int i = ia; i < ib; ++i) fn(i); }); };
+        // gather (value, id) pairs from every rank: each rank fills its slot of a zeroed buffer, one all-reduce (x + 0)
+        auto gather_pairs = [&](const std::vector<std::vector<std::pair<float, int>>> &mine, int per, std::vector<std::vector<std::pair<float, int>>> &all) {
+            Vec buf(size_t(T) * W * per * 2 + size_t(T) * W, 0.f);
+            pfor(T, [&](int i) {
+                float *slot = buf.data() + (size_t(i) * W + R) * per * 2;
+                const auto &m = mine[size_t(i)];
+                for (size_t t = 0; t < m.size(); ++t) slot[2 * t] = m[t].first, slot[2 * t + 1] = float(m[t].second);
+                buf[size_t(T) * W * per * 2 + size_t(i) * W + R] = float(m.size());
+            });
+            lap("idx.sel.local");
+            allreduce_timed(buf.data(), int(buf.size()), "comm.idx_shard");
+            lap("idx.sel.comm");
+            all.assign(size_t(T), {});
+            pfor(T, [&](int i) {
+                size_t tot = 0;
+                for (int rk = 0; rk < W; ++rk) tot += size_t(buf[size_t(T) * W * per * 2 + size_t(i) * W + rk]);
+                auto &a = all[size_t(i)];
+                a.resize(tot);
+                size_t w = 0;
+                for (int rk = 0; rk < W; ++rk) {
+                    const int cnt = int(buf[size_t(T) * W * per * 2 + size_t(i) * W + rk]);
+                    const float *slot = buf.data() + (size_t(i) * W + rk) * per * 2;
+                    for (int t = 0; t < cnt; ++t) a[w++] = {slot[2 * t], int(slot[2 * t + 1])};
+                }
+            });
+            lap("idx.sel.unpack");
+        };
+        // candidate blocks (layer candidate_source): block maxima of owned blocks, the newest block forced, global top-k
+        if (c.candidate_source == l) {
+            std::vector<std::vector<std::pair<float, int>>> mine(static_cast<size_t>(T)), all;
+            pfor(T, [&](int i) {
+                const int v = vis[size_t(i)];
+                if (v <= 0) return;
+                const int nb = (v + bs - 1) / bs;
+                std::vector<int> ids;
+                Vec best;
+                size_t j = 0;
+                for (int b = R; b < nb; b += W) {
+                    float m = -INFINITY;
+                    for (int r = b * bs; r < std::min(v, (b + 1) * bs); ++r, ++j) m = std::max(m, sc[size_t(i)][j]);
+                    if (b == nb - 1) m += 1e30f;
+                    ids.push_back(b), best.push_back(m);
+                }
+                // (a set: the k largest block maxima, ties to the lowest block, as top_k; maxima are finite)
+                std::vector<int> keepb;
+                top_k_ids(best.data(), ids.data(), int(best.size()), c.candidate_blocks, keepb);
+                for (int b : keepb) mine[size_t(i)].push_back({best[size_t((b - R) / W)], b});
+            });
+            gather_pairs(mine, c.candidate_blocks, all);
+            pfor(T, [&](int i) {
+                const auto &u = all[size_t(i)];
+                Vec v(u.size());
+                std::vector<int> ids(u.size());
+                for (size_t t = 0; t < u.size(); ++t) v[t] = u[t].first, ids[t] = u[t].second;
+                top_k_ids(v.data(), ids.data(), int(u.size()), c.candidate_blocks, E[size_t(i)].candidates);
+            });
+            lap("idx.sel.cand");
+        }
+        lap("idx.sel.pre");
+        // rows: local top-k (candidate filter at later layers), merged into the global top-k in row order
+        std::vector<std::vector<std::pair<float, int>>> mine(static_cast<size_t>(T)), all;
+        pfor(T, [&](int i) {
+            auto &si = sc[size_t(i)];
+            const auto &rows = own[size_t(i)];
+            if (c.candidate_source >= 0 && c.candidate_source < l) {
+                std::vector<char> keep(static_cast<size_t>((vis[size_t(i)] + bs - 1) / bs), 0);
+                for (int b : E[size_t(i)].candidates) if (b < int(keep.size())) keep[size_t(b)] = 1;
+                for (size_t j = 0; j < rows.size(); ++j) if (!keep[size_t(rows[j] / bs)]) si[j] = -INFINITY;
+            }
+            std::vector<int> picked;
+            top_k_rows(si.data(), int(si.size()), c.index_top_k, picked);
+            for (int j : picked) mine[size_t(i)].push_back({si[size_t(j)], rows[size_t(j)]});
+        });
+        gather_pairs(mine, c.index_top_k, all);
+        pfor(T, [&](int i) {
+            const auto &u = all[size_t(i)];
+            Vec v(u.size());
+            std::vector<int> ids(u.size());
+            for (size_t t = 0; t < u.size(); ++t) v[t] = u[t].first, ids[t] = u[t].second;
+            top_k_ids(v.data(), ids.data(), int(u.size()), c.index_top_k, E[size_t(i)].sel[size_t(l)]);
+        });
+        lap("idx.sel.merge");
+    }
+
+    // (KV_SHARD) a KV source's gather in two halves: prepare (the pass's selected rows, their owners, this rank's rows
+    // packed as F16 pairs) and finish (the all-gather, or its wait when STRATA_DS41_KV_OVERLAP posted it to the comm
+    // thread, then the F32 rows in kv_gather_[src])
+    struct KvPend {
+        int src = -1, l = -1;
+        bool fits = false;
+        long ticket = -1;
+        std::vector<std::vector<int>> by;
+        std::vector<int> goff;
+        Vec X;
+        std::function<void()> fn;
+        double t0 = 0;
+    } kv_pend_;
+    static bool kv_overlap_env() { static const bool v = strata_env_is_one("STRATA_DS41_KV_OVERLAP"); return v; }
+    void kv_prepare(int l, int src, int ts, const std::vector<Ent> &E, int hd) {
+        const int T = int(E.size()), ratio = c.ratio[size_t(l)];
+        auto &uni = kv_gather_[src].first;
+        uni.clear();
+        for (int i = 0; i < T; ++i)
+            if ((E[size_t(i)].pos + 1) / ratio > 0) uni.insert(uni.end(), E[size_t(i)].sel[size_t(ts)].begin(), E[size_t(i)].sel[size_t(ts)].end());
+        std::sort(uni.begin(), uni.end()), uni.erase(std::unique(uni.begin(), uni.end()), uni.end());
+        // owners' rows as raw F16 pairs in float slots, one exact all-gather (uTofu region, bits as sent); the
+        // zero-filled F32 all-reduce when the region is absent or a share exceeds it
+        KvPend &P = kv_pend_;
+        const int W = comm.world, hw = hd / 2;
+        P.src = src, P.l = l, P.ticket = -1;
+        P.by.assign(size_t(W), {});
+        for (int u = 0; u < int(uni.size()); ++u) P.by[size_t(kv_owner(uni[size_t(u)]))].push_back(u);
+        P.goff.assign(size_t(W) + 1, 0);
+        P.fits = comm.xc && hd % 2 == 0 && !uni.empty();
+        for (int r = 0; r < W; ++r) {
+            P.goff[size_t(r) + 1] = P.goff[size_t(r)] + int(P.by[size_t(r)].size()) * hw;
+            if (int(P.by[size_t(r)].size()) * hw > comm.xc_cap()) P.fits = false;
+        }
+        if (!P.fits) return;
+        P.X.resize(size_t(P.goff[size_t(W)]));
+        const auto &mine = P.by[size_t(comm.rank)];
+        const Seq &q = *E[0].s;
+        team_for(int(mine.size()), [&](int ka, int kb) {
+            for (int k = ka; k < kb; ++k) {
+                const uint16_t *h = q.c16[size_t(src)].data() + size_t(kv_local(uni[size_t(mine[size_t(k)])])) * row_width();
+                std::memcpy(P.X.data() + P.goff[size_t(comm.rank)] + size_t(k) * hw, h, size_t(hd) * 2);
+            }
+        });
+    }
+    void kv_post() {   // (KV_OVERLAP) the prepared all-gather on the comm thread; nothing else collective until kv_finish
+        KvPend &P = kv_pend_;
+        if (!P.fits) return;
+        P.fn = [this] { comm.allgather_shards(kv_pend_.X.data(), kv_pend_.goff.data(), false); };
+        P.t0 = now();
+        P.ticket = comm.post_fn(&P.fn);
+    }
+    void kv_finish(const std::vector<Ent> &E, int hd) {
+        KvPend &P = kv_pend_;
+        const int src = P.src, W = comm.world, hw = hd / 2;
+        auto &uni = kv_gather_[src].first;
+        Vec &G = kv_gather_[src].second;
+        G.assign(uni.size() * size_t(hd), 0.f);
+        if (P.fits) {
+            const double tg = now();
+            if (P.ticket >= 0) {
+                comm.ar_wait(P.ticket);
+                comm.ar_shutdown();   // decode's small all-reduces go direct again
+                tm("comm.kv_rows_hidden") += tg - P.t0;
+            } else comm.allgather_shards(P.X.data(), P.goff.data(), false);
+            tm("comm.kv_rows") += now() - tg;
+            std::vector<std::pair<int, int>> where(uni.size());   // u -> (rank, k)
+            for (int r = 0; r < W; ++r)
+                for (int k = 0; k < int(P.by[size_t(r)].size()); ++k) where[size_t(P.by[size_t(r)][size_t(k)])] = {r, k};
+            team_for(int(uni.size()), [&](int ua, int ub) {
+                for (int u = ua; u < ub; ++u) {
+                    uint16_t h[1024];
+                    std::memcpy(h, P.X.data() + P.goff[size_t(where[size_t(u)].first)] + size_t(where[size_t(u)].second) * hw, size_t(hd) * 2);
+                    h2f_n(h, G.data() + size_t(u) * hd, hd);
+                }
+            });
+        } else {
+            const Seq &q = *E[0].s;
+            team_for(int(uni.size()), [&](int ua, int ub) {
+                for (int u = ua; u < ub; ++u) {
+                    if (kv_owner(uni[size_t(u)]) != comm.rank) continue;
+                    const uint16_t *h = q.c16[size_t(src)].data() + size_t(kv_local(uni[size_t(u)])) * row_width();
+                    h2f_n(h, G.data() + size_t(u) * hd, hd);
+                }
+            });
+            if (!G.empty()) allreduce_timed(G.data(), int(G.size()), "comm.kv_rows");
+        }
+        P.src = -1, P.l = -1, P.ticket = -1;
     }
 
     void attention(int l, std::vector<Ent> &E) {
@@ -2928,6 +3297,19 @@ struct Runner {
             else team_for(T, [&](int a, int b) { for (int i = a; i < b; ++i) f(i); });
         };
         if (!qkq) per_token([&](int i) { rms_norm(QK.data() + size_t(i) * qkw, Y.q_a_norm.data(), QR.data() + size_t(i) * c.q_rank, c.q_rank, c.rms_eps); });
+        // STRATA_DS41_KV_OVERLAP=1 (with KV_SHARD; a KV and index source layer, one sequence): compress and index now (they
+        // need only q_a / kv), then the selected rows' all-gather on the comm thread while q_b runs
+        bool early = false;
+        if (kv_overlap_env() && kv_shard_env() && ratio && src == l && ts == l && !qkq) {
+            lap("attn.proj_in");
+            compress(l, E, QK.data() + qk, size_t(qkw));
+            lap("attn.compress");
+            index(l, E, QR.data(), X);
+            lap("attn.index");
+            kv_prepare(l, src, ts, E, hd);
+            kv_post();
+            early = true;
+        }
         Vec QX;   // (a helper) the helped head's q for its part's tokens
         const int bt0 = brole == 2 ? bpart_lo(bal_part_[size_t(comm.rank)]) : 0, bt1 = brole == 2 ? bpart_lo(bal_part_[size_t(comm.rank)] + 1) : 0;
         if (brole == 1) {   // the last head's rows for part 0 only
@@ -2949,12 +3331,17 @@ struct Runner {
             float *q = Q.data() + size_t(i) * nh * hd;
             for (int hh = 0; hh < nh; ++hh) rope(q + size_t(hh) * hd + nope, pairs, e.table(fwd));
             if (brole == 2 && i >= bt0 && i < bt1) rope(QX.data() + size_t(i - bt0) * hd + nope, pairs, e.table(fwd));
-            float *wrow = e.s->window[size_t(l)].data() + size_t(e.pos % ringcap) * hd;
+            float wtmp[1024];
+            float *wrow = win16_env() ? wtmp : e.s->window[size_t(l)].data() + size_t(e.pos % ringcap) * hd;
             rms_norm(QK.data() + size_t(i) * qkw + c.q_rank, Y.kv_a_norm.data(), wrow, hd, c.rms_eps);
             rope(wrow + nope, pairs, e.table(fwd));
+            if (win16_env()) {
+                uint16_t *h = e.s->w16[size_t(l)].data() + size_t(e.pos % ringcap) * hd;
+                f2h_n(wtmp, h, hd);
+            }
         });
         lap("attn.proj_in");
-        if (ratio) {
+        if (ratio && !early) {
             if (src == l) compress(l, E, QK.data() + qk, size_t(qkw));
             lap("attn.compress");
             if (ts == l) index(l, E, QR.data(), X);
@@ -2980,6 +3367,44 @@ struct Runner {
         // scores (each thread its rows) into one flat list, read by the weighted sums after the phase's barrier
         const bool m_rw = merge_bits() & 64;
         int rfirst[kMaxBatch], rwin[kMaxBatch];
+        // (WIN_F16) per sequence the ring rows [lo, hi] its tokens read, converted once for this layer
+        std::vector<std::pair<const Seq *, std::pair<int, Vec>>> wconv;
+        std::vector<int> widx(static_cast<size_t>(T), -1);
+        if (win16_env()) {
+            for (int i = 0; i < T; ++i) {
+                const Ent &e = E[size_t(i)];
+                const int first = std::max(0, e.pos - ring + 1), last = e.last >= 0 ? e.last : e.pos;
+                auto it = i > 0 && E[size_t(i) - 1].s == e.s ? wconv.begin() + widx[size_t(i) - 1]
+                                                             : std::find_if(wconv.begin(), wconv.end(), [&](const auto &w) { return w.first == e.s; });
+                widx[size_t(i)] = int(it - wconv.begin());
+                if (it == wconv.end()) wconv.push_back({e.s, {first, Vec(size_t(last - first + 1))}});
+                else {
+                    const int lo = std::min(it->second.first, first), hi = std::max(it->second.first + int(it->second.second.size()) - 1, last);
+                    it->second.first = lo, it->second.second.resize(size_t(hi - lo + 1));
+                }
+            }
+            std::vector<size_t> wo(wconv.size() + 1, 0);
+            for (size_t k = 0; k < wconv.size(); ++k) {
+                if (int(wconv[k].second.second.size()) > ringcap) throw std::runtime_error("ds41: attention rows beyond the ring");
+                wo[k + 1] = wo[k] + wconv[k].second.second.size();
+                wconv[k].second.second.assign(wconv[k].second.second.size() * size_t(hd), 0.f);
+            }
+            team_for(int(wo.back()), [&](int qa, int qb) {
+                size_t k = 0;
+                for (int q = qa; q < qb; ++q) {
+                    while (size_t(q) >= wo[k + 1]) ++k;
+                    const int m = int(size_t(q) - wo[k]), row = wconv[k].second.first + m;
+                    const uint16_t *h = wconv[k].first->w16[size_t(l)].data() + size_t(row % ringcap) * hd;
+                    float *o = wconv[k].second.second.data() + size_t(m) * hd;
+                    h2f_n(h, o, hd);
+                }
+            });
+        }
+        auto wptr = [&](int i, int row) -> const float * {   // ring row `row` (absolute position) of token i's sequence
+            if (!win16_env()) return E[size_t(i)].s->window[size_t(l)].data() + size_t(row % ringcap) * hd;
+            const auto &w = wconv[size_t(widx[size_t(i)])].second;
+            return w.second.data() + size_t(row - w.first) * hd;
+        };
         for (int i = 0; i < T && m_rw; ++i) {
             const Ent &e = E[size_t(i)];
             const int pos = e.pos, first = std::max(0, pos - ring + 1), wrows = (e.last >= 0 ? e.last : pos) - first + 1;
@@ -2993,17 +3418,105 @@ struct Runner {
             if (wrows > ringcap) throw std::runtime_error("ds41: attention rows beyond the ring");
             auto &rows = RW[size_t(i)];
             if (reuse) rows.clear(), rows.reserve(size_t(wrows) + (ratio ? e.sel[size_t(ts)].size() : 0));
-            for (int r = 0; r < wrows; ++r) rows.push_back(e.s->window[size_t(l)].data() + size_t((first + r) % ringcap) * hd);
+            for (int r = 0; r < wrows; ++r) rows.push_back(wptr(i, first + r));
             if (ratio && (pos + 1) / ratio > 0)
-                for (int r : e.sel[size_t(ts)]) rows.push_back(e.s->cache[size_t(src)].data() + size_t(r) * row_width());
+                for (int r : e.sel[size_t(ts)]) rows.push_back(kv16_env() ? nullptr : e.s->cache[size_t(src)].data() + size_t(r) * row_width());
             roff[size_t(i) + 1] = roff[size_t(i)] + int(rows.size());
         }
+        // (KV_F16 / KV_SHARD) each token's selected rows as F32 pointers: into this layer's converted rows (F16), or into
+        // the rows gathered at the KV source layer (KV_SHARD); RW / row_of point there. Converted over all rows at once
+        // (at T = 1 a per-token loop ran on one thread).
+        std::vector<std::vector<const float *>> selp;
+        Vec conv;
+        auto has_sel = [&](int i) { return ratio && (E[size_t(i)].pos + 1) / ratio > 0; };
+        bool one_seq = true;
+        for (int i = 1; i < T; ++i) one_seq = one_seq && E[size_t(i)].s == E[0].s;
+        if (kv_shard_env() && ratio && !one_seq) throw std::runtime_error("ds41: KV_SHARD runs one sequence per pass");
+        if (ratio && kv_shard_env()) {
+            // the pass's selected rows (their union, ascending): KV_SHARD each filled by its owner and gathered; KV_F16
+            // alone converted locally
+            // (the layers reading one KV source share its selection: gathered at the source layer, reused by the group)
+            auto &KG = kv_gather_[src];
+            std::vector<int> &uni = KG.first;
+            Vec &G = KG.second;
+            if (kv_pend_.src == src && kv_pend_.l == l) {   // (KV_OVERLAP) prepared and posted before q_b
+                kv_gather_l_[src] = l;
+                kv_finish(E, hd);
+            } else if (l == src || !kv_gather_l_.count(src) || ts != src) {
+                kv_gather_l_[src] = l;
+                kv_prepare(l, src, ts, E, hd);
+                kv_finish(E, hd);
+            }
+            (void) uni, (void) G;
+            selp.resize(size_t(T));
+            auto fill = [&](int i) {
+                if (!has_sel(i)) return;
+                const auto &sel = E[size_t(i)].sel[size_t(ts)];
+                auto &o = selp[size_t(i)];
+                o.resize(sel.size());
+                for (size_t j = 0; j < sel.size(); ++j)
+                    o[j] = G.data() + size_t(std::lower_bound(uni.begin(), uni.end(), sel[j]) - uni.begin()) * hd;
+            };
+            if (T == 1) fill(0);
+            else team_for(T, [&](int ia, int ib) { for (int i = ia; i < ib; ++i) fill(i); });
+        } else if (kv16_env() && ratio) {
+            // per sequence: the union of its tokens' selected rows, converted once at the KV source layer and reused by
+            // the layers of its group (a batched step: one token per sequence, 8 conversions per step instead of 38)
+            std::vector<Seq *> seqs;
+            for (int i = 0; i < T; ++i) if (std::find(seqs.begin(), seqs.end(), E[size_t(i)].s) == seqs.end()) seqs.push_back(E[size_t(i)].s);
+            const bool fresh = l == src || ts != src;
+            if (fresh) {
+                for (Seq *q : seqs) {   // (a source's layers are contiguous: keep only the current source, ~1 MB per sequence)
+                    for (auto it = q->g16.begin(); it != q->g16.end();) it = it->first == src ? std::next(it) : q->g16.erase(it);
+                    q->g16[src].first.clear();
+                }
+                for (int i = 0; i < T; ++i)
+                    if (has_sel(i)) { auto &u = E[size_t(i)].s->g16[src].first; u.insert(u.end(), E[size_t(i)].sel[size_t(ts)].begin(), E[size_t(i)].sel[size_t(ts)].end()); }
+                std::vector<size_t> so(seqs.size() + 1, 0);
+                for (size_t k = 0; k < seqs.size(); ++k) {
+                    auto &u = seqs[k]->g16[src].first;
+                    std::sort(u.begin(), u.end()), u.erase(std::unique(u.begin(), u.end()), u.end());
+                    seqs[k]->g16[src].second.resize(u.size() * size_t(hd));
+                    so[k + 1] = so[k] + u.size();
+                }
+                team_for(int(so.back()), [&](int qa, int qb) {
+                    size_t k = 0;
+                    for (int q = qa; q < qb; ++q) {
+                        while (size_t(q) >= so[k + 1]) ++k;
+                        const size_t m = size_t(q) - so[k];
+                        const uint16_t *h = seqs[k]->c16[size_t(src)].data() + size_t(seqs[k]->g16[src].first[m]) * row_width();
+                        float *o = seqs[k]->g16[src].second.data() + m * hd;
+                        h2f_n(h, o, hd);
+                    }
+                });
+            }
+            selp.resize(size_t(T));
+            auto fill = [&](int i) {
+                if (!has_sel(i)) return;
+                const auto &G2 = E[size_t(i)].s->g16[src];
+                const auto &sel = E[size_t(i)].sel[size_t(ts)];
+                auto &o = selp[size_t(i)];
+                o.resize(sel.size());
+                for (size_t j = 0; j < sel.size(); ++j)
+                    o[j] = G2.second.data() + size_t(std::lower_bound(G2.first.begin(), G2.first.end(), sel[j]) - G2.first.begin()) * hd;
+            };
+            if (T == 1) fill(0);
+            else team_for(T, [&](int ia, int ib) { for (int i = ia; i < ib; ++i) fill(i); });
+        }
+        if (!selp.empty() && !m_rw)
+            for (int i = 0; i < T; ++i) {
+                if (!has_sel(i)) continue;
+                auto &rows = RW[size_t(i)];
+                const size_t nsel = selp[size_t(i)].size(), base = rows.size() - nsel;
+                for (size_t j = 0; j < nsel; ++j) rows[base + j] = selp[size_t(i)][j];
+            }
         const int NR = roff[size_t(T)];
         if (m_rw && core_rwf_cap_ < size_t(NR)) core_rwf_cap_ = size_t(NR) * 2, core_rwf_.reset(new const float *[core_rwf_cap_]);
         const float **const RWF = m_rw ? core_rwf_.get() : nullptr;
         auto row_of = [&](int i, int r) -> const float * {   // (m_rw) token i's row r: its window oldest first, then its selection
             const Ent &e = E[size_t(i)];
-            return r < rwin[i] ? e.s->window[size_t(l)].data() + size_t((rfirst[i] + r) % ringcap) * hd
+            return r < rwin[i] ? wptr(i, rfirst[i] + r)
+                               : !selp.empty() ? selp[size_t(i)][size_t(r - rwin[i])]
                                : e.s->cache[size_t(src)].data() + size_t(e.sel[size_t(ts)][size_t(r - rwin[i])]) * row_width();
         };
         tm("core.p.rows") += now() - tcp;
@@ -3968,19 +4481,31 @@ struct Runner {
     }
     void init_seq(Seq &q, int cmg = -1) const {
         q.cmg = cmg;
-        q.window.assign(static_cast<size_t>(layers), Vec(static_cast<size_t>(ringcap) * c.head_dim, 0.f));
+        if (win16_env()) {
+            q.window.assign(static_cast<size_t>(layers), Vec());
+            q.w16.assign(static_cast<size_t>(layers), std::vector<uint16_t>(static_cast<size_t>(ringcap) * c.head_dim, 0));
+        } else q.window.assign(static_cast<size_t>(layers), Vec(static_cast<size_t>(ringcap) * c.head_dim, 0.f));
         q.cache.assign(static_cast<size_t>(layers), Vec());
+        q.c16.assign(static_cast<size_t>(layers), std::vector<uint16_t>());
         q.stash_v.assign(static_cast<size_t>(layers), Vec());
         q.stash_s.assign(static_cast<size_t>(layers), Vec());
         for (int l = 0; l < layers; ++l)
             if (c.kv_src[size_t(l)] == l) {
-                q.cache[size_t(l)].assign(static_cast<size_t>(context / c.ratio[size_t(l)] + 1) * row_width(), 0.f);
+                if (kv16_env()) {
+                    size_t rows = size_t(context / c.ratio[size_t(l)] + 1);
+                    if (kv_shard_env()) {
+                        const int bs = kv_bs(), W = comm.world, nb = int((rows + bs - 1) / bs);
+                        rows = size_t(std::max(0, (nb - comm.rank + W - 1) / W)) * bs;
+                    }
+                    q.c16[size_t(l)].assign(rows * row_width(), 0);
+                }
+                else q.cache[size_t(l)].assign(static_cast<size_t>(context / c.ratio[size_t(l)] + 1) * row_width(), 0.f);
                 q.stash_v[size_t(l)].assign(static_cast<size_t>(c.head_dim), 0.f);
                 q.stash_s[size_t(l)].assign(static_cast<size_t>(c.head_dim), 0.f);
             }
         if (rehome_on())
             for (int l = 0; l < layers; ++l) {
-                spread_pages(q.window[size_t(l)].data(), q.window[size_t(l)].size(), cmg);
+                if (!q.window[size_t(l)].empty()) spread_pages(q.window[size_t(l)].data(), q.window[size_t(l)].size(), cmg);
                 if (!q.cache[size_t(l)].empty()) spread_pages(q.cache[size_t(l)].data(), q.cache[size_t(l)].size(), cmg);
             }
         q.hist.clear();
@@ -4042,6 +4567,7 @@ struct Runner {
     // the drafter's keys of committed positions [p0, p0 + n) from the target's feature ring: fc, norm, each block's
     // kv rows, kv norm, rope - into the key rings (seq0.window)
     void inject(const Runner &T, int p0, int n) {
+        if (win16_env()) throw std::runtime_error("ds41: --dspark does not support STRATA_DS41_WIN_F16");
         const int H = c.hidden, F = int(T.feat_layers_.size()) * H, hd = c.head_dim, nope = hd - c.rope_dim, pairs = c.rope_dim / 2;
         const double t0 = now();
         for (int a = 0; a < n; a += pass_max()) {
@@ -4608,6 +5134,10 @@ int main(int argc, char **argv) {
             // stashes, history) and the next tokens in DIR/bstate.<rank> (a node-local directory): load skips the prefill
             const bool st_save = batch_state.rfind("save:", 0) == 0, st_load = batch_state.rfind("load:", 0) == 0;
             if (!batch_state.empty() && !st_save && !st_load) throw std::runtime_error("ds41: --batch-state save:DIR or load:DIR");
+            if (Runner::kv_shard_env() && !(Runner::kv16_env() && Runner::idx_shard_env()))
+                throw std::runtime_error("ds41: STRATA_DS41_KV_SHARD needs STRATA_DS41_KV_F16=1 and STRATA_DS41_IDX_SHARD=1");
+            if (!batch_state.empty() && Runner::win16_env()) throw std::runtime_error("ds41: --batch-state does not save the STRATA_DS41_WIN_F16 rings");
+            if (!batch_state.empty() && Runner::kv16_env()) throw std::runtime_error("ds41: --batch-state does not save the STRATA_DS41_KV_F16 cache");
             const std::string st_file = batch_state.empty() ? "" : batch_state.substr(5) + "/bstate." + std::to_string(comm.rank);
             const int64_t st_key[6] = {B, P, run.layers, run.ringcap, kl_chunk, strata_env_is_set("STRATA_DS41_BATCH_SAME") ? 1 : 0};
             auto st_vecs = [&](Runner::Seq &q, auto &&f) {   // every state vector of a sequence, in one fixed order
