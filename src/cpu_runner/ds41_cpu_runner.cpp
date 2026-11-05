@@ -4793,6 +4793,9 @@ int main(int argc, char **argv) {
         long spec_passes = 0, spec_drafted = 0, spec_accepted = 0;
         double dsp_verify_s = 0, dsp_width_s[16] = {0};
         long dsp_width[16] = {0}, dsp_hist[16] = {0}, dsp_cut = 0;
+        // STRATA_DS41_DSPARK_WTIMERS=1: the target's phase timers around each verify pass, summed per width (printed at the end)
+        static const bool dsp_wt_on = strata_env_truthy_one("STRATA_DS41_DSPARK_WTIMERS");
+        std::map<std::string, double> dsp_wt[16];
         with_team([&] {
             int tok = pass_last >= 0 ? pass_last : int(std::max_element(logits.begin(), logits.end()) - logits.begin());
             comm.bcast(&tok, 1);
@@ -4865,7 +4868,10 @@ int main(int argc, char **argv) {
                     E.resize(size_t(T));
                     for (int i = 0; i < T; ++i) E[size_t(i)].s = &run.seq0, E[size_t(i)].pos = pos + i, E[size_t(i)].token = i ? d[size_t(i - 1)] : tok;
                     for (int l = 0; l < run.layers; ++l) sv[size_t(l)] = run.seq0.stash_v[size_t(l)], ss[size_t(l)] = run.seq0.stash_s[size_t(l)];
+                    const std::map<std::string, double> wt0 = dsp_wt_on ? run.timers : std::map<std::string, double>();
                     run.pass(E, am.data());
+                    if (dsp_wt_on && T < 16)
+                        for (const auto &[k, v] : run.timers) { const auto it = wt0.find(k); dsp_wt[T][k] += v - (it == wt0.end() ? 0.0 : it->second); }
                     int m = 0;
                     while (m < int(d.size()) && am[size_t(m)] == d[size_t(m)]) ++m;
                     run.rewind_stash(run.seq0, E, m, sv, ss);
@@ -4938,6 +4944,14 @@ int main(int argc, char **argv) {
             std::printf(" accept_hist=");
             for (int k = 0; k <= dspark_n && k < 16; ++k) std::printf("%s%ld", k ? "," : "", dsp_hist[k]);
             std::printf("\n");
+            if (dsp_wt_on)
+                for (int w = 1; w < 9; ++w) {
+                    if (!dsp_width[w]) continue;
+                    std::printf("RUNNER_DS41_WTIMERS width=%d passes=%ld", w, dsp_width[w]);   // ms per pass, phases of 0.2 ms or more
+                    for (const auto &[k, v] : dsp_wt[w])
+                        if (1e3 * v / double(dsp_width[w]) >= 0.2) std::printf(" %s=%.3f", k.c_str(), 1e3 * v / double(dsp_width[w]));
+                    std::printf("\n");
+                }
             std::printf("RUNNER_DS41_DSPARKTIMERS");   // the drafter's timers, ms per step
             for (const auto &[k, v] : drun->timers) std::printf(" %s=%.3f", k.c_str(), 1e3 * v / ps);
             std::printf("\n");
