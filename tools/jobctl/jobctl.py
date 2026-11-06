@@ -182,9 +182,15 @@ class PJM(Scheduler):
         jobs = []
         for line in text.splitlines():
             t = line.split()
-            if len(t) > 8 and t[0].isdigit():
-                jobs.append({"id": t[0], "name": t[1], "state": t[3], "nodes": t[8], "elapse": t[7],
-                             "start": " ".join(t[5:7]), "user": t[4]})
+            if len(t) >= 5 and t[0].isdigit():
+                if len(t) > 8:
+                    name, state, user = t[1], t[3], t[4]
+                    start, elapse, nodes = " ".join(t[5:7]), t[7], t[8]
+                else:
+                    name, state, user = t[1], t[3], t[4]
+                    start, elapse, nodes = "", "", ""
+                jobs.append({"id": t[0], "name": name, "state": state, "nodes": nodes, "elapse": elapse,
+                             "start": start, "user": user})
         return jobs
 
     def cancel_cmd(self, jobid):

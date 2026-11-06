@@ -182,8 +182,8 @@ class TwoStep(WebBase):
     def test_preview_reports_errors_and_script(self):
         self.launch("dup")
         st, r = self.req("POST", "/api/v1/jobs", {"name": "dup"})
-        self.assertEqual(st, 400)
-        self.assertIn("job exists", r["error"])
+        self.assertEqual(st, 409)
+        self.assertIn("already exists", r["error"])
         st, p = self.req("POST", "/api/v1/jobs", {"name": "S1", "script": "#!/bin/bash\necho hi\n"})
         st, r = self.req("POST", "/api/v1/jobs", {"name": "S1", "script": "#!/bin/bash\necho hi\n", "confirm": p["confirm"]})
         self.assertEqual(st, 200, r)
