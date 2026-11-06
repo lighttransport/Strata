@@ -41,6 +41,7 @@ MAX_BODY = 2 * 1024 * 1024
 MAX_OUTPUT = 1000000
 CONFIRM_TTL = 600
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+SLACK_EVENTS = ("job.started", "job.finished", "job.stopped", "job.lost", "job.stale")
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 INFO_KEYS = ("phase", "hb", "jobid", "seq", "nodes", "frontend_port", "server_port", "variant")
 
@@ -57,6 +58,16 @@ def event_text(ev):
     t = ev["type"]
     if t == "job.state":
         what = "%s -> %s" % (d.get("from"), d.get("to"))
+    elif t == "job.started":
+        what = "started"
+    elif t == "job.finished":
+        what = "finished"
+    elif t == "job.stopped":
+        what = "canceled or stopped"
+    elif t == "job.lost":
+        what = "lost"
+    elif t == "job.stale":
+        what = "heartbeat stale for %ss" % d.get("age")
     elif t == "job.successor":
         what = "next allocation queued (chain seq %s)" % d.get("seq")
     elif t == "job.flag":
@@ -65,6 +76,8 @@ def event_text(ev):
         what = "no heartbeat for %ss" % d.get("age")
     else:
         what = t
+    if d.get("jobid"):
+        what += " (job " + str(d["jobid"]) + ")"
     return "jobctl %s: %s" % (ev.get("job") or "service", what if ev.get("job") else (d.get("message") or t))
 
 
@@ -76,15 +89,35 @@ class Webhooks(object):
         self.delays, self.timeout = delays, timeout
         self.log = collections.deque(maxlen=200)
         self.q = queue.Queue()
+        self.lock = threading.RLock()
         self.t = None
         if self.hooks:
+            self._ensure_worker()
+
+    def _ensure_worker(self):
+        if self.t is None:
             self.t = threading.Thread(target=self._worker, daemon=True)
             self.t.start()
 
     def describe(self):
         # URLs and secrets can carry credentials: never shown
-        return [{"name": h["name"], "events": h.get("events", ["*"]), "format": h.get("format", "json"),
-                 "signed": bool(h.get("secret"))} for h in self.hooks]
+        with self.lock:
+            return [{"name": h["name"], "events": h.get("events", ["*"]), "format": h.get("format", "json"),
+                     "signed": bool(h.get("secret"))} for h in self.hooks]
+
+    def named(self, name):
+        with self.lock:
+            return next((dict(h) for h in self.hooks if h["name"] == name), None)
+
+    def set_named(self, name, hook):
+        hook = dict(hook, name=name)
+        with self.lock:
+            self.hooks = [h for h in self.hooks if h["name"] != name] + [hook]
+            self._ensure_worker()
+
+    def remove_named(self, name):
+        with self.lock:
+            self.hooks = [h for h in self.hooks if h["name"] != name]
 
     def matches(self, hook, etype):
         return any(fnmatch.fnmatchcase(etype, pat) for pat in hook.get("events", ["*"]))
@@ -98,7 +131,9 @@ class Webhooks(object):
         return json.dumps(body, sort_keys=True).encode()
 
     def dispatch(self, ev, job=None):
-        for h in self.hooks:
+        with self.lock:
+            hooks = list(self.hooks)
+        for h in hooks:
             if self.matches(h, ev["type"]):
                 self.q.put((h, ev, self.payload(h, ev, job)))
 
@@ -133,6 +168,120 @@ class Webhooks(object):
         self.q.join()
 
 
+class SlackSettings(object):
+    """Persist one private Slack incoming-webhook URL and its selected job events."""
+
+    def __init__(self, registry, webhooks):
+        self.path = os.path.join(registry, "slack_notifications.json")
+        self.webhooks = webhooks
+        self.lock = threading.RLock()
+        self.data = {"url": "", "events": ["job.started", "job.finished"]}
+        try:
+            with open(self.path) as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                self.data.update(loaded)
+        except (OSError, ValueError):
+            pass
+        if self.data.get("url"):
+            self._apply()
+
+    def _save_locked(self):
+        fd, tmp = tempfile.mkstemp(prefix=".email-notifications-", dir=os.path.dirname(self.path))
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(self.data, f, sort_keys=True)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, self.path)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+    @staticmethod
+    def clean_events(events):
+        if not isinstance(events, list) or not all(isinstance(e, str) for e in events):
+            raise ApiError(400, "events must be a list")
+        unknown = sorted(set(events) - set(SLACK_EVENTS))
+        if unknown:
+            raise ApiError(400, "unsupported Slack event: %s" % ", ".join(unknown))
+        return sorted(set(events))
+
+    @staticmethod
+    def validate_url(url):
+        if not isinstance(url, str) or len(url) > 2048:
+            raise ApiError(400, "paste a Slack incoming webhook URL")
+        parsed = urllib.parse.urlparse(url.strip())
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ApiError(400, "URL must be a Slack HTTPS incoming webhook URL")
+        if (parsed.scheme != "https" or parsed.hostname not in ("hooks.slack.com", "hooks.slack-gov.com")
+                or port not in (None, 443) or parsed.username or parsed.password
+                or not parsed.path.startswith("/services/") or parsed.query or parsed.fragment):
+            raise ApiError(400, "URL must be a Slack HTTPS incoming webhook URL")
+        return url.strip()
+
+    def _save_locked(self):
+        fd, tmp = tempfile.mkstemp(prefix=".slack-notifications-", dir=os.path.dirname(self.path))
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(self.data, f, sort_keys=True)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, self.path)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+    def _apply(self):
+        self.webhooks.set_named("slack", {"url": self.data["url"], "format": "text",
+                                          "events": self.data.get("events", [])})
+
+    def describe(self, include_url=False):
+        with self.lock:
+            result = {"configured": bool(self.data.get("url")), "events": list(self.data.get("events", []))}
+            if include_url:
+                result["url"] = self.data.get("url", "")
+            return result
+
+    def save(self, url, events):
+        events = self.clean_events(events)
+        with self.lock:
+            if url:
+                self.data["url"] = self.validate_url(url)
+            if not self.data.get("url"):
+                raise ApiError(400, "paste and save the Slack incoming webhook URL first")
+            self.data["events"] = events
+            self._save_locked()
+            self._apply()
+        return self.describe()
+
+    def remove(self):
+        with self.lock:
+            self.data = {"url": "", "events": ["job.started", "job.finished"]}
+            self._save_locked()
+            self.webhooks.remove_named("slack")
+
+    def test(self):
+        with self.lock:
+            hook = {"name": "slack", "url": self.data.get("url", ""), "format": "text"}
+        if not hook["url"]:
+            raise ApiError(400, "configure a Slack incoming webhook first")
+        event = {"id": 0, "ts": time.time(), "type": "webhook.test", "job": None,
+                 "data": {"message": "jobctl Slack notification test"}}
+        payload = self.webhooks.payload(hook, event, None)
+        try:
+            status = self.webhooks.post(hook, payload)
+        except Exception as e:
+            raise ApiError(502, "Slack test delivery failed: %s" % type(e).__name__)
+        if not 200 <= status < 300:
+            raise ApiError(502, "Slack returned HTTP %d" % status)
+        return {"ok": True}
+
+
 # ---------------------------------------------------------------- the service
 class Service(object):
     def __init__(self, cfg, token, hooks=None):
@@ -147,6 +296,9 @@ class Service(object):
         self.next_id = 1
         self.pending = {}
         self.report = {}
+        self.scheduler_jobs = []
+        self.prev_scheduler_jobs = {}
+        self.scheduler_baselined = False
         self.tunnel = {}
         self.ssh_ok = None
         self.ssh_error = ""
@@ -160,6 +312,7 @@ class Service(object):
         os.makedirs(cfg["registry"], exist_ok=True)
         self.log_path = os.path.join(cfg["registry"], "events.jsonl")
         self.hooks = hooks if hooks is not None else Webhooks(ui.get("webhooks"))
+        self.slack = SlackSettings(cfg["registry"], self.hooks)
         self._load_events()
         self.prev = dict((j["name"], self.snap(j)) for j in C.all_jobs(cfg))
 
@@ -252,8 +405,15 @@ class Service(object):
         with self.lock:
             try:
                 remote = C.Remote(cfg)
+                sched = C.scheduler(cfg["scheduler"])
+                rc, queue_text, queue_err = remote.run(sched.states_cmd())
+                if rc != 0:
+                    raise RuntimeError(queue_err.strip() or "%s queue query failed" % cfg["scheduler"])
+                self.scheduler_jobs = sched.parse_jobs(queue_text)
+                states = sched.parse_states(queue_text)
+                self._diff_scheduler_jobs(self.scheduler_jobs)
                 if live:
-                    self.report = C.refresh(cfg, remote, live) or {}
+                    self.report = C.refresh(cfg, remote, live, states=states) or {}
                 self.ssh_ok, self.ssh_error = True, ""
                 self.chain_up = self._chain_up(remote) if live and cfg.get("chain", True) else self.chain_up
             except (Exception, SystemExit) as e:
@@ -266,6 +426,34 @@ class Service(object):
             else:
                 self.tunnel.pop(j["name"], None)
         self._diff(now)
+
+    @staticmethod
+    def _scheduler_running(state):
+        return state in ("RUN", "RNO", "RNE", "RUNNING", "COMPLETING")
+
+    @staticmethod
+    def _scheduler_waiting(state):
+        return state in ("QUE", "PEND", "PENDING", "HLD")
+
+    def _diff_scheduler_jobs(self, jobs):
+        current = {str(j["id"]): j for j in jobs}
+        if not self.scheduler_baselined:
+            self.prev_scheduler_jobs = current
+            self.scheduler_baselined = True
+            return
+        tracked = {str(jid) for job in C.all_jobs(self.cfg) for jid in job.get("jobids", [])}
+        for jobid, item in current.items():
+            old = self.prev_scheduler_jobs.get(jobid)
+            if (old and jobid not in tracked and not self._scheduler_running(old["state"])
+                    and self._scheduler_running(item["state"])):
+                self.emit("job.started", item.get("name") or jobid, {"jobid": jobid, "source": "scheduler"})
+        for jobid, old in self.prev_scheduler_jobs.items():
+            if jobid in current or jobid in tracked:
+                continue
+            event = "job.finished" if self._scheduler_running(old["state"]) else "job.stopped" if self._scheduler_waiting(old["state"]) else None
+            if event:
+                self.emit(event, old.get("name") or jobid, {"jobid": jobid, "source": "scheduler"})
+        self.prev_scheduler_jobs = current
 
     def _chain_up(self, remote):
         pid = "%s/_chain.pid" % self.cfg["rundir"]
@@ -341,7 +529,59 @@ class Service(object):
     def api_jobs(self, **_):
         now = time.time()
         return 200, {"jobs": [self.view(j, now) for j in C.all_jobs(self.cfg)], "ssh_ok": self.ssh_ok,
+                     "scheduler_jobs": self.scheduler_jobs,
                      "refresh_age": round(now - self.last_refresh) if self.last_refresh else None}
+
+    def api_scheduler_job_delete(self, jobid, body, **_):
+        if not jobid.isdigit():
+            raise ApiError(400, "scheduler job id must be numeric")
+        body = dict(body)
+        code = body.pop("confirm", None)
+        key = self._key("scheduler-delete:" + jobid, body)
+        listed = next((j for j in self.scheduler_jobs if j["id"] == jobid), None)
+        if self.require_confirm and not code:
+            if not listed:
+                raise ApiError(404, "scheduler job is no longer queued")
+            if listed["state"] not in ("QUE", "PEND", "PENDING"):
+                raise ApiError(409, "only queued scheduler jobs can be canceled")
+            managed = next((j for j in C.all_jobs(self.cfg) if jobid in j.get("jobids", [])), None)
+            ids = managed["jobids"] if managed else [jobid]
+            return 200, {"ok": True, "needs_confirm": True, "would_cancel": ids,
+                         "job_name": managed["name"] if managed else listed.get("name"),
+                         "confirm": self.issue(key), "expires_in": CONFIRM_TTL}
+        if self.require_confirm and not self.redeem(code, key):
+            raise ApiError(409, "confirm code is wrong, used, expired, or the request changed; preview again")
+        with self.lock:
+            remote = C.Remote(self.cfg)
+            sched = C.scheduler(self.cfg["scheduler"])
+            rc, queue_text, err = remote.run(sched.states_cmd())
+            if rc != 0:
+                raise ApiError(502, err.strip() or "could not refresh scheduler queue")
+            current = next((j for j in sched.parse_jobs(queue_text) if j["id"] == jobid), None)
+            if current is None:
+                raise ApiError(409, "scheduler job has already left the queue")
+            if current["state"] not in ("QUE", "PEND", "PENDING"):
+                raise ApiError(409, "scheduler job is no longer queued; refusing to cancel it")
+            managed = next((j for j in C.all_jobs(self.cfg) if jobid in j.get("jobids", [])), None)
+            if managed:
+                result = self.call(C.cmd_kill, name=managed["name"])
+                if not result["ok"]:
+                    return 400, result
+                self.emit("job.stopped", managed["name"], {"by": "scheduler queue cancellation"})
+                self.mark(managed["name"])
+                canceled_ids = {str(x) for x in managed.get("jobids", [])}
+            else:
+                rc, out, err = remote.run(sched.cancel_cmd(jobid))
+                if rc != 0:
+                    return 400, {"ok": False, "rc": rc, "error": err.strip() or "scheduler cancellation failed", "output": out[:MAX_OUTPUT]}
+                self.emit("job.stopped", current.get("name") or jobid,
+                          {"by": "scheduler queue cancellation", "jobid": jobid, "source": "scheduler"})
+                canceled_ids = {jobid}
+            self.scheduler_jobs = [j for j in self.scheduler_jobs if str(j["id"]) not in canceled_ids]
+            for canceled_id in canceled_ids:
+                self.prev_scheduler_jobs.pop(canceled_id, None)
+            self.wake.set()
+        return 200, {"ok": True, "output": "canceled scheduler job %s" % jobid}
 
     def api_job(self, name, **_):
         try:
@@ -422,7 +662,15 @@ class Service(object):
         script = body.get("script")
         if script is not None and (not isinstance(script, str) or len(script) > MAX_BODY):
             raise ApiError(400, "script must be text")
+        if os.path.exists(C.job_path(self.cfg, name)):
+            raise ApiError(409, "A job named '%s' already exists. Choose a different name." % name)
         key = self._key("launch", body)
+
+        def launch_error(result):
+            error = result.get("error", "")
+            if error.startswith("job exists:"):
+                raise ApiError(409, "A job named '%s' already exists. Choose a different name." % name)
+            return (400, result)
 
         def args(dry):
             path = None
@@ -442,7 +690,7 @@ class Service(object):
                 if path:
                     os.unlink(path)
             if not r["ok"]:
-                return 400, r
+                return launch_error(r)
             return 200, {"ok": True, "needs_confirm": True, "submit": r["output"].strip().splitlines(),
                          "confirm": self.issue(key), "expires_in": CONFIRM_TTL}
         if self.require_confirm and not self.redeem(code, key):
@@ -461,7 +709,7 @@ class Service(object):
             except SystemExit:
                 pass
             self.wake.set()
-        return (200 if r["ok"] else 400), r
+        return (200, r) if r["ok"] else launch_error(r)
 
     def api_kill(self, name, body, **_):
         body = dict(body)
@@ -535,17 +783,31 @@ class Service(object):
     def api_webhooks(self, **_):
         return 200, {"hooks": self.hooks.describe(), "deliveries": list(self.hooks.log)[-50:]}
 
+    def api_slack(self, query=None, **_):
+        include_url = bool(query and query.get("include_url", [""])[0] == "1")
+        return 200, self.slack.describe(include_url=include_url)
+
+    def api_slack_save(self, body, **_):
+        return 200, {"ok": True, **self.slack.save(body.get("url", ""), body.get("events", []))}
+
+    def api_slack_remove(self, **_):
+        self.slack.remove()
+        return 200, {"ok": True, "configured": False}
+
+    def api_slack_test(self, **_):
+        return 200, self.slack.test()
+
     def api_webhook_test(self, **_):
         if not self.hooks.hooks:
             raise ApiError(400, "no webhooks configured (config: webui.webhooks)")
         ev = self.emit("webhook.test", None, {"message": "test event from the jobctl board"})
         return 200, {"ok": True, "event": ev["id"]}
 
-    def dispatch(self, method, path, query, body):
+    def dispatch(self, method, path, query, body, origin=None):
         for m, rx, fn, _auth, _d, _p, _path in ROUTES:
             mt = rx.match(path) if m == method else None
             if mt:
-                return getattr(self, fn)(query=query, body=body, **mt.groupdict())
+                return getattr(self, fn)(query=query, body=body, origin=origin, **mt.groupdict())
         raise ApiError(404, "no such route: %s %s" % (method, path))
 
 
@@ -558,6 +820,9 @@ P = "/api/v1"
 ROUTES = [
     _route("GET", P + "/spec", "api_spec", False, "This list."),
     _route("GET", P + "/jobs", "api_jobs", True, "All jobs: state, nodes, elapse, heartbeat age, chain seq, job ids, tunnel_ok."),
+    _route("POST", P + "/scheduler/jobs/<jobid>/delete", "api_scheduler_job_delete", True,
+           "Cancel one queued scheduler job (two-step confirmation); a jobctl-managed allocation cancels its entire chain.",
+           {"confirm": "code from the preview"}),
     _route("POST", P + "/jobs", "api_launch", True,
            "Launch. First call returns the exact submit lines and a one-shot 'confirm' code; repeat the same body with 'confirm' to submit.",
            {"name": "str", "nodes": "int", "time": "HH:MM:SS", "variants": "'NODES@HH:MM:SS,...' (optional)",
@@ -582,6 +847,11 @@ ROUTES = [
     _route("POST", P + "/refresh", "api_refresh", True, "Refresh from the cluster now."),
     _route("GET", P + "/webhooks", "api_webhooks", True, "Configured hooks (no URLs or secrets) and recent deliveries."),
     _route("POST", P + "/webhooks/test", "api_webhook_test", True, "Send a test event to every hook."),
+    _route("GET", P + "/slack", "api_slack", True, "Slack status and event preferences; include_url=1 opts into returning the saved URL."),
+    _route("POST", P + "/slack", "api_slack_save", True,
+           "Save a Slack incoming webhook URL and selected event types.", {"url": "Slack HTTPS incoming webhook URL (optional after setup)", "events": "list"}),
+    _route("POST", P + "/slack/remove", "api_slack_remove", True, "Remove the saved Slack incoming webhook."),
+    _route("POST", P + "/slack/test", "api_slack_test", True, "Send a test message to the saved Slack webhook."),
 ]
 
 
@@ -671,7 +941,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise ApiError(400, "body must be a JSON object")
             if route[0] == "api_stream":
                 return self._stream(urllib.parse.parse_qs(u.query))
-            status, obj = svc.dispatch(method, u.path, urllib.parse.parse_qs(u.query), body)
+            status, obj = svc.dispatch(method, u.path, urllib.parse.parse_qs(u.query), body,
+                                       origin=self.headers.get("Origin"))
             self._send(status, obj)
         except ApiError as e:
             self._send(e.status, dict({"ok": False, "error": e.message}, **e.extra))

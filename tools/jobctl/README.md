@@ -55,6 +55,9 @@ Each side keeps its own ssh connection socket, session files and known-hosts fil
 Files are copied to `<rundir>/_bin/` under names that carry a hash of their content. A running script is never
 overwritten.
 
+When the bridge server has a `PUT /put` route, `netperf.py --put` checks raw 64 KiB and 1 MiB uploads and verifies each
+stored file by SHA-256. The existing `/run` upload measurement remains the default.
+
 ## Config
 
 `~/.config/jobctl/config.json` (or `$JOBCTL_CONFIG`). Keep host names and accounts here, not in the code.
@@ -106,6 +109,18 @@ It prints a URL with a token in the `#fragment`. The token lives in `~/.config/j
 path with `webui.token_file`). The board shows each job's state, nodes, heartbeat age and chain position, buttons for
 Stop, Pause, Resume, Drain, Resubmit and Kill, a command box, a launch form, a live event list and the ports. It warns
 when jobs are live but no chain loop runs on the login node.
+Active scheduler jobs from `pjstat` appear in a separate list, including jobs not launched through jobctl. Refresh
+the scheduler list on demand; queued jobs can be canceled through a two-step confirmation. Canceling a jobctl-managed
+allocation stops its whole chain.
+The board can post job events to a Slack incoming webhook. Paste the webhook URL in the board, select events and
+send a test message. The default events are `job.started` and `job.finished`; canceled, lost and stale-heartbeat
+alerts are optional. The URL is stored in the private jobctl registry. By default the API redacts it; selecting
+`Remember URL in this browser` opts into also loading a copy into this browser's local storage. For
+scheduler jobs outside jobctl, the board detects queued-to-running transitions and jobs leaving the active list.
+
+To create the Slack URL, create or select a Slack app, turn on **Incoming Webhooks**, choose **Add New Webhook to
+Workspace**, select the destination channel and authorize. Paste the resulting URL into **Slack notifications**,
+save it, then send a test message. Slack treats the URL as a secret; do not post it in a channel or commit it.
 
 **Safety.** It listens on `127.0.0.1` only (another address needs `--host` and `--allow-host`, and prints a warning). Every
 `/api/v1` call except `/spec` needs `Authorization: Bearer <token>`. The `Host` and `Origin` headers must be local.

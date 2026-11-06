@@ -11,6 +11,7 @@ Tests (each per target, then all targets at once where it makes sense):
   latency   GET /health, POST /session, and a no-op command on a warm session
   down      bytes streamed node -> manager through the /run NDJSON stream
   up        bytes sent manager -> node inside a /run request body
+  put       raw PUT /put uploads with an on-disk SHA-256 check (--put)
   fanout    one command that starts one process per node (--fanout-cmd)
   conc      K sessions per target, no-op commands for a fixed time: ops/s and latency
   dispatch  M short tasks over K sessions per target: tasks/s against the ideal rate
@@ -18,14 +19,18 @@ Tests (each per target, then all targets at once where it makes sense):
 `--selftest` starts a local stand-in server and runs everything against it.
 """
 import argparse
+import hashlib
 import http.client
 import json
+import os
+import shlex
 import socketserver
 import http.server
 import subprocess
 import sys
 import threading
 import time
+import uuid
 
 PAYLOAD_LINE = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/" * 8   # 512 chars
 
@@ -63,6 +68,17 @@ class Conn:
         data = json.dumps(obj).encode()
         self.c.request("POST", path, body=data, headers={"Content-Type": "application/json"})
         return self.c.getresponse()
+
+    def put(self, path, data):
+        if self.sid is None:
+            self.session()
+        t = time.time()
+        self.c.request("PUT", "/put", body=data, headers={
+            "X-Session": self.sid, "X-Path": path,
+            "Content-Type": "application/octet-stream"})
+        r = self.c.getresponse()
+        raw = r.read()
+        return time.time() - t, r.status, json.loads(raw.decode("utf-8"))
 
     def session(self):
         r = self.post("/session", {})
@@ -161,6 +177,44 @@ def t_up(host, port, sizes, reps):
         res[str(size)] = rows
     c.close()
     return res
+
+
+def t_put(host, port, sizes, reps):
+    """Measure raw PUT /put and verify the stored file through the session shell."""
+    c = Conn(host, port)
+    try:
+        c.session()
+        out = {}
+        pattern = PAYLOAD_LINE.encode("ascii")
+        for size in sizes:
+            payload = (pattern * ((size + len(pattern) - 1) // len(pattern)))[:size]
+            expected = hashlib.sha256(payload).hexdigest()
+            elapsed = []
+            for rep in range(reps):
+                path = os.path.join("/tmp", ".netperf-put-%s-%d-%d" % (uuid.uuid4().hex, size, rep))
+                try:
+                    dt, status, result = c.put(path, payload)
+                    if status != 200:
+                        raise RuntimeError("PUT /put status %d: %s" % (status, result))
+                    if result.get("written") != size or result.get("sha256") != expected:
+                        raise RuntimeError("PUT /put acknowledgement mismatch for %d bytes" % size)
+                    elapsed.append(dt)
+                    check_cmd = ("python3 -c %s %s %s" % (
+                        shlex.quote("import hashlib,sys; d=open(sys.argv[1],'rb').read(); sys.exit(0 if hashlib.sha256(d).hexdigest()==sys.argv[2] else 1)"),
+                        shlex.quote(path), shlex.quote(expected)))
+                    check = c.run(check_cmd)
+                    if check[3] != 0:
+                        raise RuntimeError("stored upload hash mismatch for %d bytes" % size)
+                finally:
+                    c.run("rm -f " + shlex.quote(path))
+            median = pct(elapsed, 50)
+            out[str(size)] = {"bytes": size, "reps": reps,
+                              "median_ms": round(median * 1000.0, 2),
+                              "MB_s": round(size / 1e6 / median, 2) if median else None,
+                              "sha256": expected, "integrity": "ok"}
+        return out
+    finally:
+        c.close()
 
 
 def t_fanout(host, port, cmd, reps):
@@ -288,11 +342,27 @@ def start_selftest_server():
                     sid = "s%d" % n[0]
                     sessions.add(sid)
                 return self._send(json.dumps({"session": sid}).encode())
+            if self.path == "/close":
+                sessions.discard(body.get("session"))
+                return self._send(b'{"closed":true}')
             if body.get("session") not in sessions:
                 return self._send(b"{}", 404)
             p = subprocess.run(["bash"], input=body["command"].encode(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             ev = [{"type": "stdout", "data": p.stdout.decode("utf-8", "replace")}, {"type": "exit", "code": p.returncode}]
             self._send("".join(json.dumps(e) + "\n" for e in ev).encode())
+
+        def do_PUT(self):
+            size = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(size)
+            if self.headers.get("X-Session") not in sessions:
+                return self._send(b"{}", 404)
+            path = self.headers.get("X-Path") or ""
+            if not os.path.isabs(path):
+                return self._send(b'{"error":"absolute path required"}', 400)
+            with open(path, "wb") as f:
+                f.write(body)
+            result = {"written": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+            self._send(json.dumps(result).encode())
 
     srv = _Srv(("127.0.0.1", 0), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -306,6 +376,9 @@ def main():
     ap.add_argument("--n", type=int, default=100, help="latency samples")
     ap.add_argument("--down", default="65536,1048576,8388608,33554432", help="bytes, node -> manager")
     ap.add_argument("--up", default="65536,1048576,4194304", help="bytes, manager -> node (limit 8 MiB)")
+    ap.add_argument("--put", action="store_true", help="also benchmark raw PUT /put and verify stored hashes")
+    ap.add_argument("--put-sizes", default="65536,1048576", help="bytes for PUT /put upload checks")
+    ap.add_argument("--put-reps", type=int, default=3, help="repeats per PUT /put size")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--fanout-cmd", default="", help="command that starts one process per node, e.g. 'mpiexec -np 12 hostname'")
     ap.add_argument("--sessions", default="1,4,16", help="K values for conc/dispatch")
@@ -340,6 +413,11 @@ def main():
         r["down"] = t_down(host, port, down, a.reps)
         sys.stderr.write("[%s] up\n" % name)
         r["up"] = t_up(host, port, up, a.reps)
+        if a.put:
+            sys.stderr.write("[%s] put\n" % name)
+            r["put"] = t_put(host, port,
+                             [int(x) for x in a.put_sizes.split(",") if x],
+                             a.put_reps)
         if a.fanout_cmd:
             sys.stderr.write("[%s] fanout\n" % name)
             r["fanout"] = t_fanout(host, port, a.fanout_cmd, a.reps)

@@ -140,6 +140,10 @@ class Scheduler(object):
     def parse_states(self, text):
         raise NotImplementedError
 
+    def parse_jobs(self, text):
+        return [{"id": jid, "name": "", "state": state, "nodes": "", "elapse": "", "start": ""}
+                for jid, state in sorted(self.parse_states(text).items())]
+
     def cancel_cmd(self, jobid):
         raise NotImplementedError
 
@@ -172,12 +176,16 @@ class PJM(Scheduler):
         return "pjstat 2>/dev/null"
 
     def parse_states(self, text):
-        st = {}
+        return {j["id"]: "RUN" if j["state"] in ("RUN", "RNO", "RNE") else "QUE" for j in self.parse_jobs(text)}
+
+    def parse_jobs(self, text):
+        jobs = []
         for line in text.splitlines():
             t = line.split()
-            if len(t) > 3 and t[0].isdigit():
-                st[t[0]] = "RUN" if t[3] in ("RUN", "RNO", "RNE") else "QUE"
-        return st
+            if len(t) > 8 and t[0].isdigit():
+                jobs.append({"id": t[0], "name": t[1], "state": t[3], "nodes": t[8], "elapse": t[7],
+                             "start": " ".join(t[5:7]), "user": t[4]})
+        return jobs
 
     def cancel_cmd(self, jobid):
         return "pjdel %s" % shlex.quote(jobid)
@@ -207,12 +215,15 @@ class Slurm(Scheduler):
         return 'squeue -h -u "$USER" -o "%i %T" 2>/dev/null'
 
     def parse_states(self, text):
-        st = {}
+        return {j["id"]: "RUN" if j["state"] in ("RUNNING", "COMPLETING") else "QUE" for j in self.parse_jobs(text)}
+
+    def parse_jobs(self, text):
+        jobs = []
         for line in text.splitlines():
             t = line.split()
             if len(t) == 2 and t[0].isdigit():
-                st[t[0]] = "RUN" if t[1] in ("RUNNING", "COMPLETING") else "QUE"
-        return st
+                jobs.append({"id": t[0], "name": "", "state": t[1], "nodes": "", "elapse": "", "start": ""})
+        return jobs
 
     def cancel_cmd(self, jobid):
         return "scancel %s" % shlex.quote(jobid)
@@ -658,13 +669,14 @@ def queue_states(runner, sched):
     return sched.parse_states(runner.run(sched.states_cmd())[1])
 
 
-def refresh(cfg, remote, jobs):
+def refresh(cfg, remote, jobs, states=None):
     """One ssh call for every job's report, one for the queue. Updates the registry and the local forwards."""
     py = install_files(cfg, remote)["jobctl.py"]
     rc, out, err = remote.run("python3 %s report %s" % (py, cfg["rundir"]))
     rep = json.loads(out) if rc == 0 and out.strip() else {}
     sched = scheduler(cfg["scheduler"])
-    states = queue_states(remote, sched)
+    if states is None:
+        states = queue_states(remote, sched)
     now = time.time()
     for job in jobs:
         r = rep.get(job["name"], {})
