@@ -32,7 +32,7 @@ static utofu_vcq_hdl_t vcq;
 static void barrier(void) { MPI_Barrier(MPI_COMM_WORLD); }
 
 /* ------------------------------------------------------------------------------------------------ rsag */
-enum { RS_MAXT = 6, RS_MAXN = 64, RS_STAG = 9 };
+enum { RS_MAXT = 6, RS_MAXN = 128, RS_STAG = 9 };
 static int rs_n, rs_nt, rs_me;
 static int rs_late_drain;   /* one completion drain per call, at the end (STRATA_RUNNER_RSAG=1: also after the scatter) */
 static utofu_vcq_hdl_t rs_vcq[RS_MAXT];
