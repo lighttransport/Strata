@@ -101,7 +101,8 @@ struct Layer {
     bool indexer = false;
     W ix_qb, ix_k, ix_knorm, ix_proj, ix_ape, ix_gate, ix_val, ix_cnorm;
     float *vg = nullptr, *pooled = nullptr;   // per position [value | gate], per complete group the pooled key
-    std::vector<float> bias, lookup_norm;                            // host: router bias, Engram row norm
+    std::vector<float> bias, lookup_norm;
+    W bias_d;                            // host: router bias, Engram row norm
     strata::ds41::LaneLayer lane;
     float* kv = nullptr;   // ring [ring][kRow]
     int ring = 0;
@@ -135,6 +136,20 @@ struct Tier {
     void* xq = nullptr;
     float* sum = nullptr;
     long hits = 0, routes = 0, promotions = 0;
+    unsigned long long* d_slots = nullptr;   // device [layers][experts]: the resident blob's address, 0 = not on the GPU
+    unsigned long long* addr_h = nullptr;    // pinned, per slot: its blob's address (the source of the publish copies)
+    std::vector<int> pending;                // slots uploading; published to d_slots once their copy is done
+    // pending slots whose upload finished: their address into d_slots (stream-ordered before the next routes)
+    void publish(cudaStream_t s) {
+        for (size_t i = 0; i < pending.size();) {
+            const int sl = pending[i];
+            if (cudaEventQuery(slot_ev[size_t(sl)]) != cudaSuccess) { ++i; continue; }
+            ready[size_t(sl)] = 1;
+            ck(cudaMemcpyAsync(d_slots + owner[size_t(sl)], addr_h + sl, 8, cudaMemcpyHostToDevice, s), "tier publish");
+            pending[i] = pending.back();
+            pending.pop_back();
+        }
+    }
     int budget = 0, left = 0;
 
     bool on() const { return slots > 0; }
@@ -176,7 +191,7 @@ struct Tier {
         k::ds41_scatter_axpy(out, reinterpret_cast<const int32_t*>(tb + o_tok), reinterpret_cast<const float*>(tb + o_w), G, n, sum, s);
     }
     // upload expert `key` (gate/up/down rows at the given host addresses) into a slot; false: not worth a slot
-    bool promote(int key, const uint8_t* gate, const uint8_t* up, const uint8_t* down, cudaEvent_t after, bool free_only) {
+    bool promote(int key, const uint8_t* gate, const uint8_t* up, const uint8_t* down, cudaStream_t s, cudaEvent_t after, bool free_only) {
         int slot = -1;
         if (used < slots) slot = used++;
         else {
@@ -186,7 +201,10 @@ struct Tier {
                 if (ready[size_t(i)] && score[size_t(owner[size_t(i)])] < best) { best = score[size_t(owner[size_t(i)])]; slot = i; }
             if (slot < 0 || best >= score[size_t(key)]) return false;
             slot_of[size_t(owner[size_t(slot)])] = -1;
+            // unpublish before the slot is overwritten: later routes stop using it; earlier work is ordered before `after`
+            ck(cudaMemsetAsync(d_slots + owner[size_t(slot)], 0, 8, s), "tier unpublish");
         }
+        ck(cudaEventRecord(after, s), "tier order event");
         const int b = next_stage++ % kStage;
         ck(cudaEventSynchronize(stage_ev[b]), "tier staging");
         std::memcpy(stage[b], gate, gate_bytes);
@@ -201,6 +219,7 @@ struct Tier {
         owner[size_t(slot)] = key;
         slot_of[size_t(key)] = slot;
         ready[size_t(slot)] = 0;
+        pending.push_back(slot);
         ++promotions;
         return true;
     }
@@ -282,8 +301,11 @@ private:
     void* q8b_ = nullptr;
     // host staging
     float *h_logit_e_ = nullptr, *h_rin_ = nullptr, *h_rout_ = nullptr;   // pinned
+    int* h_route_ = nullptr;   // pinned, after h_rin_: hy4_route's {cpu ids, weights, ids}
+    void* rtable_ = nullptr;   // device: hy4_route's grouped table
+    void* rxq_ = nullptr;      // device: q8_1 of the latent for the GPU tier
     std::vector<float> h_cs_;
-    cudaEvent_t ev_ = nullptr;
+    cudaEvent_t ev_ = nullptr, ev_promo_ = nullptr;
 
     const strata::TensorInfo& T(const std::string& n) const {
         const auto* t = g_.find(n);
@@ -524,6 +546,7 @@ void Hy4::load(int threads) {
             l.sh_gate = up(p + "ffn_gate_shexp.weight");
             l.sh_up = up(p + "ffn_up_shexp.weight");
             l.sh_down = up(p + "ffn_down_shexp.weight");
+            l.bias_d = up(p + "exp_probs_b.bias");
             const auto& b = T(p + "exp_probs_b.bias");
             l.bias.assign((const float*) g_.tensor_data(b), (const float*) g_.tensor_data(b) + n_expert_);
             const auto& gt = T(p + "ffn_gate_exps.weight");
@@ -596,8 +619,10 @@ void Hy4::load(int threads) {
     ff_g_ = alloc(ffw);
     ff_u_ = alloc(ffw);
     ff_a_ = alloc(ffw);
-    logit_e_ = alloc(size_t(n_expert_ + n_latent_));   // one download: router logits then the latent
-    rin_ = logit_e_ + n_expert_;
+    logit_e_ = alloc(size_t(n_expert_));
+    rin_ = alloc(size_t(n_latent_ + 3 * top_k_));   // one download: the latent, then hy4_route's ints
+    ck(cudaMalloc(&rtable_, k::hy4_route_table_bytes(top_k_)), "route table");
+    ck(cudaMalloc(&rxq_, size_t(n_latent_) / 32 * 36), "route xq");
     rout_ = alloc(size_t(n_latent_));
     sh_ = alloc(n);
     eng_r_ = alloc(size_t(std::max(1, e_cols_ * e_dim_)));
@@ -612,14 +637,16 @@ void Hy4::load(int threads) {
         ck(cudaMalloc((void**) &isel_, size_t(ctx_ + kpool_) * 4), "isel");
     }
     ck(cudaEventCreateWithFlags(&ev_, cudaEventDisableTiming), "event");
+    ck(cudaEventCreateWithFlags(&ev_promo_, cudaEventDisableTiming), "event");
     // + the split-output partials (STRATA_DS41_ATTN_SPLIT, set in run(): the unsplit kernel stages 8 x rows floats in LDS,
     // past 64 KB near 2048 rows)
     scores_ = alloc(k::ds41_attention_scratch(max_heads) / 4 + size_t(kAttnSplit) * max_heads * kRow + 1);
     const size_t q8 = std::max({n * hc_, ffw, size_t(max_heads) * v_head_, size_t(q_rank_), size_t(e_cols_ * e_dim_)}) / 32 * 36;
     ck(cudaMalloc(&q8_, q8), "q8");
     ck(cudaMalloc(&q8b_, q8), "q8b");
-    h_logit_e_ = pinned(size_t(n_expert_ + n_latent_));
-    h_rin_ = h_logit_e_ + n_expert_;
+    h_logit_e_ = pinned(size_t(n_expert_));
+    h_rin_ = pinned(size_t(n_latent_ + 3 * top_k_));
+    h_route_ = reinterpret_cast<int*>(h_rin_ + n_latent_);
     h_rout_ = pinned(size_t(n_latent_));
     dumps.assign(size_t(n_run_), {});
     if (fused) {   // warm-up: every fused kernel once on scratch, then a sync (see run())
@@ -683,6 +710,10 @@ void Hy4::tier_setup(double gib, double reserve_gib, int budget) {
     ck(cudaMalloc(&t.xq, size_t(n_latent_) / 32 * 36), "tier xq");
     ck(cudaMalloc((void**) &t.sum, size_t(n_latent_) * 4), "tier sum");
     t.budget = budget;
+    ck(cudaMalloc((void**) &t.d_slots, size_t(n_layer_) * n_expert_ * 8), "tier slot table");
+    ck(cudaMemset(t.d_slots, 0, size_t(n_layer_) * n_expert_ * 8), "tier slot table");
+    ck(cudaHostAlloc((void**) &t.addr_h, size_t(t.slots) * 8, cudaHostAllocDefault), "tier addresses");
+    for (int i = 0; i < t.slots; ++i) t.addr_h[i] = reinterpret_cast<unsigned long long>(t.arena + size_t(i) * t.blob);
     std::fprintf(stderr, "hy4f: GPU expert tier %d slots (%.2f GiB, %.1f%% of the routed experts), %d uploads/token\n", t.slots,
                  double(t.slots) * double(t.blob) / double(1u << 30), 100.0 * t.slots / double(n_expert_ * (n_layer_ - 1)), budget);
 }
@@ -892,12 +923,28 @@ void Hy4::ffn(Layer& l) {
     }
     k::ds41_f32_gemv((const float*) l.gate_inp.d, cur_, logit_e_, n_expert_, n_embd_, s_);
     gemv_q8(l.routed_down, q8_, rin_);
-    ck(cudaMemcpyAsync(h_logit_e_, logit_e_, size_t(n_expert_ + n_latent_) * 4, cudaMemcpyDeviceToHost, s_), "router + latent down");
-    // shared expert on the GPU while the host routes and the lane runs
+    // route on the device; the GPU tier's routes run from its table at once, the rest go down to the CPU lane
+    if (tier.on()) tier.publish(s_);
+    const unsigned long long* slots = tier.on() ? tier.d_slots + size_t(cur_layer_) * n_expert_ : nullptr;
+    int* route_d = reinterpret_cast<int*>(rin_ + n_latent_);
+    k::hy4_route(logit_e_, (const float*) l.bias_d.d, slots, n_expert_, top_k_, w_scale_, w_norm_, rtable_, route_d, s_);
+    ck(cudaMemcpyAsync(h_rin_, rin_, size_t(n_latent_ + 3 * top_k_) * 4, cudaMemcpyDeviceToHost, s_), "latent + routes down");
+    ck(cudaEventRecord(ev_, s_), "event record");
+    if (tier.on()) {
+        auto* tb = (const uint8_t*) rtable_;
+        const size_t K = size_t(top_k_), o_start = K * 8, o_ng = o_start + (K + 1) * 4, o_dst = o_ng + 4, o_tok = o_dst + K * 4,
+                     o_w = o_tok + K * 4;
+        k::quantize_q8_1_rows(rin_, 1, n_latent_, rxq_, s_);
+        k::native_expert_grouped(tier.L, reinterpret_cast<const unsigned long long*>(tb), reinterpret_cast<const int32_t*>(tb + o_start),
+                                 reinterpret_cast<const int32_t*>(tb + o_ng), reinterpret_cast<const int32_t*>(tb + o_dst),
+                                 reinterpret_cast<const int32_t*>(tb + o_tok), top_k_, top_k_, rxq_, tier.scratch, tier.out, s_);
+        ck(cudaMemsetAsync(tier.sum, 0, size_t(n_latent_) * 4, s_), "tier sum");
+        k::ds41_scatter_axpy_dev(tier.out, reinterpret_cast<const int32_t*>(tb + o_tok), reinterpret_cast<const float*>(tb + o_w),
+                                 reinterpret_cast<const int32_t*>(tb + o_ng), n_latent_, tier.sum, s_);
+    }
+    // shared expert on the GPU while the host waits for the routes and the lane runs
     gemv_q8(l.sh_gate, q8_, ff_g_);
     gemv_q8(l.sh_up, q8_, ff_u_);
-    // the routed transfers were enqueued first: wait only for them
-    ck(cudaEventRecord(ev_, s_), "event record");
     if (fused) {
         k::native_swiglu_quantize_q8_1(ff_g_, ff_u_, q8b_, n_ff_exp_, 1, s_);
         gemv_q8(l.sh_down, q8b_, sh_);
@@ -908,52 +955,22 @@ void Hy4::ffn(Layer& l) {
     ck(cudaEventSynchronize(ev_), "routed wait");
     const auto tr = clk::now();
     if (prof) prof_route += ms(tf, tr);
-    // router: sigmoid scores, top-k on score + bias, weights = the unbiased scores, normed, scaled
-    std::vector<float> prob(static_cast<size_t>(n_expert_)), sel(static_cast<size_t>(n_expert_));
-    for (int e = 0; e < n_expert_; ++e) {
-        prob[size_t(e)] = 1.0f / (1.0f + std::exp(-h_logit_e_[size_t(e)]));
-        sel[size_t(e)] = prob[size_t(e)] + l.bias[size_t(e)];
-    }
-    std::vector<int> order(static_cast<size_t>(n_expert_));
-    std::iota(order.begin(), order.end(), 0);
-    std::partial_sort(order.begin(), order.begin() + top_k_, order.end(), [&](int a, int b) {
-        return sel[size_t(a)] > sel[size_t(b)] || (sel[size_t(a)] == sel[size_t(b)] && a < b);
-    });
-    std::vector<int32_t> ids(static_cast<size_t>(top_k_));
-    std::vector<float> w(static_cast<size_t>(top_k_));
-    float sum = 0;
-    for (int i = 0; i < top_k_; ++i) {
-        ids[size_t(i)] = order[size_t(i)];
-        w[size_t(i)] = prob[size_t(order[size_t(i)])];
-        sum += w[size_t(i)];
-    }
-    if (w_norm_) {
-        sum = std::max(sum, 6.103515625e-5f);
-        for (auto& x : w) x /= sum;
-    }
-    for (auto& x : w) x *= w_scale_;
     const auto t0 = std::chrono::steady_clock::now();
-    // resident routes to the GPU tier (computed now, on the decode stream), the rest to the CPU lane in parallel
-    std::vector<int32_t> cpu_ids = ids;
-    std::vector<std::pair<const uint8_t*, float>> gpu;
+    const int32_t* cpu_ids = h_route_;
+    const float* w = reinterpret_cast<const float*>(h_route_ + top_k_);
+    const int32_t* ids = h_route_ + 2 * top_k_;
     std::vector<int> misses;
     if (tier.on()) {
         for (int i = 0; i < top_k_; ++i) {
-            const int key = cur_layer_ * n_expert_ + ids[size_t(i)];
+            const int key = cur_layer_ * n_expert_ + ids[i];
             tier.score[size_t(key)] += 1.0f;
-            const int sl = tier.slot_of[size_t(key)];
-            if (sl >= 0 && tier.is_ready(sl)) {
-                gpu.push_back({tier.arena + size_t(sl) * tier.blob, w[size_t(i)]});
-                cpu_ids[size_t(i)] = -1;
-            } else if (sl < 0) misses.push_back(key);
+            if (cpu_ids[i] < 0) ++tier.hits;
+            else if (tier.slot_of[size_t(key)] < 0) misses.push_back(key);
         }
         tier.routes += top_k_;
-        tier.hits += long(gpu.size());
-        if (!gpu.empty()) tier.run(gpu, rin_, n_latent_, s_);
     }
-    lane_->begin(l.lane, h_rin_, 1, cpu_ids.data(), w.data(), top_k_, h_rout_);
+    lane_->begin(l.lane, h_rin_, 1, cpu_ids, w, top_k_, h_rout_);
     if (!misses.empty()) {   // uploads while the lane computes
-        ck(cudaEventRecord(ev_, s_), "tier order event");
         std::sort(misses.begin(), misses.end(), [&](int a, int b) { return tier.score[size_t(a)] > tier.score[size_t(b)]; });
         int fills = 0;
         for (int key : misses) {
@@ -962,7 +979,7 @@ void Hy4::ffn(Layer& l) {
             if (free_slot && fills >= 4) break;
             const int e = key % n_expert_;
             if (tier.promote(key, l.lane.gate + size_t(e) * l.lane.gate_stride, l.lane.up + size_t(e) * l.lane.gate_stride,
-                             l.lane.down + size_t(e) * l.lane.down_stride, ev_, false)) {
+                             l.lane.down + size_t(e) * l.lane.down_stride, s_, ev_promo_, false)) {
                 if (free_slot) ++fills;
                 else --tier.left;
             }
@@ -971,10 +988,10 @@ void Hy4::ffn(Layer& l) {
     lane_->finish();
     const auto te = clk::now();
     if (prof) prof_experts += ms(tr, te);
-    dbg_host("ffn_moe_logits", cur_layer_, h_logit_e_, size_t(n_expert_));
+    dbg_dev("ffn_moe_logits", cur_layer_, logit_e_, size_t(n_expert_));
     expert_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     ck(cudaMemcpyAsync(rout_, h_rout_, size_t(n_latent_) * 4, cudaMemcpyHostToDevice, s_), "latent up");
-    if (!gpu.empty()) k::ds41_add(rout_, tier.sum, rout_, n_latent_, s_);
+    if (tier.on()) k::ds41_add(rout_, tier.sum, rout_, n_latent_, s_);
     dbg_dev("ffn_moe_out", cur_layer_, rout_, size_t(n_latent_));
     gemv(l.routed_up, rout_, o_);
     post(l.post_ffn_norm, sh_);

@@ -281,6 +281,60 @@ __global__ void mul_sigmoid_q8_kernel(const float* x, const float* g, Q81* y, in
     q81_store(x[i] * (1.0f / (1.0f + expf(-g[i]))), y, i);
 }
 
+
+__global__ void route_kernel(const float* logits, const float* bias, const unsigned long long* slots, int E, int K, float scale, int norm,
+                             uint8_t* table, int* host) {
+    __shared__ float sel[1024], prob[1024];
+    __shared__ float bv[1024];
+    __shared__ int bi[1024];
+    __shared__ int ids[16];
+    const int t = threadIdx.x;
+    for (int e = t; e < 1024; e += blockDim.x) {
+        const float p = e < E ? 1.0f / (1.0f + expf(-logits[e])) : 0.0f;
+        prob[e] = p;
+        sel[e] = e < E ? p + bias[e] : -INFINITY;
+    }
+    __syncthreads();
+    for (int k = 0; k < K; ++k) {
+        // argmax over sel (ties: the lowest index), a fixed tree
+        for (int e = t; e < 1024; e += blockDim.x) { bv[e] = sel[e]; bi[e] = e; }
+        __syncthreads();
+        for (int s = 512; s > 0; s >>= 1) {
+            for (int e = t; e < s; e += blockDim.x) {
+                const float a = bv[e], b = bv[e + s];
+                if (b > a || (b == a && bi[e + s] < bi[e])) { bv[e] = b; bi[e] = bi[e + s]; }
+            }
+            __syncthreads();
+        }
+        if (t == 0) { ids[k] = bi[0]; sel[bi[0]] = -INFINITY; }
+        __syncthreads();
+    }
+    if (t != 0) return;
+    float w[16], sum = 0;
+    for (int k = 0; k < K; ++k) { w[k] = prob[ids[k]]; sum += w[k]; }
+    if (norm) {
+        sum = fmaxf(sum, 6.103515625e-5f);
+        for (int k = 0; k < K; ++k) w[k] /= sum;
+    }
+    auto* ptr = reinterpret_cast<unsigned long long*>(table);
+    auto* start = reinterpret_cast<int32_t*>(table + size_t(K) * 8);
+    int32_t* ng = start + K + 1;
+    int32_t* dst = ng + 1;
+    int32_t* tok = dst + K;
+    float* tw = reinterpret_cast<float*>(tok + K);
+    int g = 0;
+    for (int k = 0; k < K; ++k) {
+        w[k] *= scale;
+        const unsigned long long a = slots ? slots[ids[k]] : 0ull;
+        host[k] = a ? -1 : ids[k];
+        host[K + k] = __float_as_int(w[k]);
+        host[2 * K + k] = ids[k];
+        if (a) { ptr[g] = a; start[g] = g; dst[g] = g; tok[g] = 0; tw[g] = w[k]; ++g; }
+    }
+    start[g] = g;
+    *ng = g;
+}
+
 }  // namespace
 
 void hy4_hc_coeff(const float* mixes, const float* scale, const float* base, float* out, int hc, bool with_post, float magnitude,
@@ -346,6 +400,14 @@ void hy4_mul_sigmoid_q8(const float* x, const float* g, void* q8, int n, void* s
     if (n % 32) throw std::invalid_argument("hy4_mul_sigmoid_q8: n % 32");
     mul_sigmoid_q8_kernel<<<(n + 255) / 256, 256, 0, (cudaStream_t) stream>>>(x, g, (Q81*) q8, n);
     check("mul_sigmoid_q8");
+}
+
+size_t hy4_route_table_bytes(int K) { return size_t(K) * 8 + size_t(K + 1) * 4 + 4 + size_t(K) * 12; }
+void hy4_route(const float* logits, const float* bias, const unsigned long long* slots, int E, int K, float scale, bool norm,
+               void* table, int* host, void* stream) {
+    if (E > 1024 || K > 16 || K < 1) throw std::invalid_argument("hy4_route: shape");
+    route_kernel<<<1, 256, 0, (cudaStream_t) stream>>>(logits, bias, slots, E, K, scale, norm, (uint8_t*) table, host);
+    check("route");
 }
 
 }  // namespace strata::kernels

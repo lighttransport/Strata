@@ -56,4 +56,14 @@ void hy4_mla_finish(const float* q, int heads, int q_stride, int nope, const flo
 /// q8_1 blocks of x[i] sigmoid(g[i]) (n % 32 == 0): the attention gate and the wo input quantization in one.
 void hy4_mul_sigmoid_q8(const float* x, const float* g, void* q8, int n, void* stream);
 
+/// MoE routing on the device (one block, E <= 1024, K <= 16): p = sigmoid(logit), the top K of p + bias (ties: lowest id),
+/// weights p / max(sum p, 6.1035e-5) (norm) times scale. Routes whose expert has a GPU slot (slots[e] != 0: the blob's
+/// address) go to `table`, the grouped-expert table native_expert_grouped / ds41_scatter_axpy_dev read (capacity K:
+/// ptr[K] u64, start[K+1], n_groups, dst[K], tok[K], w[K]); the others to the CPU: host = {cpu_ids[K] (-1: on the GPU),
+/// w[K] (float bits), ids[K]} as K * 3 ints.
+void hy4_route(const float* logits, const float* bias, const unsigned long long* slots, int E, int K, float scale, bool norm,
+               void* table, int* host, void* stream);
+/// bytes of hy4_route's table for K routes
+size_t hy4_route_table_bytes(int K);
+
 }  // namespace strata::kernels
