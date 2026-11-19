@@ -250,6 +250,15 @@ public:
     // the four streams after block il for the last step (host copy), filled when dumping
     std::vector<std::vector<float>> dumps;   // [il] -> [4 * n] of the last step
     bool want_dump = false;
+    // STRATA_HY4F_CKSUM=1: FNV-1a of the logits' bits per step, and of the streams after each block (eager: a sync per block)
+    bool cksum = false;
+    std::vector<uint64_t> ck_logits;
+    std::vector<std::vector<uint64_t>> ck_blocks;
+    static uint64_t fnv(const void* p, size_t n) {
+        uint64_t h = 1469598103934665603ull;
+        for (size_t i = 0; i < n; ++i) h = (h ^ ((const uint8_t*) p)[i]) * 1099511628211ull;
+        return h;
+    }
     std::map<std::string, std::vector<float>> dbg;   // name-<il> -> values of every step, appended
     int n_run() const { return n_run_; }
     int n_layer() const { return n_layer_; }
@@ -1131,11 +1140,17 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
         tier.left = tier.budget;
     }
     // graphs: fused kernels only, no dumps / profiling syncs, and no indexer selection (its top-k is on the host)
-    graph_step_ = graphs && fused && !want_dump && !prof && (ix_top_ == 0 || pos < ix_top_);
+    graph_step_ = graphs && fused && !want_dump && !prof && !cksum && (ix_top_ == 0 || pos < ix_top_);
     seg_ = 0;
     prepare_step(tok, pos);
     const int n = n_embd_;
     auto dump = [&](int i) {
+        if (cksum) {
+            std::vector<float> hv(size_t(n) * hc_);
+            d2h(hv.data(), h_, hv.size() * 4);
+            if (ck_blocks.size() < size_t(n_run_)) ck_blocks.resize(size_t(n_run_));
+            ck_blocks[size_t(i)].push_back(fnv(hv.data(), hv.size() * 4));
+        }
         if (!want_dump) return;
         dumps[size_t(i)].resize(size_t(n) * hc_);
         d2h(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4);
@@ -1190,6 +1205,7 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
     }
     ck(cudaStreamSynchronize(s_), "step");
     if (n_run_ == n_layer_) logits_.assign(logits_h_, logits_h_ + vocab_);
+    if (cksum && n_run_ == n_layer_) ck_logits.push_back(fnv(logits_h_, size_t(vocab_) * 4));
     gpu_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     return logits_;
 }
@@ -1246,6 +1262,7 @@ int run(int argc, char** argv) {
     Hy4 m(model, threads, ctx, layers);
     m.tier_setup(tier_gib, reserve_gib, budget);
     m.graphs = !(std::getenv("STRATA_HY4F_GRAPH") && std::string(std::getenv("STRATA_HY4F_GRAPH")) == "0");
+    m.cksum = std::getenv("STRATA_HY4F_CKSUM") && std::string(std::getenv("STRATA_HY4F_CKSUM")) == "1";
     m.fused = !(std::getenv("STRATA_HY4F_UNFUSED") && std::string(std::getenv("STRATA_HY4F_UNFUSED")) == "1");
     m.prof = std::getenv("STRATA_HY4F_PROF") && std::string(std::getenv("STRATA_HY4F_PROF")) == "1";
     const bool partial = m.n_run() < m.n_layer();
@@ -1299,6 +1316,15 @@ int run(int argc, char** argv) {
                  gen_s, double(n_gen) / gen_s, m.expert_ms / std::max(1, n_gen),
                  m.tier.routes ? 100.0 * double(m.tier.hits) / double(m.tier.routes) : 0.0, m.tier.promotions);
     std::fprintf(stderr, "hy4f: graphs %ld captured, %ld launches\n", m.graph_captures, m.graph_launches);
+    if (m.cksum) {   // one line per stream: logits, then block 0.. (prompt and generated steps)
+        auto line = [](const char* tag, const std::vector<uint64_t>& v) {
+            std::fprintf(stderr, "cksum %s", tag);
+            for (auto x : v) std::fprintf(stderr, " %016llx", (unsigned long long) x);
+            std::fprintf(stderr, "\n");
+        };
+        line("logits", m.ck_logits);
+        for (size_t b = 0; b < m.ck_blocks.size(); ++b) line(("block" + std::to_string(b)).c_str(), m.ck_blocks[b]);
+    }
     if (m.prof)
         std::fprintf(stderr, "hy4f prof (ms/token): attention %.2f, to router %.2f, experts %.2f, after experts %.2f, other %.2f\n",
                      m.prof_attn / n_gen, m.prof_route / n_gen, m.prof_experts / n_gen, m.prof_post / n_gen,
