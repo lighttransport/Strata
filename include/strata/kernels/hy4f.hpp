@@ -33,7 +33,7 @@ void hy4_mul_sigmoid(const float* x, const float* g, float* y, int n, void* stre
 /// gate_s = sigmoid(sign(d_s) sqrt(max(|d_s|, 1e-6))), sign(0) = +1; signal = rms(value) * gamma;
 /// h_s[j] += signal[j] (gate_s + hc_scale[s n + j]) when `any` (a token with no valid n-gram adds nothing).
 void hy4_engram(float* h, const float* kv, const float* g, const float* gamma, const float* hc_scale, int n, int hc,
-                float eps, bool any, void* stream);
+                float eps, bool any, void* stream, const int* any_dev = nullptr);   // any_dev: `any` read on the device
 
 /// DSA kpool: one pooled indexer key from a complete group of `kpool` cache rows vg[m] = [value (dim) | gate (dim)]:
 /// out[c] = sum_m softmax_m(gate[m][c] + ape[m dim + c]) value[m][c].
@@ -51,8 +51,9 @@ void hy4_norm_hc_post(const float* x, const float* add, const float* w, const fl
 /// MLA rows after the projections: q640[h][512..640) = [rope(q[h][nope..nope+64)) | 0] for every head (q640[h][0..512) is
 /// the absorbed query, written by hy4_q8_0_heads), and the cache row k = [rms(kvpe[0..512)) * kv_w | rope(kvpe[512..576)) | 0].
 /// cs: 32 {cos, sin} pairs (ds41_rope's convention).
+/// krow = kv + *slot_dev * 640 (the slot read on the device: graph-capturable).
 void hy4_mla_finish(const float* q, int heads, int q_stride, int nope, const float* kvpe, const float* kv_w, const float* cs, float* q640,
-                    float* krow, float eps, void* stream);
+                    float* kv, const int* slot_dev, float eps, void* stream);
 /// q8_1 blocks of x[i] sigmoid(g[i]) (n % 32 == 0): the attention gate and the wo input quantization in one.
 void hy4_mul_sigmoid_q8(const float* x, const float* g, void* q8, int n, void* stream);
 
@@ -65,5 +66,13 @@ void hy4_route(const float* logits, const float* bias, const unsigned long long*
                void* table, int* host, void* stream);
 /// bytes of hy4_route's table for K routes
 size_t hy4_route_table_bytes(int K);
+
+/// dst[*idx_dev * width + j] = src[j] (a per-position row written at a device-held index).
+void hy4_copy_row(const float* src, float* dst, const int* idx_dev, int width, void* stream);
+/// DSA kpool for the token at *pos_dev: when it completes its group g (pos % kpool == kpool - 1), pooled[g] =
+/// rope(rms(hy4_kpool of the group's [value | gate] rows) * cnorm) with the {cos, sin} table cs (the first member's
+/// position) on the trailing 2 * pairs values; otherwise nothing. dim <= 128.
+void hy4_kpool_step(const float* vg, const float* ape, const float* cnorm, const float* cs, float* pooled, const int* pos_dev, int kpool,
+                    int dim, int pairs, float eps, void* stream);
 
 }  // namespace strata::kernels

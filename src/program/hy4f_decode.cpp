@@ -255,6 +255,8 @@ public:
     // STRATA_HY4F_PROF=1: per-phase host times (ms, summed over steps); attention is synchronized to be measured
     bool prof = false;
     bool fused = true;   // STRATA_HY4F_UNFUSED=1: the separate kernels (A/B)
+    bool graphs = true;  // STRATA_HY4F_GRAPH=0: eager only
+    long graph_launches = 0, graph_captures = 0;
     double prof_attn = 0, prof_route = 0, prof_experts = 0, prof_post = 0;
     using clk = std::chrono::steady_clock;
     static double ms(clk::time_point a, clk::time_point b) { return std::chrono::duration<double, std::milli>(b - a).count(); }
@@ -268,12 +270,33 @@ private:
     bool w_norm_ = true;
     float rope_full_ = 0, rope_swa_ = 0;
     int ix_top_ = 0, ix_heads_ = 0, ix_dim_ = 0, kpool_ = 0;
+    float *ivg_ = nullptr;
     float *iq_ = nullptr, *ik_ = nullptr, *iw_ = nullptr, *iscore_ = nullptr, *cs2_ = nullptr;
     int* isel_ = nullptr;
     std::vector<float> h_iscore_, h_cs2_;
     std::vector<int> h_isel_;
     long sparse_calls = 0;
     void indexer(Layer& l, int pos, int& nsel);
+    // the step block: ints (position, attention windows, slots, Engram flag) then floats (rope tables full | swa | pool,
+    // the embedding row, every Engram module's rows); one upload per step, read by the kernels (graph-capturable)
+    enum { SV_POS = 0, SV_INFO_FULL = 4, SV_INFO_SWA = 8, SV_SLOT_FULL = 12, SV_SLOT_SWA = 13, SV_ANY = 14, SV_INTS = 32 };
+    uint8_t *step_d_ = nullptr, *step_h_ = nullptr;
+    size_t step_bytes_ = 0;
+    int* sv_ = nullptr;           // device ints
+    float* emb_d_ = nullptr;      // device embedding row
+    float* eng_rows_d_ = nullptr; // device Engram rows [module][cols * dim]
+    float* logits_h_ = nullptr;   // pinned
+    void prepare_step(int tok, int pos);
+    bool engram_rows(int e, int tok, int pos, float* out);   // false: the token has no valid n-gram
+    // segments between the CPU lane's host waits: eager, or captured once and replayed as HIP graphs
+    bool graph_step_ = false;
+    std::vector<cudaGraphExec_t> execs_;
+    int seg_ = 0;
+    template <class F> void segment(F&& f);
+    void moe_route(Layer& l);
+    void moe_side(Layer& l);
+    void moe_host(Layer& l);
+    void moe_tail(Layer& l);
     // Engram
     std::vector<int> e_layers_;
     int ngram_ = 0, e_heads_ = 0, e_dim_ = 0, e_cols_ = 0;
@@ -297,6 +320,7 @@ private:
     float *av_ = nullptr, *gt_ = nullptr, *o_ = nullptr, *ff_g_ = nullptr, *ff_u_ = nullptr, *ff_a_ = nullptr, *logit_e_ = nullptr;
     float *rin_ = nullptr, *rout_ = nullptr, *sh_ = nullptr, *eng_r_ = nullptr, *eng_kv_ = nullptr, *cs_ = nullptr, *scores_ = nullptr;
     float* logits_d_ = nullptr;
+    size_t scores_bytes_ = 0;
     void* q8_ = nullptr;
     void* q8b_ = nullptr;
     // host staging
@@ -627,12 +651,26 @@ void Hy4::load(int threads) {
     sh_ = alloc(n);
     eng_r_ = alloc(size_t(std::max(1, e_cols_ * e_dim_)));
     eng_kv_ = alloc(n * (hc_ + 1));
-    cs_ = alloc(size_t(rope_dim_) * 2);
+    {   // the step block
+        const size_t ints = SV_INTS * 4, cs = size_t(rope_dim_) * 3 * 4, emb = size_t(n_embd_) * 4,
+                     eng = size_t(std::max<size_t>(1, e_layers_.size())) * size_t(std::max(1, e_cols_ * e_dim_)) * 4;
+        step_bytes_ = ints + cs + emb + eng;
+        ck(cudaMalloc((void**) &step_d_, step_bytes_), "step block");
+        ck(cudaMemset(step_d_, 0, step_bytes_), "step block");
+        ck(cudaHostAlloc((void**) &step_h_, step_bytes_, cudaHostAllocDefault), "step block staging");
+        std::memset(step_h_, 0, step_bytes_);
+        sv_ = (int*) step_d_;
+        cs_ = (float*) (step_d_ + ints);
+        emb_d_ = (float*) (step_d_ + ints + cs);
+        eng_rows_d_ = (float*) (step_d_ + ints + cs + emb);
+        logits_h_ = pinned(size_t(vocab_));
+    }
     if (ix_dim_) {
         iq_ = alloc(size_t(ix_heads_) * ix_dim_);
         ik_ = alloc(size_t(ix_dim_));
         iw_ = alloc(size_t(ix_heads_));
         iscore_ = alloc(size_t(ctx_ / kpool_ + 1));
+        ivg_ = alloc(size_t(2 * ix_dim_));
         cs2_ = alloc(size_t(rope_dim_));
         ck(cudaMalloc((void**) &isel_, size_t(ctx_ + kpool_) * 4), "isel");
     }
@@ -640,7 +678,8 @@ void Hy4::load(int threads) {
     ck(cudaEventCreateWithFlags(&ev_promo_, cudaEventDisableTiming), "event");
     // + the split-output partials (STRATA_DS41_ATTN_SPLIT, set in run(): the unsplit kernel stages 8 x rows floats in LDS,
     // past 64 KB near 2048 rows)
-    scores_ = alloc(k::ds41_attention_scratch(max_heads) / 4 + size_t(kAttnSplit) * max_heads * kRow + 1);
+    scores_bytes_ = k::ds41_attention_scratch(max_heads) + size_t(kAttnSplit) * max_heads * kRow * 4;
+    scores_ = alloc(scores_bytes_ / 4 + 1);
     const size_t q8 = std::max({n * hc_, ffw, size_t(max_heads) * v_head_, size_t(q_rank_), size_t(e_cols_ * e_dim_)}) / 32 * 36;
     ck(cudaMalloc(&q8_, q8), "q8");
     ck(cudaMalloc(&q8b_, q8), "q8b");
@@ -654,7 +693,8 @@ void Hy4::load(int threads) {
         k::hy4_hc_mix(h_, l0.hc_attn_fn.d, 2 * hc_, (const float*) l0.hc_attn_scale.d, (const float*) l0.hc_attn_base.d, coef_, hc_mag_,
                       hc_eps_, eps_, (const float*) l0.attn_norm.d, x_, cur_, q8_, n_embd_, hc_, s_);
         k::hy4_norm_hc_post(o_, nullptr, (const float*) l0.attn_norm.d, coef_ + hc_, flat_, n_embd_, hc_, eps_, s_);
-        k::hy4_mla_finish(q_, l0.heads, k_head_ + rope_dim_, k_head_, kvpe_, (const float*) l0.kv_a_norm.d, cs_, q640_, att_, eps_, s_);
+        k::hy4_mla_finish(q_, l0.heads, k_head_ + rope_dim_, k_head_, kvpe_, (const float*) l0.kv_a_norm.d, cs_, q640_, att_, sv_ + SV_SLOT_SWA,
+                          eps_, s_);
         k::hy4_mul_sigmoid_q8(av_, gt_, q8b_, 32, s_);
         ck(cudaStreamSynchronize(s_), "warm-up");
         ck(cudaMemsetAsync(cur_, 0, size_t(n_embd_) * 4, s_), "reset");
@@ -765,8 +805,8 @@ void Hy4::hc_pre(const W& fn, const W& scale, const W& base, bool post) {
     k::hy4_hc_pre(h_, coef_, x_, n_embd_, hc_, s_);
 }
 
-void Hy4::engram(Layer& l, int tok, int pos) {
-    const int e = l.engram_idx;
+bool Hy4::engram_rows(int e, int tok, int pos, float* rows) {
+    const Layer& l = L_[size_t(e_layers_[size_t(e)])];
     const int64_t dead = -1;
     auto cid = [&](int t) -> int64_t { return t < 0 || t >= int(e_map_.size()) ? dead : e_map_[size_t(t)]; };
     std::vector<uint64_t> toks(static_cast<size_t>(ngram_));
@@ -780,14 +820,13 @@ void Hy4::engram(Layer& l, int tok, int pos) {
     const uint64_t* mult = e_mult_.data() + size_t(e) * ngram_;
     const uint64_t* primes = e_primes_.data() + size_t(e) * e_cols_;
     const uint64_t* offs = e_offs_.data() + size_t(e) * e_cols_;
-    std::vector<float> rows(static_cast<size_t>(e_cols_ * e_dim_));
     uint64_t rolling = toks[0] * mult[0];
     for (int o = 1; o < ngram_; ++o) {
         rolling ^= toks[size_t(o)] * mult[o];
         for (int hh = 0; hh < e_heads_; ++hh) {
             const int col = (o - 1) * e_heads_ + hh;
             const uint64_t id = rolling % primes[col] + offs[col];
-            float* r = rows.data() + size_t(col) * e_dim_;
+            float* r = rows + size_t(col) * e_dim_;
             dequant_q8_0(e_table_ + id * e_row_bytes_, e_dim_, r);
             // ggml_rms_norm: float sum, then 1 / sqrt(mean + eps); FLT_EPSILON as the reference's unset eps
             float sum = 0;
@@ -797,11 +836,51 @@ void Hy4::engram(Layer& l, int tok, int pos) {
             for (int j = 0; j < e_dim_; ++j) r[j] = r[j] * scale * l.lookup_norm[size_t(col) * e_dim_ + j] * valid;
         }
     }
-    h2d(eng_r_, rows.data(), rows.size() * 4);
-    gemv(l.eng_kv, eng_r_, eng_kv_);
+    return !is_dead;
+}
+
+void Hy4::engram(Layer& l, int, int) {
+    const float* rows = eng_rows_d_ + size_t(l.engram_idx) * e_cols_ * e_dim_;
+    gemv(l.eng_kv, rows, eng_kv_);
     k::ds41_add(eng_kv_, (const float*) l.eng_kv_b.d, eng_kv_, n_embd_ * (hc_ + 1), s_);
     k::hy4_engram(h_, eng_kv_, (const float*) l.eng_gate.d, (const float*) l.eng_gamma.d, (const float*) l.eng_hc_scale.d, n_embd_, hc_,
-                  1.1920929e-07f, !is_dead, s_);
+                  1.1920929e-07f, true, s_, sv_ + SV_ANY);
+}
+
+void Hy4::prepare_step(int tok, int pos) {
+    int* iv = (int*) step_h_;
+    float* cs = (float*) (step_h_ + SV_INTS * 4);
+    float* emb = cs + rope_dim_ * 3;
+    float* eng = emb + n_embd_;
+    iv[SV_POS] = pos;
+    const int full_ring = ctx_, swa_ring = window_;
+    const int rf = std::min(pos + 1, full_ring), rs = std::min(pos + 1, swa_ring);
+    iv[SV_INFO_FULL + 0] = ((pos - rf + 1) % full_ring + full_ring) % full_ring;
+    iv[SV_INFO_FULL + 1] = rf;
+    iv[SV_INFO_FULL + 2] = 0;
+    iv[SV_INFO_SWA + 0] = ((pos - rs + 1) % swa_ring + swa_ring) % swa_ring;
+    iv[SV_INFO_SWA + 1] = rs;
+    iv[SV_INFO_SWA + 2] = 0;
+    iv[SV_SLOT_FULL] = pos % full_ring;
+    iv[SV_SLOT_SWA] = pos % swa_ring;
+    // rope tables: this position at the full and window bases, and the pool's first member (full base)
+    const int pool_pos = kpool_ ? pos / kpool_ * kpool_ : 0;
+    for (int t = 0; t < 3; ++t) {
+        const float base = t == 1 ? rope_swa_ : rope_full_;
+        const float theta_scale = std::pow(base, -2.0f / float(rope_dim_));
+        float theta = float(t == 2 ? pool_pos : pos);
+        for (int i = 0; i < rope_dim_; i += 2) {
+            cs[t * rope_dim_ + i] = std::cos(theta);
+            cs[t * rope_dim_ + i + 1] = std::sin(theta);
+            theta *= theta_scale;
+        }
+    }
+    dequant_q8_0(g_.tensor_data(*tok_embd_) + size_t(tok) * size_t(n_embd_ / 32 * 34), n_embd_, emb);
+    bool any = true;
+    for (size_t e = 0; e < e_layers_.size(); ++e)
+        if (e_layers_[e] < n_run_) any = engram_rows(int(e), tok, pos, eng + e * size_t(e_cols_ * e_dim_));
+    iv[SV_ANY] = any ? 1 : 0;
+    ck(cudaMemcpyAsync(step_d_, step_h_, step_bytes_, cudaMemcpyHostToDevice, s_), "step block");
 }
 
 void Hy4::attention(Layer& l, int pos) {
@@ -822,7 +901,8 @@ void Hy4::attention(Layer& l, int pos) {
     if (fused) {
         // absorb straight into the 640-wide rows; then rope tails, the normed latent and the cache row in one launch
         k::hy4_q8_0_heads(l.k_b.d, q_, qk, q640_, kRow, kv_rank_, k_head_, H, s_);
-        k::hy4_mla_finish(q_, H, qk, k_head_, kvpe_, (const float*) l.kv_a_norm.d, cs, q640_, l.kv + size_t(slot) * kRow, eps_, s_);
+        k::hy4_mla_finish(q_, H, qk, k_head_, kvpe_, (const float*) l.kv_a_norm.d, cs, q640_, l.kv, sv_ + (l.swa ? SV_SLOT_SWA : SV_SLOT_FULL),
+                          eps_, s_);
     } else {
         rms(kvpe_, &l.kv_a_norm, kvn_, kv_rank_);
         // rope (NORM: adjacent pairs) on q_pe (after the 128 nope values of each head) and k_pe; tables from step()
@@ -840,9 +920,13 @@ void Hy4::attention(Layer& l, int pos) {
     if (l.indexer) indexer(l, pos, nsel);
     if (nsel > 0)   // the selected rows only (the tail and the top pools); positions are the full layer's slots
         k::ds41_attention(q640_, H, kRow, l.kv, 0, 1, 0, l.kv, kRow, isel_, nsel, (const float*) l.sinks.d, scale, scores_, att_, s_);
-    else
-        k::ds41_attention(q640_, H, kRow, l.kv, first, l.ring, rows, nullptr, 0, nullptr, 0, (const float*) l.sinks.d, scale, scores_,
-                          att_, s_);
+    else {   // the window from the step block (graph-capturable): {first slot, rows, 0}
+        (void) first;
+        (void) rows;
+        const int bound = l.swa ? l.ring : std::min(l.ring, ix_top_ ? ix_top_ : 4096);
+        k::ds41_attention_multi(q640_, 1, H, kRow, l.kv, l.ring, sv_ + (l.swa ? SV_INFO_SWA : SV_INFO_FULL), bound, nullptr, 0, nullptr, 0,
+                                nullptr, (const float*) l.sinks.d, scale, scores_, att_, s_, scores_bytes_);
+    }
     // un-absorb: av[h] = W_vb[h] att[h][0..512)  (W_vb[h]: [256][512])
     k::hy4_q8_0_heads(l.v_b.d, att_, kRow, av_, v_head_, v_head_, kv_rank_, H, s_);
     if (fused) {
@@ -861,33 +945,18 @@ void Hy4::attention(Layer& l, int pos) {
 // row is selected (exact full attention).
 void Hy4::indexer(Layer& l, int pos, int& nsel) {
     const int D = ix_dim_, half = D - rope_dim_;
-    // query: rope on the trailing rope_dim of each head, at pos (the full layers' table)
-    k::ds41_rope(iq_, ix_heads_, D, half, rope_dim_ / 2, cs_, s_);
     rms(ik_, &l.ix_knorm, ik_, D);
-    float* row = l.vg + size_t(pos) * 2 * D;
-    gemv(l.ix_val, ik_, row);
-    gemv(l.ix_gate, ik_, row + D);
-    if (pos % kpool_ == kpool_ - 1) {
-        const int g = pos / kpool_;
-        float* pk = l.pooled + size_t(g) * D;
-        k::hy4_kpool(l.vg + size_t(g) * kpool_ * 2 * D, (const float*) l.ix_ape.d, pk, kpool_, D, s_);
-        rms(pk, &l.ix_cnorm, pk, D);
-        // rotated at its first member's position
-        h_cs2_.resize(size_t(rope_dim_));
-        const float theta_scale = std::pow(rope_full_, -2.0f / float(rope_dim_));
-        float theta = float(g * kpool_);
-        for (int i = 0; i < rope_dim_; i += 2) {
-            h_cs2_[size_t(i)] = std::cos(theta);
-            h_cs2_[size_t(i) + 1] = std::sin(theta);
-            theta *= theta_scale;
-        }
-        h2d(cs2_, h_cs2_.data(), h_cs2_.size() * 4);
-        k::ds41_rope(pk, 1, D, half, rope_dim_ / 2, cs2_, s_);
-    }
+    gemv(l.ix_val, ik_, ivg_);
+    gemv(l.ix_gate, ik_, ivg_ + D);
+    k::hy4_copy_row(ivg_, l.vg, sv_ + SV_POS, 2 * D, s_);
+    // the pooled key of a group this token completes, rotated at its first member's position (the third rope table)
+    k::hy4_kpool_step(l.vg, (const float*) l.ix_ape.d, (const float*) l.ix_cnorm.d, cs_ + 2 * rope_dim_, l.pooled, sv_ + SV_POS, kpool_, D,
+                      rope_dim_ / 2, eps_, s_);
     const int visible = pos / kpool_;                  // complete groups before the token's own
     const int top = ix_top_ / kpool_ - 1;
     nsel = 0;
-    if (visible <= top) return;
+    if (visible <= top) return;   // every row selected (never reached in a graph step: pos < 2048)
+    k::ds41_rope(iq_, ix_heads_, D, half, rope_dim_ / 2, cs_, s_);
     k::ds41_index_score(iq_, ix_heads_, D, l.pooled, D, visible, iw_, 1.0f / std::sqrt(float(D * ix_heads_)), iscore_, s_);
     h_iscore_.resize(size_t(visible));
     d2h(h_iscore_.data(), iscore_, size_t(visible) * 4);
@@ -905,31 +974,31 @@ void Hy4::indexer(Layer& l, int pos, int& nsel) {
     ++sparse_calls;
 }
 
-void Hy4::ffn(Layer& l) {
-    const auto tf = clk::now();
-    // cur_ normalized, its q8_1 in q8_
-    if (l.dense) {
-        gemv_q8(l.ffn_gate, q8_, ff_g_);
-        gemv_q8(l.ffn_up, q8_, ff_u_);
-        if (fused) {
-            k::native_swiglu_quantize_q8_1(ff_g_, ff_u_, q8b_, dense_ff_, 1, s_);
-            gemv_q8(l.ffn_down, q8b_, o_);
-        } else {
-            k::glm_swiglu(ff_g_, ff_u_, ff_a_, dense_ff_, 0.0f, s_);
-            gemv(l.ffn_down, ff_a_, o_);
-        }
-        post(l.post_ffn_norm, nullptr);
-        return;
+void Hy4::ffn(Layer& l) {   // the dense FFN (leading blocks); cur_ normalized, its q8_1 in q8_
+    gemv_q8(l.ffn_gate, q8_, ff_g_);
+    gemv_q8(l.ffn_up, q8_, ff_u_);
+    if (fused) {
+        k::native_swiglu_quantize_q8_1(ff_g_, ff_u_, q8b_, dense_ff_, 1, s_);
+        gemv_q8(l.ffn_down, q8b_, o_);
+    } else {
+        k::glm_swiglu(ff_g_, ff_u_, ff_a_, dense_ff_, 0.0f, s_);
+        gemv(l.ffn_down, ff_a_, o_);
     }
+    post(l.post_ffn_norm, nullptr);
+}
+
+// MoE, in four parts around the CPU lane's host wait. route (device): router logits, routed_down, hy4_route, one download.
+void Hy4::moe_route(Layer& l) {
     k::ds41_f32_gemv((const float*) l.gate_inp.d, cur_, logit_e_, n_expert_, n_embd_, s_);
     gemv_q8(l.routed_down, q8_, rin_);
-    // route on the device; the GPU tier's routes run from its table at once, the rest go down to the CPU lane
-    if (tier.on()) tier.publish(s_);
     const unsigned long long* slots = tier.on() ? tier.d_slots + size_t(cur_layer_) * n_expert_ : nullptr;
     int* route_d = reinterpret_cast<int*>(rin_ + n_latent_);
     k::hy4_route(logit_e_, (const float*) l.bias_d.d, slots, n_expert_, top_k_, w_scale_, w_norm_, rtable_, route_d, s_);
     ck(cudaMemcpyAsync(h_rin_, rin_, size_t(n_latent_ + 3 * top_k_) * 4, cudaMemcpyDeviceToHost, s_), "latent + routes down");
-    ck(cudaEventRecord(ev_, s_), "event record");
+}
+
+// side (device, while the lane runs): the GPU tier's routes from hy4_route's table, and the shared expert
+void Hy4::moe_side(Layer& l) {
     if (tier.on()) {
         auto* tb = (const uint8_t*) rtable_;
         const size_t K = size_t(top_k_), o_start = K * 8, o_ng = o_start + (K + 1) * 4, o_dst = o_ng + 4, o_tok = o_dst + K * 4,
@@ -942,7 +1011,6 @@ void Hy4::ffn(Layer& l) {
         k::ds41_scatter_axpy_dev(tier.out, reinterpret_cast<const int32_t*>(tb + o_tok), reinterpret_cast<const float*>(tb + o_w),
                                  reinterpret_cast<const int32_t*>(tb + o_ng), n_latent_, tier.sum, s_);
     }
-    // shared expert on the GPU while the host waits for the routes and the lane runs
     gemv_q8(l.sh_gate, q8_, ff_g_);
     gemv_q8(l.sh_up, q8_, ff_u_);
     if (fused) {
@@ -952,10 +1020,14 @@ void Hy4::ffn(Layer& l) {
         k::glm_swiglu(ff_g_, ff_u_, ff_a_, n_ff_exp_, 0.0f, s_);
         gemv(l.sh_down, ff_a_, sh_);
     }
-    ck(cudaEventSynchronize(ev_), "routed wait");
+}
+
+// host: wait for the routes (ev_, recorded after moe_route), the CPU lane, tier bookkeeping and uploads
+void Hy4::moe_host(Layer& l) {
     const auto tr = clk::now();
-    if (prof) prof_route += ms(tf, tr);
-    const auto t0 = std::chrono::steady_clock::now();
+    ck(cudaEventSynchronize(ev_), "routed wait");
+    const auto t0 = clk::now();
+    if (prof) prof_route += ms(tr, t0);
     const int32_t* cpu_ids = h_route_;
     const float* w = reinterpret_cast<const float*>(h_route_ + top_k_);
     const int32_t* ids = h_route_ + 2 * top_k_;
@@ -987,16 +1059,34 @@ void Hy4::ffn(Layer& l) {
     }
     lane_->finish();
     const auto te = clk::now();
-    if (prof) prof_experts += ms(tr, te);
+    if (prof) prof_experts += ms(t0, te);
+    expert_ms += ms(t0, te);
     dbg_dev("ffn_moe_logits", cur_layer_, logit_e_, size_t(n_expert_));
-    expert_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+// tail (device): the lane's sum up, + the tier's, routed_up, the post norm with the shared expert, the residual
+void Hy4::moe_tail(Layer& l) {
     ck(cudaMemcpyAsync(rout_, h_rout_, size_t(n_latent_) * 4, cudaMemcpyHostToDevice, s_), "latent up");
     if (tier.on()) k::ds41_add(rout_, tier.sum, rout_, n_latent_, s_);
-    dbg_dev("ffn_moe_out", cur_layer_, rout_, size_t(n_latent_));
     gemv(l.routed_up, rout_, o_);
     post(l.post_ffn_norm, sh_);
-    ck(cudaStreamSynchronize(s_), "ffn sync");   // h_rout_ is reused by the next layer
-    if (prof) prof_post += ms(te, clk::now());
+}
+
+template <class F> void Hy4::segment(F&& f) {
+    const size_t id = size_t(seg_++);
+    if (!graph_step_) { f(); return; }
+    if (id >= execs_.size()) execs_.resize(id + 1, nullptr);
+    if (!execs_[id]) {
+        cudaGraph_t g = nullptr;
+        ck(cudaStreamBeginCapture(s_, cudaStreamCaptureModeThreadLocal), "capture begin");
+        f();
+        ck(cudaStreamEndCapture(s_, &g), "capture end");
+        ck(cudaGraphInstantiate(&execs_[id], g, 0), "graph instantiate");
+        ck(cudaGraphDestroy(g), "graph destroy");
+        ++graph_captures;
+    }
+    ck(cudaGraphLaunch(execs_[id], s_), "graph launch");
+    ++graph_launches;
 }
 
 const std::vector<float>& Hy4::step(int tok, int pos) {
@@ -1008,47 +1098,66 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
         for (auto& x : tier.score) x *= 0.98f;
         tier.left = tier.budget;
     }
-    // embedding (Q8_0 row) -> the hc streams
-    std::vector<float> emb(static_cast<size_t>(n_embd_));
-    dequant_q8_0(g_.tensor_data(*tok_embd_) + size_t(tok) * size_t(n_embd_ / 32 * 34), n_embd_, emb.data());
-    h2d(x_, emb.data(), emb.size() * 4);
-    k::ds41_broadcast_streams(x_, h_, n_embd_, s_);
-    h_cs_.resize(size_t(rope_dim_) * 2);
-    for (int t = 0; t < 2; ++t) {
-        const float base = t ? rope_swa_ : rope_full_;
-        const float theta_scale = std::pow(base, -2.0f / float(rope_dim_));
-        float theta = float(pos);
-        for (int i = 0; i < rope_dim_; i += 2) {
-            h_cs_[size_t(t * rope_dim_ + i)] = std::cos(theta);
-            h_cs_[size_t(t * rope_dim_ + i + 1)] = std::sin(theta);
-            theta *= theta_scale;
-        }
-    }
-    h2d(cs_, h_cs_.data(), h_cs_.size() * 4);
-    for (int i = 0; i < n_run_; ++i) {
+    // graphs: fused kernels only, no dumps / profiling syncs, and no indexer selection (its top-k is on the host)
+    graph_step_ = graphs && fused && !want_dump && !prof && (ix_top_ == 0 || pos < ix_top_);
+    seg_ = 0;
+    prepare_step(tok, pos);
+    const int n = n_embd_;
+    auto dump = [&](int i) {
+        if (!want_dump) return;
+        dumps[size_t(i)].resize(size_t(n) * hc_);
+        d2h(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4);
+    };
+    auto block = [&](int i) {   // up to the FFN input
         auto& l = L_[size_t(i)];
+        cur_layer_ = i;
         if (l.engram) engram(l, tok, pos);
         hc_mix(l.hc_attn_fn, l.hc_attn_scale, l.hc_attn_base, true, l.attn_norm);
-        cur_layer_ = i;
-        dbg_dev("attn_norm", i, cur_, size_t(n_embd_));
+        dbg_dev("attn_norm", i, cur_, size_t(n));
         auto ta = clk::now();
         attention(l, pos);
         if (prof) { ck(cudaStreamSynchronize(s_), "prof"); prof_attn += ms(ta, clk::now()); }
         post(l.post_attn_norm, nullptr);
         hc_mix(l.hc_ffn_fn, l.hc_ffn_scale, l.hc_ffn_base, true, l.ffn_norm);
-        ffn(l);   // its post() is inside: the routed and shared sums are added there
-        if (want_dump) {
-            dumps[size_t(i)].resize(size_t(n_embd_) * hc_);
-            d2h(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4);
-        }
-    }
-    if (n_run_ == n_layer_) {
-        hc_mix(hc_head_fn_, hc_head_scale_, hc_head_base_, false, out_norm_);
-        gemv_q8(output_, q8_, logits_d_);
-        logits_.resize(size_t(vocab_));
-        d2h(logits_.data(), logits_d_, logits_.size() * 4);
+    };
+    int prev = -1, i = 0;
+    while (true) {
+        int j = i;   // the next MoE block (the end of this segment), or n_run_
+        while (j < n_run_ && L_[size_t(j)].dense) ++j;
+        const bool last = j >= n_run_;
+        if (tier.on()) tier.publish(s_);   // before the segment's routes (outside any graph)
+        segment([&] {
+            if (prev >= 0) {
+                moe_tail(L_[size_t(prev)]);
+                dump(prev);
+            } else {
+                k::ds41_broadcast_streams(emb_d_, h_, n, s_);
+            }
+            for (int b = i; b < std::min(j + 1, n_run_); ++b) {
+                block(b);
+                if (L_[size_t(b)].dense) {
+                    ffn(L_[size_t(b)]);
+                    dump(b);
+                } else {
+                    moe_route(L_[size_t(b)]);
+                }
+            }
+            if (last && n_run_ == n_layer_) {
+                hc_mix(hc_head_fn_, hc_head_scale_, hc_head_base_, false, out_norm_);
+                gemv_q8(output_, q8_, logits_d_);
+                ck(cudaMemcpyAsync(logits_h_, logits_d_, size_t(vocab_) * 4, cudaMemcpyDeviceToHost, s_), "logits");
+            }
+        });
+        if (last) break;
+        ck(cudaEventRecord(ev_, s_), "route event");
+        cur_layer_ = j;
+        segment([&] { moe_side(L_[size_t(j)]); });
+        moe_host(L_[size_t(j)]);
+        prev = j;
+        i = j + 1;
     }
     ck(cudaStreamSynchronize(s_), "step");
+    if (n_run_ == n_layer_) logits_.assign(logits_h_, logits_h_ + vocab_);
     gpu_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     return logits_;
 }
@@ -1104,6 +1213,7 @@ int run(int argc, char** argv) {
     if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
     Hy4 m(model, threads, ctx, layers);
     m.tier_setup(tier_gib, reserve_gib, budget);
+    m.graphs = !(std::getenv("STRATA_HY4F_GRAPH") && std::string(std::getenv("STRATA_HY4F_GRAPH")) == "0");
     m.fused = !(std::getenv("STRATA_HY4F_UNFUSED") && std::string(std::getenv("STRATA_HY4F_UNFUSED")) == "1");
     m.prof = std::getenv("STRATA_HY4F_PROF") && std::string(std::getenv("STRATA_HY4F_PROF")) == "1";
     const bool partial = m.n_run() < m.n_layer();
@@ -1156,6 +1266,7 @@ int run(int argc, char** argv) {
     std::fprintf(stderr, "hy4f: decode %d tokens in %.2f s: %.2f tok/s (experts %.1f ms/token; tier hit %.1f%%, %ld uploads)\n", n_gen,
                  gen_s, double(n_gen) / gen_s, m.expert_ms / std::max(1, n_gen),
                  m.tier.routes ? 100.0 * double(m.tier.hits) / double(m.tier.routes) : 0.0, m.tier.promotions);
+    std::fprintf(stderr, "hy4f: graphs %ld captured, %ld launches\n", m.graph_captures, m.graph_launches);
     if (m.prof)
         std::fprintf(stderr, "hy4f prof (ms/token): attention %.2f, to router %.2f, experts %.2f, after experts %.2f, other %.2f\n",
                      m.prof_attn / n_gen, m.prof_route / n_gen, m.prof_experts / n_gen, m.prof_post / n_gen,

@@ -101,7 +101,8 @@ __global__ void mul_sigmoid_kernel(const float* x, const float* g, float* y, int
 
 // one block per stream s
 __global__ void engram_kernel(float* h, const float* kv, const float* g, const float* gamma, const float* hc_scale, int n, int hc,
-                              float eps, int any) {
+                              float eps, int any, const int* any_dev) {
+    if (any_dev) any = *any_dev;
     __shared__ float sh[kThreads];
     const int s = blockIdx.x;
     float* hs = h + size_t(s) * n;
@@ -248,8 +249,9 @@ __device__ __forceinline__ void rot(float x0, float x1, float c, float s, float*
 
 // blocks 0..heads-1: a head's rope tail; block heads: the cache row (128 threads)
 __global__ void mla_finish_kernel(const float* q, int heads, int q_stride, int nope, const float* kvpe, const float* kv_w, const float* cs,
-                                  float* q640, float* krow, float eps) {
+                                  float* q640, float* kv, const int* slot_dev, float eps) {
     const int t = threadIdx.x;
+    float* krow = kv + size_t(*slot_dev) * 640;
     if (blockIdx.x < heads) {
         float* out = q640 + size_t(blockIdx.x) * 640;
         const float* pe = q + size_t(blockIdx.x) * q_stride + nope;
@@ -335,6 +337,49 @@ __global__ void route_kernel(const float* logits, const float* bias, const unsig
     *ng = g;
 }
 
+
+__global__ void copy_row_kernel(const float* src, float* dst, const int* idx, int width) {
+    const int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j < width) dst[size_t(*idx) * width + j] = src[j];
+}
+
+__global__ void kpool_step_kernel(const float* vg, const float* ape, const float* cnorm, const float* cs, float* pooled, const int* pos_dev,
+                                  int kpool, int dim, int pairs, float eps) {
+    const int pos = *pos_dev;
+    if (pos % kpool != kpool - 1) return;
+    const int g = pos / kpool, c = threadIdx.x;
+    __shared__ float v[128], sh[128];
+    float x = 0;
+    if (c < dim) {   // the same arithmetic as kpool_kernel
+        const float* base = vg + size_t(g) * kpool * 2 * dim;
+        float mx = -INFINITY;
+        for (int m = 0; m < kpool; ++m) mx = fmaxf(mx, base[size_t(m) * 2 * dim + dim + c] + ape[size_t(m) * dim + c]);
+        float den = 0, acc = 0;
+        for (int m = 0; m < kpool; ++m) {
+            const float e = expf(base[size_t(m) * 2 * dim + dim + c] + ape[size_t(m) * dim + c] - mx);
+            den += e;
+            acc += e * base[size_t(m) * 2 * dim + c];
+        }
+        x = acc / den;
+    }
+    sh[c] = x * x;
+    __syncthreads();
+    for (int s = 64; s > 0; s >>= 1) {
+        if (c < s) sh[c] += sh[c + s];
+        __syncthreads();
+    }
+    const float r = 1.0f / sqrtf(sh[0] / dim + eps);
+    if (c < dim) v[c] = x * r * cnorm[c];
+    __syncthreads();
+    float* out = pooled + size_t(g) * dim;
+    const int off = dim - 2 * pairs;
+    if (c < off) out[c] = v[c];
+    else if (c < dim && (c - off) % 2 == 0) {
+        const int p = (c - off) / 2;
+        rot(v[c], v[c + 1], cs[2 * p], cs[2 * p + 1], out + c);
+    }
+}
+
 }  // namespace
 
 void hy4_hc_coeff(const float* mixes, const float* scale, const float* base, float* out, int hc, bool with_post, float magnitude,
@@ -369,8 +414,8 @@ void hy4_mul_sigmoid(const float* x, const float* g, float* y, int n, void* stre
     check("mul_sigmoid");
 }
 void hy4_engram(float* h, const float* kv, const float* g, const float* gamma, const float* hc_scale, int n, int hc, float eps,
-                bool any, void* stream) {
-    engram_kernel<<<hc, kThreads, 0, (cudaStream_t) stream>>>(h, kv, g, gamma, hc_scale, n, hc, eps, any);
+                bool any, void* stream, const int* any_dev) {
+    engram_kernel<<<hc, kThreads, 0, (cudaStream_t) stream>>>(h, kv, g, gamma, hc_scale, n, hc, eps, any, any_dev);
     check("engram");
 }
 
@@ -392,8 +437,8 @@ void hy4_norm_hc_post(const float* x, const float* add, const float* w, const fl
     check("norm_hc_post");
 }
 void hy4_mla_finish(const float* q, int heads, int q_stride, int nope, const float* kvpe, const float* kv_w, const float* cs, float* q640,
-                    float* krow, float eps, void* stream) {
-    mla_finish_kernel<<<heads + 1, 128, 0, (cudaStream_t) stream>>>(q, heads, q_stride, nope, kvpe, kv_w, cs, q640, krow, eps);
+                    float* kv, const int* slot_dev, float eps, void* stream) {
+    mla_finish_kernel<<<heads + 1, 128, 0, (cudaStream_t) stream>>>(q, heads, q_stride, nope, kvpe, kv_w, cs, q640, kv, slot_dev, eps);
     check("mla_finish");
 }
 void hy4_mul_sigmoid_q8(const float* x, const float* g, void* q8, int n, void* stream) {
@@ -408,6 +453,17 @@ void hy4_route(const float* logits, const float* bias, const unsigned long long*
     if (E > 1024 || K > 16 || K < 1) throw std::invalid_argument("hy4_route: shape");
     route_kernel<<<1, 256, 0, (cudaStream_t) stream>>>(logits, bias, slots, E, K, scale, norm, (uint8_t*) table, host);
     check("route");
+}
+
+void hy4_copy_row(const float* src, float* dst, const int* idx_dev, int width, void* stream) {
+    copy_row_kernel<<<(width + 255) / 256, 256, 0, (cudaStream_t) stream>>>(src, dst, idx_dev, width);
+    check("copy_row");
+}
+void hy4_kpool_step(const float* vg, const float* ape, const float* cnorm, const float* cs, float* pooled, const int* pos_dev, int kpool,
+                    int dim, int pairs, float eps, void* stream) {
+    if (dim > 128) throw std::invalid_argument("hy4_kpool_step: dim > 128");
+    kpool_step_kernel<<<1, 128, 0, (cudaStream_t) stream>>>(vg, ape, cnorm, cs, pooled, pos_dev, kpool, dim, pairs, eps);
+    check("kpool_step");
 }
 
 }  // namespace strata::kernels
