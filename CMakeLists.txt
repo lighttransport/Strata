@@ -642,6 +642,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_mailbox.cu src/kernels/cuda/glm_q23.cu src/kernels/cuda/glm_q8.cu src/kernels/cuda/exl3.cu
                           src/kernels/cuda/llvq_tetra.cu
                           src/kernels/cuda/ds41.cu
+                          src/kernels/cuda/hy4f.cu
                           src/kernels/cuda/minimax_msa.cu
                           src/kernels/cuda/qsa.cu
                           src/kernels/cuda/elementwise.cu
@@ -3076,6 +3077,9 @@ if(STRATA_NATIVE_EXPERTS)
     if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
       add_executable(glm_native_expert_parity src/kernels/glm_native_expert_parity.cpp)
       target_link_libraries(glm_native_expert_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact strata_host ${_strata_gpu_runtime_target})
+      # Hy4-Flash (hy_v4_flash): GPU trunk + CPU NVFP4 expert lane (src/program/hy4f_decode.cpp)
+      add_executable(strata-hy4f src/program/hy4f_decode.cpp src/ds41/expert_lane.cpp)
+      target_link_libraries(strata-hy4f PRIVATE strata_kernels strata_kernels_cpu strata_artifact ${_strata_gpu_runtime_target})
       add_executable(strata-glm-decode src/program/glm_decode.cpp src/program/glm_state_store.cpp
                      src/program/ds41_decode.cpp src/ds41/expert_lane.cpp)
       target_link_libraries(strata-glm-decode PRIVATE strata_engine strata_spec strata_prefill strata_kernels strata_kernels_cpu strata_artifact strata_ucomm ${_strata_gpu_runtime_target} ${_strata_gpu_blas_target})

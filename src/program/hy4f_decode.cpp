@@ -1,0 +1,749 @@
+// src/program/hy4f_decode.cpp - strata-hy4f: Hy4-Flash (GGUF arch hy_v4_flash, Tencent Hy4 "512x71B" A12B) decode on
+// one GPU + the CPU, one token at a time.
+//
+// Reference: llama.cpp PR #32517 (src/models/hy-v4-flash.cpp). Per block: Engram (4 layers: 3-gram hashed rows of a
+// 62.7 GiB table read from the mmapped GGUF), iHC pre-mix (4 streams, sigmoid pre/post, no Sinkhorn), gated MLA with
+// sinks (absorbed: 576-wide latent+rope keys, 512-wide latent values; SWA-512 or full layers), sandwich norms, and
+// either the dense FFN (layer 0) or the latent MoE: router on the full width (sigmoid + bias, top 16 of 512, normed,
+// x3.998), routed_down 3072 -> 1536, 16 routed experts at 1536 (clamped SwiGLU 10) on the CPU lane (ds41::ExpertLane,
+// NVFP4 rows bit-equal to ggml-cpu), routed_up 1536 -> 3072, plus the shared expert on the GPU.
+//
+// Everything that is not a routed expert or the Engram table lives on the GPU (~4.2 GB). Dense GEMVs are q8_1
+// activations into iq_mmvq (NVFP4 / Q8_0, llama.cpp's CUDA arithmetic); attention is ds41_attention over 640-wide
+// rows (576 padded). The DSA indexer (kpool 4, top-k 2048) selects every token below 2048 positions, so up to that
+// context the attention here is exact without it; longer contexts are refused until the indexer is ported.
+//
+//     strata-hy4f MODEL.gguf --ids 1,2,3 [--n 32] [--layers L] [--dump DIR] [--threads 15] [--ctx 2048]
+//
+// --layers L runs only the first L blocks (no head) and with --dump writes DIR/l_out-<il>.bin per block: the four
+// streams of every prompt position ([n][4][pos], the ds41f_llama_dump .bin format: int32 type, int64 ne[4], f32).
+#include "strata/artifact/gguf_reader.hpp"
+#include "strata/ds41/expert_lane.hpp"
+#include "strata/kernels/cpu/native_expert.hpp"
+#include "strata/kernels/ds41.hpp"
+#include "strata/kernels/glm.hpp"
+#include "strata/kernels/hy4f.hpp"
+#include "strata/kernels/iq_kernels.hpp"
+
+#include <cuda_runtime.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <numeric>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace k = strata::kernels;
+namespace cpu = strata::kernels::cpu;
+
+namespace {
+
+void ck(cudaError_t e, const char* what) {
+    if (e != cudaSuccess) throw std::runtime_error(std::string(what) + ": " + cudaGetErrorString(e));
+}
+
+constexpr int kF32 = 0, kQ8_0 = 8, kNvfp4 = 40;
+constexpr int kRow = 640;   // MLA attention row: latent 512 | rope 64 | zero pad (ds41_attention wants dim % 128)
+
+float half_to_float(uint16_t h) {
+    const uint32_t s = (h >> 15) & 1, e = (h >> 10) & 0x1f, m = h & 0x3ff;
+    float v;
+    if (e == 0) v = std::ldexp(float(m), -24);
+    else if (e == 31) v = m ? NAN : INFINITY;
+    else v = std::ldexp(float(m | 0x400), int(e) - 25);
+    return s ? -v : v;
+}
+
+void dequant_q8_0(const uint8_t* src, int64_t n, float* dst) {
+    for (int64_t b = 0; b < n / 32; ++b) {
+        uint16_t d16;
+        std::memcpy(&d16, src + b * 34, 2);
+        const float d = half_to_float(d16);
+        for (int i = 0; i < 32; ++i) dst[b * 32 + i] = d * float(int8_t(src[b * 34 + 2 + i]));
+    }
+}
+
+struct Dev {
+    void* p = nullptr;
+    size_t bytes = 0;
+};
+
+// one weight on the GPU: type, GGUF shape (ne0 = inner), device bytes
+struct W {
+    int type = -1;
+    int64_t in = 0, out = 0;   // ne0, product of the rest
+    void* d = nullptr;
+    explicit operator bool() const { return d != nullptr; }
+};
+
+struct Layer {
+    bool swa = false, dense = false, engram = false;
+    int heads = 0, engram_idx = -1;
+    float rope_base = 0;
+    W attn_norm, sinks, q_a, q_a_norm, q_b, kv_a, kv_a_norm, k_b, v_b, wo, gate, post_attn_norm;
+    W hc_attn_fn, hc_attn_base, hc_attn_scale, hc_ffn_fn, hc_ffn_base, hc_ffn_scale;
+    W ffn_norm, post_ffn_norm;
+    W ffn_gate, ffn_up, ffn_down;                                   // dense
+    W gate_inp, routed_down, routed_up, sh_gate, sh_up, sh_down;     // MoE
+    W eng_kv, eng_kv_b, eng_gate, eng_gamma, eng_hc_scale;
+    std::vector<float> bias, lookup_norm;                            // host: router bias, Engram row norm
+    strata::ds41::LaneLayer lane;
+    float* kv = nullptr;   // ring [ring][kRow]
+    int ring = 0;
+};
+
+std::string join_ids(const std::vector<int>& v) {
+    std::string s;
+    for (size_t i = 0; i < v.size(); ++i) s += (i ? "," : "") + std::to_string(v[i]);
+    return s;
+}
+
+class Hy4 {
+public:
+    Hy4(const std::string& path, int threads, int ctx, int layers) : g_(path), ctx_(ctx) {
+        read_config();
+        n_run_ = layers > 0 ? std::min(layers, n_layer_) : n_layer_;
+        ck(cudaStreamCreateWithFlags(&s_, cudaStreamNonBlocking), "stream");
+        load(threads);
+    }
+
+    // one token at position pos; returns the logits (when the head runs) on the host
+    const std::vector<float>& step(int tok, int pos);
+    // the four streams after block il for the last step (host copy), filled when dumping
+    std::vector<std::vector<float>> dumps;   // [il] -> [4 * n] of the last step
+    bool want_dump = false;
+    std::map<std::string, std::vector<float>> dbg;   // name-<il> -> values of every step, appended
+    int n_run() const { return n_run_; }
+    int n_layer() const { return n_layer_; }
+    int vocab() const { return vocab_; }
+    double expert_ms = 0, gpu_ms = 0;
+
+private:
+    strata::GgufFile g_;
+    int n_layer_ = 0, n_embd_ = 0, vocab_ = 0, hc_ = 0, n_expert_ = 0, top_k_ = 0, n_latent_ = 0, n_ff_exp_ = 0;
+    int q_rank_ = 0, kv_rank_ = 0, rope_dim_ = 0, k_head_ = 0, v_head_ = 0, window_ = 0, dense_ff_ = 0;
+    float eps_ = 0, hc_eps_ = 0, hc_mag_ = 0, w_scale_ = 1, clamp_ = 0;
+    bool w_norm_ = true;
+    float rope_full_ = 0, rope_swa_ = 0;
+    // Engram
+    std::vector<int> e_layers_;
+    int ngram_ = 0, e_heads_ = 0, e_dim_ = 0, e_cols_ = 0;
+    std::vector<uint64_t> e_mult_, e_primes_, e_offs_;
+    std::vector<int64_t> e_map_;
+    int64_t e_pad_ = 0;
+    const uint8_t* e_table_ = nullptr;
+    size_t e_row_bytes_ = 0;
+    // globals
+    const strata::TensorInfo* tok_embd_ = nullptr;
+    W out_norm_, output_, hc_head_fn_, hc_head_base_, hc_head_scale_;
+    std::vector<Layer> L_;
+    int n_run_ = 0, ctx_ = 0;
+    std::unique_ptr<strata::ds41::ExpertLane> lane_;
+    cudaStream_t s_ = nullptr;
+    std::vector<int> history_;
+    std::vector<float> logits_;
+    // device scratch
+    float *h_ = nullptr, *x_ = nullptr, *cur_ = nullptr, *flat_ = nullptr, *mix_ = nullptr, *coef_ = nullptr;
+    float *qr_ = nullptr, *q_ = nullptr, *kvpe_ = nullptr, *kvn_ = nullptr, *qa_ = nullptr, *q640_ = nullptr, *att_ = nullptr;
+    float *av_ = nullptr, *gt_ = nullptr, *o_ = nullptr, *ff_g_ = nullptr, *ff_u_ = nullptr, *ff_a_ = nullptr, *logit_e_ = nullptr;
+    float *rin_ = nullptr, *rout_ = nullptr, *sh_ = nullptr, *eng_r_ = nullptr, *eng_kv_ = nullptr, *cs_ = nullptr, *scores_ = nullptr;
+    float* logits_d_ = nullptr;
+    void* q8_ = nullptr;
+    void* q8b_ = nullptr;
+    // host staging
+    std::vector<float> h_logit_e_, h_rin_, h_rout_;
+
+    const strata::TensorInfo& T(const std::string& n) const {
+        const auto* t = g_.find(n);
+        if (!t) throw std::runtime_error("hy4f: missing tensor " + n);
+        return *t;
+    }
+    bool has(const std::string& n) const { return g_.find(n) != nullptr; }
+    const strata::MetaValue& M(const std::string& k) const {
+        const auto* v = g_.get("hy_v4_flash." + k);
+        if (!v) throw std::runtime_error("hy4f: missing hy_v4_flash." + k);
+        return *v;
+    }
+    std::vector<int64_t> ints(const std::string& k) const { return g_.int_array("hy_v4_flash." + k); }
+    template <class Tv> std::vector<Tv> items(const std::string& k) const {
+        std::vector<Tv> out;
+        for (const auto& it : M(k).items) out.push_back(Tv(it.is_num() ? it.num() : 0));
+        return out;
+    }
+
+    void read_config();
+    W upload(const std::string& name);
+    void load(int threads);
+    void gemv(const W& w, const float* x, float* y);              // quantizes x (w.in floats) first
+    void gemv_q8(const W& w, const void* q8, float* y);           // x already quantized
+    void rms(const float* x, const W* w, float* y, int n, void* q8 = nullptr);
+    void hc_pre(const W& fn, const W& scale, const W& base, bool post);
+    void attention(Layer& l, int pos);
+    void ffn(Layer& l);
+    void engram(Layer& l, int tok, int pos);
+    void dbg_host(const std::string& name, int il, const float* v, size_t n) {
+        if (!want_dump) return;
+        auto& d = dbg[name + "-" + std::to_string(il)];
+        d.insert(d.end(), v, v + n);
+    }
+    void dbg_dev(const std::string& name, int il, const float* v, size_t n) {
+        if (!want_dump) return;
+        std::vector<float> h(n);
+        ck(cudaMemcpyAsync(h.data(), v, n * 4, cudaMemcpyDeviceToHost, s_), "dbg");
+        ck(cudaStreamSynchronize(s_), "dbg sync");
+        dbg_host(name, il, h.data(), n);
+    }
+    int cur_layer_ = 0;
+    float* alloc(size_t floats) {
+        void* p = nullptr;
+        ck(cudaMalloc(&p, std::max<size_t>(floats, 4) * sizeof(float)), "alloc");
+        ck(cudaMemset(p, 0, std::max<size_t>(floats, 4) * sizeof(float)), "memset");
+        return (float*) p;
+    }
+};
+
+void Hy4::read_config() {
+    if (const auto* a = g_.get("general.architecture"); !a || a->s != "hy_v4_flash")
+        throw std::runtime_error("hy4f: not a hy_v4_flash GGUF");
+    const int blocks = int(M("block_count").u);
+    const int nextn = g_.get("hy_v4_flash.nextn_predict_layers") ? int(M("nextn_predict_layers").u) : 0;
+    n_layer_ = blocks - nextn;
+    n_embd_ = int(M("embedding_length").u);
+    vocab_ = int(M("vocab_size").u);
+    hc_ = int(M("hyper_connection.count").u);
+    hc_eps_ = float(M("hyper_connection.epsilon").num());
+    hc_mag_ = float(M("hyper_connection.magnitude").num());
+    n_expert_ = int(M("expert_count").u);
+    top_k_ = int(M("expert_used_count").u);
+    n_latent_ = int(M("expert_latent_length").u);
+    n_ff_exp_ = int(M("expert_feed_forward_length").u);
+    dense_ff_ = int(M("feed_forward_length").u);
+    q_rank_ = int(M("attention.q_lora_rank").u);
+    kv_rank_ = int(M("attention.kv_lora_rank").u);
+    rope_dim_ = int(M("rope.dimension_count").u);
+    k_head_ = int(M("attention.key_length_mla").u) - rope_dim_;   // the nope part (128)
+    v_head_ = int(M("attention.value_length_mla").u);
+    window_ = int(M("attention.sliding_window").u);
+    eps_ = float(M("attention.layer_norm_rms_epsilon").num());
+    w_scale_ = float(M("expert_weights_scale").num());
+    w_norm_ = M("expert_weights_norm").u != 0;
+    if (M("expert_gating_func").u != 2) throw std::runtime_error("hy4f: expected sigmoid gating");
+    rope_full_ = float(M("rope.freq_base").num());
+    rope_swa_ = float(M("rope.freq_base_swa").num());
+    const auto clamp = items<float>("swiglu_clamp_exp");
+    clamp_ = clamp.size() > 1 ? clamp[1] : 0.0f;
+    const auto heads = items<int>("attention.head_count");
+    const auto swa = items<int>("attention.sliding_window_pattern");
+    if (int(heads.size()) < n_layer_ || int(swa.size()) < n_layer_) throw std::runtime_error("hy4f: per-layer arrays too short");
+    if (kv_rank_ != 512 || rope_dim_ != 64 || n_embd_ % 256) throw std::runtime_error("hy4f: unexpected MLA geometry");
+    L_.resize(size_t(n_layer_));
+    const int dense_lead = int(M("leading_dense_block_count").u);
+    for (int i = 0; i < n_layer_; ++i) {
+        auto& l = L_[size_t(i)];
+        l.heads = heads[size_t(i)];
+        l.swa = swa[size_t(i)] != 0;
+        l.dense = i < dense_lead;
+        l.rope_base = l.swa ? rope_swa_ : rope_full_;
+        l.ring = l.swa ? window_ : ctx_;
+        if (l.heads % 8) throw std::runtime_error("hy4f: head count must be a multiple of 8");
+    }
+    if (ctx_ > 2048) throw std::runtime_error("hy4f: contexts above 2048 need the DSA indexer (not ported yet)");
+    // Engram (optional: a cut model from tools/hy4f_truncate_gguf.py has none)
+    if (!g_.get("hy_v4_flash.ple.layers")) return;
+    for (int64_t x : ints("ple.layers")) e_layers_.push_back(int(x));
+    ngram_ = int(M("ple.ngram_size").u);
+    e_heads_ = int(M("ple.heads_per_ngram").u);
+    e_dim_ = int(M("embedding_length_per_layer_input").u);
+    e_cols_ = (ngram_ - 1) * e_heads_;
+    for (int64_t x : ints("ple.layer_multipliers")) e_mult_.push_back(uint64_t(x));
+    for (int64_t x : ints("ple.head_offsets")) e_offs_.push_back(uint64_t(x));
+    for (int64_t x : ints("ple.head_vocab_sizes")) e_primes_.push_back(uint64_t(x));
+    e_map_ = ints("engram.token_map");
+    const int64_t pad_id = int64_t(M("engram.pad_token_id").u);
+    if (pad_id < 0 || pad_id >= int64_t(e_map_.size())) throw std::runtime_error("hy4f: Engram pad id out of the map");
+    e_pad_ = e_map_[size_t(pad_id)];
+    const size_t ne = e_layers_.size();
+    if (e_mult_.size() != ne * size_t(ngram_) || e_primes_.size() != ne * size_t(e_cols_) || e_offs_.size() != e_primes_.size())
+        throw std::runtime_error("hy4f: Engram metadata is inconsistent");
+    for (size_t e = 0; e < ne; ++e) {
+        if (e_layers_[e] >= n_layer_) throw std::runtime_error("hy4f: Engram layer out of range");
+        L_[size_t(e_layers_[e])].engram = true;
+        L_[size_t(e_layers_[e])].engram_idx = int(e);
+    }
+    const auto& tbl = T("per_layer_token_embd.weight");
+    if (tbl.type != kQ8_0 || int64_t(tbl.shape[0]) != e_dim_) throw std::runtime_error("hy4f: Engram table must be Q8_0 rows");
+    e_table_ = g_.tensor_data(tbl);
+    e_row_bytes_ = size_t(e_dim_ / 32 * 34);
+}
+
+W Hy4::upload(const std::string& name) {
+    const auto& t = T(name);
+    W w;
+    w.type = int(t.type);
+    w.in = int64_t(t.shape[0]);
+    w.out = int64_t(t.elements() / t.shape[0]);
+    size_t bytes = 0;
+    if (w.type == kF32) bytes = size_t(t.elements()) * 4;
+    else if (w.type == kQ8_0) bytes = size_t(t.elements() / 32) * 34;
+    else if (w.type == kNvfp4) bytes = size_t(t.elements() / 64) * 36;
+    else throw std::runtime_error("hy4f: " + name + " has unsupported type " + t.type_name());
+    ck(cudaMalloc(&w.d, std::max<size_t>(bytes, 16)), "weight alloc");
+    ck(cudaMemcpy(w.d, g_.tensor_data(t), bytes, cudaMemcpyHostToDevice), "weight upload");
+    return w;
+}
+
+void Hy4::load(int threads) {
+    const auto t0 = std::chrono::steady_clock::now();
+    size_t dev_bytes = 0;
+    auto up = [&](const std::string& n) {
+        W w = upload(n);
+        const auto& t = T(n);
+        dev_bytes += w.type == kF32 ? size_t(t.elements()) * 4 : w.type == kQ8_0 ? size_t(t.elements() / 32) * 34 : size_t(t.elements() / 64) * 36;
+        return w;
+    };
+    tok_embd_ = &T("token_embd.weight");
+    if (tok_embd_->type != kQ8_0) throw std::runtime_error("hy4f: token_embd must be Q8_0");
+    lane_ = std::make_unique<strata::ds41::ExpertLane>(n_latent_, n_ff_exp_, threads, true);
+    for (int i = 0; i < n_run_; ++i) {
+        auto& l = L_[size_t(i)];
+        const std::string p = "blk." + std::to_string(i) + ".";
+        l.attn_norm = up(p + "attn_norm.weight");
+        l.sinks = up(p + "attn_sinks.weight");
+        l.q_a = up(p + "attn_q_a.weight");
+        l.q_a_norm = up(p + "attn_q_a_norm.weight");
+        l.q_b = up(p + "attn_q_b.weight");
+        l.kv_a = up(p + "attn_kv_a_mqa.weight");
+        l.kv_a_norm = up(p + "attn_kv_a_norm.weight");
+        l.k_b = up(p + "attn_k_b.weight");
+        l.v_b = up(p + "attn_v_b.weight");
+        l.wo = up(p + "attn_output.weight");
+        l.gate = up(p + "attn_gate.weight");
+        l.post_attn_norm = up(p + "post_attention_norm.weight");
+        l.hc_attn_fn = up(p + "hc_attn_fn.weight");
+        l.hc_attn_base = up(p + "hc_attn_base.weight");
+        l.hc_attn_scale = up(p + "hc_attn_scale.weight");
+        l.hc_ffn_fn = up(p + "hc_ffn_fn.weight");
+        l.hc_ffn_base = up(p + "hc_ffn_base.weight");
+        l.hc_ffn_scale = up(p + "hc_ffn_scale.weight");
+        l.ffn_norm = up(p + "ffn_norm.weight");
+        l.post_ffn_norm = up(p + "post_ffw_norm.weight");
+        if (l.k_b.type != kQ8_0 || l.v_b.type != kQ8_0) throw std::runtime_error("hy4f: k_b / v_b must be Q8_0");
+        if (l.q_b.out != int64_t(l.heads) * (k_head_ + rope_dim_)) throw std::runtime_error("hy4f: q_b width");
+        if (l.dense) {
+            l.ffn_gate = up(p + "ffn_gate.weight");
+            l.ffn_up = up(p + "ffn_up.weight");
+            l.ffn_down = up(p + "ffn_down.weight");
+        } else {
+            l.gate_inp = up(p + "ffn_gate_inp.weight");
+            if (l.gate_inp.type != kF32) throw std::runtime_error("hy4f: router must be F32");
+            l.routed_down = up(p + "ffn_routed_down.weight");
+            l.routed_up = up(p + "ffn_routed_up.weight");
+            l.sh_gate = up(p + "ffn_gate_shexp.weight");
+            l.sh_up = up(p + "ffn_up_shexp.weight");
+            l.sh_down = up(p + "ffn_down_shexp.weight");
+            const auto& b = T(p + "exp_probs_b.bias");
+            l.bias.assign((const float*) g_.tensor_data(b), (const float*) g_.tensor_data(b) + n_expert_);
+            const auto& gt = T(p + "ffn_gate_exps.weight");
+            const auto& ut = T(p + "ffn_up_exps.weight");
+            const auto& dt = T(p + "ffn_down_exps.weight");
+            std::string err;
+            if (!cpu::native_fmt(int(gt.type), int(dt.type), n_latent_, n_ff_exp_, l.lane.f, err))
+                throw std::runtime_error("hy4f: " + p + " experts: " + err);
+            l.lane.f.swiglu_limit = clamp_;
+            l.lane.f.tail_off = 0;   // GGUF NVFP4 has no per-expert global-scale tail (native_fmt assumes Strata's packs)
+            l.lane.gate = g_.tensor_data(gt);
+            l.lane.up = g_.tensor_data(ut);
+            l.lane.down = g_.tensor_data(dt);
+            l.lane.gate_stride = l.lane.f.gu_row * size_t(n_ff_exp_);
+            l.lane.down_stride = l.lane.f.d_row * size_t(n_latent_);
+            if (l.lane.gate_stride * size_t(n_expert_) > size_t(gt.elements()) * 36 / 64 + 1)
+                throw std::runtime_error("hy4f: expert stride exceeds the tensor");
+        }
+        if (l.engram) {
+            l.eng_kv = up(p + "engram_kv.weight");
+            l.eng_kv_b = up(p + "engram_kv_b.weight");
+            l.eng_gate = up(p + "engram_gate.weight");
+            l.eng_gamma = up(p + "engram_pre_gamma.weight");
+            l.eng_hc_scale = up(p + "engram_hc_scale.weight");
+            const auto& ln = T(p + "engram_lookup_norm.weight");
+            l.lookup_norm.assign((const float*) g_.tensor_data(ln), (const float*) g_.tensor_data(ln) + ln.elements());
+        }
+        l.kv = alloc(size_t(l.ring) * kRow);
+    }
+    if (n_run_ == n_layer_) {
+        out_norm_ = up("output_norm.weight");
+        output_ = up("output.weight");
+        hc_head_fn_ = up("output_hc_fn.weight");
+        hc_head_base_ = up("output_hc_base.weight");
+        hc_head_scale_ = up("output_hc_scale.weight");
+        logits_d_ = alloc(size_t(vocab_));
+    }
+    int max_heads = 0;
+    for (const auto& l : L_) max_heads = std::max(max_heads, l.heads);
+    const size_t n = size_t(n_embd_);
+    h_ = alloc(n * hc_);
+    x_ = alloc(n);
+    cur_ = alloc(n);
+    flat_ = alloc(n * hc_);
+    mix_ = alloc(64);
+    coef_ = alloc(64);
+    qr_ = alloc(size_t(q_rank_));
+    q_ = alloc(size_t(max_heads) * (k_head_ + rope_dim_));
+    kvpe_ = alloc(size_t(kv_rank_ + rope_dim_));
+    kvn_ = alloc(size_t(kv_rank_));
+    qa_ = alloc(size_t(max_heads) * kv_rank_);
+    q640_ = alloc(size_t(max_heads) * kRow);
+    att_ = alloc(size_t(max_heads) * kRow);
+    av_ = alloc(size_t(max_heads) * v_head_);
+    gt_ = alloc(size_t(max_heads) * v_head_);
+    o_ = alloc(n);
+    const size_t ffw = size_t(std::max(dense_ff_, n_ff_exp_));
+    ff_g_ = alloc(ffw);
+    ff_u_ = alloc(ffw);
+    ff_a_ = alloc(ffw);
+    logit_e_ = alloc(size_t(n_expert_));
+    rin_ = alloc(size_t(n_latent_));
+    rout_ = alloc(size_t(n_latent_));
+    sh_ = alloc(n);
+    eng_r_ = alloc(size_t(std::max(1, e_cols_ * e_dim_)));
+    eng_kv_ = alloc(n * (hc_ + 1));
+    cs_ = alloc(size_t(rope_dim_));
+    scores_ = alloc(k::ds41_attention_scratch(max_heads) / 4 + 1);
+    const size_t q8 = std::max({n * hc_, ffw, size_t(max_heads) * v_head_, size_t(q_rank_), size_t(e_cols_ * e_dim_)}) / 32 * 36;
+    ck(cudaMalloc(&q8_, q8), "q8");
+    ck(cudaMalloc(&q8b_, q8), "q8b");
+    h_logit_e_.resize(size_t(n_expert_));
+    h_rin_.resize(size_t(n_latent_));
+    h_rout_.resize(size_t(n_latent_));
+    dumps.assign(size_t(n_run_), {});
+    const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    std::fprintf(stderr, "hy4f: %d of %d blocks, %.2f GiB on the GPU, %d lane threads, ctx %d, loaded in %.1f s\n", n_run_, n_layer_,
+                 double(dev_bytes) / double(1u << 30), threads, ctx_, s);
+}
+
+void Hy4::gemv_q8(const W& w, const void* q8, float* y) {
+    k::iq_mmvq(w.type, w.d, q8, y, int(w.in), int(w.out), 1, s_);
+}
+
+void Hy4::gemv(const W& w, const float* x, float* y) {
+    if (w.type == kF32) {
+        k::ds41_f32_gemv((const float*) w.d, x, y, int(w.out), int(w.in), s_);
+        return;
+    }
+    k::quantize_q8_1_rows(x, 1, w.in, q8b_, s_);
+    k::iq_mmvq(w.type, w.d, q8b_, y, int(w.in), int(w.out), 1, s_);
+}
+
+void Hy4::rms(const float* x, const W* w, float* y, int n, void* q8) {
+    if (q8) k::glm_rms_norm_rows_q8(x, w ? (const float*) w->d : nullptr, y, q8, n, 1, eps_, s_);
+    else k::glm_rms_norm_rows(x, w ? (const float*) w->d : nullptr, y, n, 1, eps_, s_);
+}
+
+// coef_ = pre[hc] (| post[hc]), x_ = sum_s pre_s h_s
+void Hy4::hc_pre(const W& fn, const W& scale, const W& base, bool post) {
+    const int n = n_embd_ * hc_;
+    rms(h_, nullptr, flat_, n, q8_);
+    gemv_q8(fn, q8_, mix_);
+    k::hy4_hc_coeff(mix_, (const float*) scale.d, (const float*) base.d, coef_, hc_, post, hc_mag_, hc_eps_, s_);
+    k::hy4_hc_pre(h_, coef_, x_, n_embd_, hc_, s_);
+}
+
+void Hy4::engram(Layer& l, int tok, int pos) {
+    const int e = l.engram_idx;
+    const int64_t dead = -1;
+    auto cid = [&](int t) -> int64_t { return t < 0 || t >= int(e_map_.size()) ? dead : e_map_[size_t(t)]; };
+    std::vector<uint64_t> toks(static_cast<size_t>(ngram_));
+    int64_t c = cid(tok);
+    const bool is_dead = c == dead;
+    toks[0] = uint64_t(is_dead ? e_pad_ : c);
+    for (int s = 1; s < ngram_; ++s) {
+        c = pos - s < 0 ? dead : cid(history_[size_t(pos - s)]);
+        toks[size_t(s)] = uint64_t(c == dead ? e_pad_ : c);
+    }
+    const uint64_t* mult = e_mult_.data() + size_t(e) * ngram_;
+    const uint64_t* primes = e_primes_.data() + size_t(e) * e_cols_;
+    const uint64_t* offs = e_offs_.data() + size_t(e) * e_cols_;
+    std::vector<float> rows(static_cast<size_t>(e_cols_ * e_dim_));
+    uint64_t rolling = toks[0] * mult[0];
+    for (int o = 1; o < ngram_; ++o) {
+        rolling ^= toks[size_t(o)] * mult[o];
+        for (int hh = 0; hh < e_heads_; ++hh) {
+            const int col = (o - 1) * e_heads_ + hh;
+            const uint64_t id = rolling % primes[col] + offs[col];
+            float* r = rows.data() + size_t(col) * e_dim_;
+            dequant_q8_0(e_table_ + id * e_row_bytes_, e_dim_, r);
+            // ggml_rms_norm: float sum, then 1 / sqrt(mean + eps); FLT_EPSILON as the reference's unset eps
+            float sum = 0;
+            for (int j = 0; j < e_dim_; ++j) sum += r[j] * r[j];
+            const float scale = 1.0f / std::sqrt(sum / float(e_dim_) + 1.1920929e-07f);
+            const float valid = is_dead ? 0.0f : 1.0f;
+            for (int j = 0; j < e_dim_; ++j) r[j] = r[j] * scale * l.lookup_norm[size_t(col) * e_dim_ + j] * valid;
+        }
+    }
+    ck(cudaMemcpyAsync(eng_r_, rows.data(), rows.size() * 4, cudaMemcpyHostToDevice, s_), "engram rows");
+    gemv(l.eng_kv, eng_r_, eng_kv_);
+    k::ds41_add(eng_kv_, (const float*) l.eng_kv_b.d, eng_kv_, n_embd_ * (hc_ + 1), s_);
+    k::hy4_engram(h_, eng_kv_, (const float*) l.eng_gate.d, (const float*) l.eng_gamma.d, (const float*) l.eng_hc_scale.d, n_embd_, hc_,
+                  1.1920929e-07f, !is_dead, s_);
+}
+
+void Hy4::attention(Layer& l, int pos) {
+    const int H = l.heads, qk = k_head_ + rope_dim_;
+    // cur_ normalized, its q8_1 in q8_
+    gemv_q8(l.q_a, q8_, qr_);
+    gemv_q8(l.kv_a, q8_, kvpe_);
+    gemv_q8(l.gate, q8_, gt_);
+    rms(qr_, &l.q_a_norm, qr_, q_rank_, q8b_);
+    gemv_q8(l.q_b, q8b_, q_);
+    rms(kvpe_, &l.kv_a_norm, kvn_, kv_rank_);
+    // rope (NORM: adjacent pairs) on q_pe (after the 128 nope values of each head) and k_pe
+    {
+        std::vector<float> cs(static_cast<size_t>(rope_dim_));
+        const float theta_scale = std::pow(l.rope_base, -2.0f / float(rope_dim_));
+        float theta = float(pos);
+        for (int i = 0; i < rope_dim_; i += 2) {
+            cs[size_t(i)] = std::cos(theta);
+            cs[size_t(i) + 1] = std::sin(theta);
+            theta *= theta_scale;
+        }
+        ck(cudaMemcpyAsync(cs_, cs.data(), cs.size() * 4, cudaMemcpyHostToDevice, s_), "rope table");
+        // the host vector must outlive the copy
+        ck(cudaStreamSynchronize(s_), "rope sync");
+    }
+    k::ds41_rope(q_, H, qk, k_head_, rope_dim_ / 2, cs_, s_);
+    k::ds41_rope(kvpe_, 1, kv_rank_ + rope_dim_, kv_rank_, rope_dim_ / 2, cs_, s_);
+    // absorb: qa[h] = W_kb[h] q_nope[h]  (W_kb[h]: [512][128])
+    k::hy4_q8_0_heads(l.k_b.d, q_, qk, qa_, kv_rank_, kv_rank_, k_head_, H, s_);
+    k::hy4_mla_pack_q(qa_, q_ + k_head_, qk, q640_, H, s_);
+    const int slot = pos % l.ring;
+    k::hy4_mla_pack_k(kvn_, kvpe_ + kv_rank_, l.kv + size_t(slot) * kRow, s_);
+    const int rows = std::min(pos + 1, l.ring);
+    const int first = ((pos - rows + 1) % l.ring + l.ring) % l.ring;
+    const float scale = 1.0f / std::sqrt(float(qk));
+    k::ds41_attention(q640_, H, kRow, l.kv, first, l.ring, rows, nullptr, 0, nullptr, 0, (const float*) l.sinks.d, scale, scores_,
+                      att_, s_);
+    // un-absorb: av[h] = W_vb[h] att[h][0..512)  (W_vb[h]: [256][512])
+    k::hy4_q8_0_heads(l.v_b.d, att_, kRow, av_, v_head_, v_head_, kv_rank_, H, s_);
+    k::hy4_mul_sigmoid(av_, gt_, av_, H * v_head_, s_);
+    gemv(l.wo, av_, o_);
+    rms(o_, &l.post_attn_norm, o_, n_embd_);
+}
+
+void Hy4::ffn(Layer& l) {
+    // cur_ normalized, its q8_1 in q8_
+    if (l.dense) {
+        gemv_q8(l.ffn_gate, q8_, ff_g_);
+        gemv_q8(l.ffn_up, q8_, ff_u_);
+        k::glm_swiglu(ff_g_, ff_u_, ff_a_, dense_ff_, 0.0f, s_);
+        gemv(l.ffn_down, ff_a_, o_);
+        rms(o_, &l.post_ffn_norm, o_, n_embd_);
+        return;
+    }
+    k::ds41_f32_gemv((const float*) l.gate_inp.d, cur_, logit_e_, n_expert_, n_embd_, s_);
+    gemv_q8(l.routed_down, q8_, rin_);
+    ck(cudaMemcpyAsync(h_logit_e_.data(), logit_e_, size_t(n_expert_) * 4, cudaMemcpyDeviceToHost, s_), "logits down");
+    ck(cudaMemcpyAsync(h_rin_.data(), rin_, size_t(n_latent_) * 4, cudaMemcpyDeviceToHost, s_), "latent down");
+    // shared expert on the GPU while the host routes and the lane runs
+    gemv_q8(l.sh_gate, q8_, ff_g_);
+    gemv_q8(l.sh_up, q8_, ff_u_);
+    k::glm_swiglu(ff_g_, ff_u_, ff_a_, n_ff_exp_, 0.0f, s_);
+    // the routed transfers were enqueued first: wait only for them
+    cudaEvent_t ev;
+    ck(cudaEventCreateWithFlags(&ev, cudaEventDisableTiming), "event");
+    ck(cudaEventRecord(ev, s_), "event record");
+    gemv(l.sh_down, ff_a_, sh_);
+    ck(cudaEventSynchronize(ev), "routed wait");
+    ck(cudaEventDestroy(ev), "event destroy");
+    // router: sigmoid scores, top-k on score + bias, weights = the unbiased scores, normed, scaled
+    std::vector<float> prob(static_cast<size_t>(n_expert_)), sel(static_cast<size_t>(n_expert_));
+    for (int e = 0; e < n_expert_; ++e) {
+        prob[size_t(e)] = 1.0f / (1.0f + std::exp(-h_logit_e_[size_t(e)]));
+        sel[size_t(e)] = prob[size_t(e)] + l.bias[size_t(e)];
+    }
+    std::vector<int> order(static_cast<size_t>(n_expert_));
+    std::iota(order.begin(), order.end(), 0);
+    std::partial_sort(order.begin(), order.begin() + top_k_, order.end(), [&](int a, int b) {
+        return sel[size_t(a)] > sel[size_t(b)] || (sel[size_t(a)] == sel[size_t(b)] && a < b);
+    });
+    std::vector<int32_t> ids(static_cast<size_t>(top_k_));
+    std::vector<float> w(static_cast<size_t>(top_k_));
+    float sum = 0;
+    for (int i = 0; i < top_k_; ++i) {
+        ids[size_t(i)] = order[size_t(i)];
+        w[size_t(i)] = prob[size_t(order[size_t(i)])];
+        sum += w[size_t(i)];
+    }
+    if (w_norm_) {
+        sum = std::max(sum, 6.103515625e-5f);
+        for (auto& x : w) x /= sum;
+    }
+    for (auto& x : w) x *= w_scale_;
+    const auto t0 = std::chrono::steady_clock::now();
+    lane_->run(l.lane, h_rin_.data(), 1, ids.data(), w.data(), top_k_, h_rout_.data());
+    dbg_host("ffn_moe_logits", cur_layer_, h_logit_e_.data(), h_logit_e_.size());
+    dbg_host("ffn_moe_out", cur_layer_, h_rout_.data(), h_rout_.size());
+    expert_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    ck(cudaMemcpyAsync(rout_, h_rout_.data(), size_t(n_latent_) * 4, cudaMemcpyHostToDevice, s_), "latent up");
+    gemv(l.routed_up, rout_, o_);
+    k::ds41_add(o_, sh_, o_, n_embd_, s_);
+    rms(o_, &l.post_ffn_norm, o_, n_embd_);
+    ck(cudaStreamSynchronize(s_), "ffn sync");   // h_rout_ is reused by the next layer
+}
+
+const std::vector<float>& Hy4::step(int tok, int pos) {
+    if (pos >= ctx_) throw std::runtime_error("hy4f: context full");
+    if (int(history_.size()) != pos) history_.resize(size_t(pos));
+    history_.push_back(tok);
+    const auto t0 = std::chrono::steady_clock::now();
+    // embedding (Q8_0 row) -> the hc streams
+    std::vector<float> emb(static_cast<size_t>(n_embd_));
+    dequant_q8_0(g_.tensor_data(*tok_embd_) + size_t(tok) * size_t(n_embd_ / 32 * 34), n_embd_, emb.data());
+    ck(cudaMemcpyAsync(x_, emb.data(), emb.size() * 4, cudaMemcpyHostToDevice, s_), "embedding");
+    k::ds41_broadcast_streams(x_, h_, n_embd_, s_);
+    for (int i = 0; i < n_run_; ++i) {
+        auto& l = L_[size_t(i)];
+        if (l.engram) engram(l, tok, pos);
+        hc_pre(l.hc_attn_fn, l.hc_attn_scale, l.hc_attn_base, true);
+        rms(x_, &l.attn_norm, cur_, n_embd_, q8_);
+        cur_layer_ = i;
+        dbg_dev("attn_norm", i, cur_, size_t(n_embd_));
+        attention(l, pos);
+        dbg_dev("attn_out", i, o_, size_t(n_embd_));
+        k::hy4_hc_post(o_, coef_ + hc_, h_, n_embd_, hc_, s_);
+        hc_pre(l.hc_ffn_fn, l.hc_ffn_scale, l.hc_ffn_base, true);
+        rms(x_, &l.ffn_norm, cur_, n_embd_, q8_);
+        ffn(l);
+        dbg_dev("ffn_out", i, o_, size_t(n_embd_));
+        k::hy4_hc_post(o_, coef_ + hc_, h_, n_embd_, hc_, s_);
+        if (want_dump) {
+            dumps[size_t(i)].resize(size_t(n_embd_) * hc_);
+            ck(cudaMemcpyAsync(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4, cudaMemcpyDeviceToHost, s_), "dump");
+        }
+    }
+    if (n_run_ == n_layer_) {
+        rms(h_, nullptr, flat_, n_embd_ * hc_, q8_);
+        gemv_q8(hc_head_fn_, q8_, mix_);
+        k::hy4_hc_coeff(mix_, (const float*) hc_head_scale_.d, (const float*) hc_head_base_.d, coef_, hc_, false, 1.0f, hc_eps_, s_);
+        k::hy4_hc_pre(h_, coef_, x_, n_embd_, hc_, s_);
+        rms(x_, &out_norm_, cur_, n_embd_, q8_);
+        gemv_q8(output_, q8_, logits_d_);
+        logits_.resize(size_t(vocab_));
+        ck(cudaMemcpyAsync(logits_.data(), logits_d_, logits_.size() * 4, cudaMemcpyDeviceToHost, s_), "logits");
+    }
+    ck(cudaStreamSynchronize(s_), "step");
+    gpu_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    return logits_;
+}
+
+std::vector<int> parse_ids(const std::string& s) {
+    std::vector<int> out;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ','))
+        if (!item.empty()) out.push_back(std::stoi(item));
+    return out;
+}
+
+void write_bin(const std::string& file, const std::vector<float>& v, const int64_t ne[4]) {
+    std::ofstream f(file, std::ios::binary);
+    if (!f) throw std::runtime_error("cannot write " + file);
+    const int32_t type = 0;
+    f.write((const char*) &type, 4);
+    for (int i = 0; i < 4; ++i) f.write((const char*) &ne[i], 8);
+    f.write((const char*) v.data(), std::streamsize(v.size() * 4));
+}
+
+int run(int argc, char** argv) {
+    if (argc < 2) {
+        std::fprintf(stderr, "usage: strata-hy4f MODEL.gguf --ids 1,2,3 [--n 32] [--layers L] [--dump DIR] [--threads 15] [--ctx 2048]\n");
+        return 2;
+    }
+    std::string model = argv[1], dump;
+    std::vector<int> ids;
+    int n_gen = 16, layers = 0, threads = 15, ctx = 2048;
+    for (int i = 2; i < argc; ++i) {
+        const std::string a = argv[i];
+        auto next = [&]() -> std::string {
+            if (i + 1 >= argc) throw std::runtime_error("missing value for " + a);
+            return argv[++i];
+        };
+        if (a == "--ids") ids = parse_ids(next());
+        else if (a == "--n") n_gen = std::stoi(next());
+        else if (a == "--layers") layers = std::stoi(next());
+        else if (a == "--dump") dump = next();
+        else if (a == "--threads") threads = std::stoi(next());
+        else if (a == "--ctx") ctx = std::stoi(next());
+        else throw std::runtime_error("unknown argument " + a);
+    }
+    if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
+    Hy4 m(model, threads, ctx, layers);
+    const bool partial = m.n_run() < m.n_layer();
+    m.want_dump = !dump.empty();
+    std::vector<std::vector<float>> all(static_cast<size_t>(m.n_run()));
+    std::vector<float> all_logits;
+    auto t0 = std::chrono::steady_clock::now();
+    int next = -1;
+    for (size_t p = 0; p < ids.size(); ++p) {
+        const auto& lg = m.step(ids[p], int(p));
+        if (m.want_dump)
+            for (int i = 0; i < m.n_run(); ++i) all[size_t(i)].insert(all[size_t(i)].end(), m.dumps[size_t(i)].begin(), m.dumps[size_t(i)].end());
+        if (!lg.empty()) {
+            if (m.want_dump) all_logits.insert(all_logits.end(), lg.begin(), lg.end());
+            next = int(std::max_element(lg.begin(), lg.end()) - lg.begin());
+        }
+    }
+    const double prompt_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    std::fprintf(stderr, "hy4f: prompt %zu tokens in %.2f s (%.1f ms/token, lane %.1f ms/token)\n", ids.size(), prompt_s,
+                 prompt_s * 1e3 / double(ids.size()), m.expert_ms / double(ids.size()));
+    if (!dump.empty()) {
+        std::filesystem::create_directories(dump);
+        for (int i = 0; i < m.n_run(); ++i) {
+            const int64_t ne[4] = {3072, 4, int64_t(ids.size()), 1};
+            write_bin(dump + "/l_out-" + std::to_string(i) + ".bin", all[size_t(i)], ne);
+        }
+        for (const auto& [name, v] : m.dbg) {
+            const int64_t ne[4] = {int64_t(v.size() / ids.size()), int64_t(ids.size()), 1, 1};
+            write_bin(dump + "/" + name + ".bin", v, ne);
+        }
+        if (!all_logits.empty()) {
+            const int64_t ne[4] = {m.vocab(), int64_t(ids.size()), 1, 1};
+            write_bin(dump + "/result_output.bin", all_logits, ne);
+        }
+    }
+    if (partial || next < 0) return 0;
+    std::vector<int> out;
+    m.expert_ms = 0;
+    m.gpu_ms = 0;
+    t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < n_gen; ++i) {
+        out.push_back(next);
+        const auto& lg = m.step(next, int(ids.size() + size_t(i)));
+        next = int(std::max_element(lg.begin(), lg.end()) - lg.begin());
+    }
+    const double gen_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("%s\n", join_ids(out).c_str());
+    std::fprintf(stderr, "hy4f: decode %d tokens in %.2f s: %.2f tok/s (lane %.1f ms/token)\n", n_gen, gen_s, double(n_gen) / gen_s,
+                 m.expert_ms / std::max(1, n_gen));
+    return 0;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "strata-hy4f: %s\n", e.what());
+        return 1;
+    }
+}
