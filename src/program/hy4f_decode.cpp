@@ -232,6 +232,11 @@ public:
     int vocab() const { return vocab_; }
     double expert_ms = 0, gpu_ms = 0;
     Tier tier;
+    // STRATA_HY4F_PROF=1: per-phase host times (ms, summed over steps); attention is synchronized to be measured
+    bool prof = false;
+    double prof_attn = 0, prof_route = 0, prof_experts = 0, prof_post = 0;
+    using clk = std::chrono::steady_clock;
+    static double ms(clk::time_point a, clk::time_point b) { return std::chrono::duration<double, std::milli>(b - a).count(); }
     void tier_setup(double gib, double reserve_gib, int budget);
 
 private:
@@ -824,6 +829,7 @@ void Hy4::indexer(Layer& l, int pos, int& nsel) {
 }
 
 void Hy4::ffn(Layer& l) {
+    const auto tf = clk::now();
     // cur_ normalized, its q8_1 in q8_
     if (l.dense) {
         gemv_q8(l.ffn_gate, q8_, ff_g_);
@@ -845,6 +851,8 @@ void Hy4::ffn(Layer& l) {
     ck(cudaEventRecord(ev_, s_), "event record");
     gemv(l.sh_down, ff_a_, sh_);
     ck(cudaEventSynchronize(ev_), "routed wait");
+    const auto tr = clk::now();
+    if (prof) prof_route += ms(tf, tr);
     // router: sigmoid scores, top-k on score + bias, weights = the unbiased scores, normed, scaled
     std::vector<float> prob(static_cast<size_t>(n_expert_)), sel(static_cast<size_t>(n_expert_));
     for (int e = 0; e < n_expert_; ++e) {
@@ -906,6 +914,8 @@ void Hy4::ffn(Layer& l) {
         }
     }
     lane_->finish();
+    const auto te = clk::now();
+    if (prof) prof_experts += ms(tr, te);
     dbg_host("ffn_moe_logits", cur_layer_, h_logit_e_, size_t(n_expert_));
     expert_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     ck(cudaMemcpyAsync(rout_, h_rout_, size_t(n_latent_) * 4, cudaMemcpyHostToDevice, s_), "latent up");
@@ -915,6 +925,7 @@ void Hy4::ffn(Layer& l) {
     k::ds41_add(o_, sh_, o_, n_embd_, s_);
     rms(o_, &l.post_ffn_norm, o_, n_embd_);
     ck(cudaStreamSynchronize(s_), "ffn sync");   // h_rout_ is reused by the next layer
+    if (prof) prof_post += ms(te, clk::now());
 }
 
 const std::vector<float>& Hy4::step(int tok, int pos) {
@@ -950,7 +961,9 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
         rms(x_, &l.attn_norm, cur_, n_embd_, q8_);
         cur_layer_ = i;
         dbg_dev("attn_norm", i, cur_, size_t(n_embd_));
+        auto ta = clk::now();
         attention(l, pos);
+        if (prof) { ck(cudaStreamSynchronize(s_), "prof"); prof_attn += ms(ta, clk::now()); }
         dbg_dev("attn_out", i, o_, size_t(n_embd_));
         k::hy4_hc_post(o_, coef_ + hc_, h_, n_embd_, hc_, s_);
         hc_pre(l.hc_ffn_fn, l.hc_ffn_scale, l.hc_ffn_base, true);
@@ -1026,6 +1039,7 @@ int run(int argc, char** argv) {
     if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
     Hy4 m(model, threads, ctx, layers);
     m.tier_setup(tier_gib, reserve_gib, budget);
+    m.prof = std::getenv("STRATA_HY4F_PROF") && std::string(std::getenv("STRATA_HY4F_PROF")) == "1";
     const bool partial = m.n_run() < m.n_layer();
     m.want_dump = !dump.empty();
     std::vector<std::vector<float>> all(static_cast<size_t>(m.n_run()));
@@ -1063,6 +1077,7 @@ int run(int argc, char** argv) {
     std::vector<int> out;
     m.expert_ms = 0;
     m.tier.hits = m.tier.routes = m.tier.promotions = 0;
+    m.prof_attn = m.prof_route = m.prof_experts = m.prof_post = 0;
     m.gpu_ms = 0;
     t0 = std::chrono::steady_clock::now();
     for (int i = 0; i < n_gen; ++i) {
@@ -1075,6 +1090,10 @@ int run(int argc, char** argv) {
     std::fprintf(stderr, "hy4f: decode %d tokens in %.2f s: %.2f tok/s (experts %.1f ms/token; tier hit %.1f%%, %ld uploads)\n", n_gen,
                  gen_s, double(n_gen) / gen_s, m.expert_ms / std::max(1, n_gen),
                  m.tier.routes ? 100.0 * double(m.tier.hits) / double(m.tier.routes) : 0.0, m.tier.promotions);
+    if (m.prof)
+        std::fprintf(stderr, "hy4f prof (ms/token): attention %.2f, to router %.2f, experts %.2f, after experts %.2f, other %.2f\n",
+                     m.prof_attn / n_gen, m.prof_route / n_gen, m.prof_experts / n_gen, m.prof_post / n_gen,
+                     gen_s * 1e3 / n_gen - (m.prof_attn + m.prof_route + m.prof_experts + m.prof_post) / n_gen);
     return 0;
 }
 
