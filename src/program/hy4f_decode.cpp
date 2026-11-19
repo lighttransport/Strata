@@ -24,6 +24,7 @@
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/hy4f.hpp"
 #include "strata/kernels/iq_kernels.hpp"
+#include "strata/kernels/native_mmvq.hpp"
 
 #include <cuda_runtime.h>
 
@@ -234,6 +235,7 @@ public:
     Tier tier;
     // STRATA_HY4F_PROF=1: per-phase host times (ms, summed over steps); attention is synchronized to be measured
     bool prof = false;
+    bool fused = true;   // STRATA_HY4F_UNFUSED=1: the separate kernels (A/B)
     double prof_attn = 0, prof_route = 0, prof_experts = 0, prof_post = 0;
     using clk = std::chrono::steady_clock;
     static double ms(clk::time_point a, clk::time_point b) { return std::chrono::duration<double, std::milli>(b - a).count(); }
@@ -308,6 +310,8 @@ private:
     void gemv_q8(const W& w, const void* q8, float* y);           // x already quantized
     void rms(const float* x, const W* w, float* y, int n, void* q8 = nullptr);
     void hc_pre(const W& fn, const W& scale, const W& base, bool post);
+    void hc_mix(const W& fn, const W& scale, const W& base, bool post, const W& norm);   // + norm -> cur_, q8_
+    void post(const W& norm, const float* add);
     void attention(Layer& l, int pos);
     void ffn(Layer& l);
     void engram(Layer& l, int tok, int pos);
@@ -592,8 +596,8 @@ void Hy4::load(int threads) {
     ff_g_ = alloc(ffw);
     ff_u_ = alloc(ffw);
     ff_a_ = alloc(ffw);
-    logit_e_ = alloc(size_t(n_expert_));
-    rin_ = alloc(size_t(n_latent_));
+    logit_e_ = alloc(size_t(n_expert_ + n_latent_));   // one download: router logits then the latent
+    rin_ = logit_e_ + n_expert_;
     rout_ = alloc(size_t(n_latent_));
     sh_ = alloc(n);
     eng_r_ = alloc(size_t(std::max(1, e_cols_ * e_dim_)));
@@ -614,10 +618,22 @@ void Hy4::load(int threads) {
     const size_t q8 = std::max({n * hc_, ffw, size_t(max_heads) * v_head_, size_t(q_rank_), size_t(e_cols_ * e_dim_)}) / 32 * 36;
     ck(cudaMalloc(&q8_, q8), "q8");
     ck(cudaMalloc(&q8b_, q8), "q8b");
-    h_logit_e_ = pinned(size_t(n_expert_));
-    h_rin_ = pinned(size_t(n_latent_));
+    h_logit_e_ = pinned(size_t(n_expert_ + n_latent_));
+    h_rin_ = h_logit_e_ + n_expert_;
     h_rout_ = pinned(size_t(n_latent_));
     dumps.assign(size_t(n_run_), {});
+    if (fused) {   // warm-up: every fused kernel once on scratch, then a sync (see run())
+        const auto& l0 = L_[0];
+        k::hy4_hc_mix(h_, l0.hc_attn_fn.d, 2 * hc_, (const float*) l0.hc_attn_scale.d, (const float*) l0.hc_attn_base.d, coef_, hc_mag_,
+                      hc_eps_, eps_, (const float*) l0.attn_norm.d, x_, cur_, q8_, n_embd_, hc_, s_);
+        k::hy4_norm_hc_post(o_, nullptr, (const float*) l0.attn_norm.d, coef_ + hc_, flat_, n_embd_, hc_, eps_, s_);
+        k::hy4_mla_finish(q_, l0.heads, k_head_ + rope_dim_, k_head_, kvpe_, (const float*) l0.kv_a_norm.d, cs_, q640_, att_, eps_, s_);
+        k::hy4_mul_sigmoid_q8(av_, gt_, q8b_, 32, s_);
+        ck(cudaStreamSynchronize(s_), "warm-up");
+        ck(cudaMemsetAsync(cur_, 0, size_t(n_embd_) * 4, s_), "reset");
+        ck(cudaMemsetAsync(coef_, 0, 64 * 4, s_), "reset");
+        ck(cudaStreamSynchronize(s_), "warm-up");
+    }
     const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     std::fprintf(stderr, "hy4f: %d of %d blocks, %.2f GiB on the GPU, %d lane threads, ctx %d, loaded in %.1f s\n", n_run_, n_layer_,
                  double(dev_bytes) / double(1u << 30), threads, ctx_, s);
@@ -690,6 +706,26 @@ void Hy4::rms(const float* x, const W* w, float* y, int n, void* q8) {
 }
 
 // coef_ = pre[hc] (| post[hc]), x_ = sum_s pre_s h_s
+void Hy4::hc_mix(const W& fn, const W& scale, const W& base, bool post, const W& norm) {
+    if (fused && fn.type == kNvfp4) {
+        k::hy4_hc_mix(h_, fn.d, post ? 2 * hc_ : hc_, (const float*) scale.d, (const float*) base.d, coef_, hc_mag_, hc_eps_, eps_,
+                      (const float*) norm.d, x_, cur_, q8_, n_embd_, hc_, s_);
+        return;
+    }
+    hc_pre(fn, scale, base, post);
+    rms(x_, &norm, cur_, n_embd_, q8_);
+}
+
+void Hy4::post(const W& norm, const float* add) {   // h_s += rms(o_ + add) * norm * post_s
+    if (fused) {
+        k::hy4_norm_hc_post(o_, add, (const float*) norm.d, coef_ + hc_, h_, n_embd_, hc_, eps_, s_);
+        return;
+    }
+    if (add) k::ds41_add(o_, add, o_, n_embd_, s_);
+    rms(o_, &norm, o_, n_embd_);
+    k::hy4_hc_post(o_, coef_ + hc_, h_, n_embd_, hc_, s_);
+}
+
 void Hy4::hc_pre(const W& fn, const W& scale, const W& base, bool post) {
     const int n = n_embd_ * hc_;
     rms(h_, nullptr, flat_, n, q8_);
@@ -750,16 +786,22 @@ void Hy4::attention(Layer& l, int pos) {
         gemv_q8(l.ix_k, q8_, ik_);
         gemv_q8(l.ix_proj, q8_, iw_);
     }
-    rms(kvpe_, &l.kv_a_norm, kvn_, kv_rank_);
-    // rope (NORM: adjacent pairs) on q_pe (after the 128 nope values of each head) and k_pe; tables from step()
     const float* cs = cs_ + (l.swa ? rope_dim_ : 0);
-    k::ds41_rope(q_, H, qk, k_head_, rope_dim_ / 2, cs, s_);
-    k::ds41_rope(kvpe_, 1, kv_rank_ + rope_dim_, kv_rank_, rope_dim_ / 2, cs, s_);
-    // absorb: qa[h] = W_kb[h] q_nope[h]  (W_kb[h]: [512][128])
-    k::hy4_q8_0_heads(l.k_b.d, q_, qk, qa_, kv_rank_, kv_rank_, k_head_, H, s_);
-    k::hy4_mla_pack_q(qa_, q_ + k_head_, qk, q640_, H, s_);
     const int slot = pos % l.ring;
-    k::hy4_mla_pack_k(kvn_, kvpe_ + kv_rank_, l.kv + size_t(slot) * kRow, s_);
+    if (fused) {
+        // absorb straight into the 640-wide rows; then rope tails, the normed latent and the cache row in one launch
+        k::hy4_q8_0_heads(l.k_b.d, q_, qk, q640_, kRow, kv_rank_, k_head_, H, s_);
+        k::hy4_mla_finish(q_, H, qk, k_head_, kvpe_, (const float*) l.kv_a_norm.d, cs, q640_, l.kv + size_t(slot) * kRow, eps_, s_);
+    } else {
+        rms(kvpe_, &l.kv_a_norm, kvn_, kv_rank_);
+        // rope (NORM: adjacent pairs) on q_pe (after the 128 nope values of each head) and k_pe; tables from step()
+        k::ds41_rope(q_, H, qk, k_head_, rope_dim_ / 2, cs, s_);
+        k::ds41_rope(kvpe_, 1, kv_rank_ + rope_dim_, kv_rank_, rope_dim_ / 2, cs, s_);
+        // absorb: qa[h] = W_kb[h] q_nope[h]  (W_kb[h]: [512][128])
+        k::hy4_q8_0_heads(l.k_b.d, q_, qk, qa_, kv_rank_, kv_rank_, k_head_, H, s_);
+        k::hy4_mla_pack_q(qa_, q_ + k_head_, qk, q640_, H, s_);
+        k::hy4_mla_pack_k(kvn_, kvpe_ + kv_rank_, l.kv + size_t(slot) * kRow, s_);
+    }
     const int rows = std::min(pos + 1, l.ring);
     const int first = ((pos - rows + 1) % l.ring + l.ring) % l.ring;
     const float scale = 1.0f / std::sqrt(float(qk));
@@ -772,9 +814,13 @@ void Hy4::attention(Layer& l, int pos) {
                           att_, s_);
     // un-absorb: av[h] = W_vb[h] att[h][0..512)  (W_vb[h]: [256][512])
     k::hy4_q8_0_heads(l.v_b.d, att_, kRow, av_, v_head_, v_head_, kv_rank_, H, s_);
-    k::hy4_mul_sigmoid(av_, gt_, av_, H * v_head_, s_);
-    gemv(l.wo, av_, o_);
-    rms(o_, &l.post_attn_norm, o_, n_embd_);
+    if (fused) {
+        k::hy4_mul_sigmoid_q8(av_, gt_, q8b_, H * v_head_, s_);
+        gemv_q8(l.wo, q8b_, o_);
+    } else {
+        k::hy4_mul_sigmoid(av_, gt_, av_, H * v_head_, s_);
+        gemv(l.wo, av_, o_);
+    }   // the post norm is in post()
 }
 
 
@@ -834,22 +880,31 @@ void Hy4::ffn(Layer& l) {
     if (l.dense) {
         gemv_q8(l.ffn_gate, q8_, ff_g_);
         gemv_q8(l.ffn_up, q8_, ff_u_);
-        k::glm_swiglu(ff_g_, ff_u_, ff_a_, dense_ff_, 0.0f, s_);
-        gemv(l.ffn_down, ff_a_, o_);
-        rms(o_, &l.post_ffn_norm, o_, n_embd_);
+        if (fused) {
+            k::native_swiglu_quantize_q8_1(ff_g_, ff_u_, q8b_, dense_ff_, 1, s_);
+            gemv_q8(l.ffn_down, q8b_, o_);
+        } else {
+            k::glm_swiglu(ff_g_, ff_u_, ff_a_, dense_ff_, 0.0f, s_);
+            gemv(l.ffn_down, ff_a_, o_);
+        }
+        post(l.post_ffn_norm, nullptr);
         return;
     }
     k::ds41_f32_gemv((const float*) l.gate_inp.d, cur_, logit_e_, n_expert_, n_embd_, s_);
     gemv_q8(l.routed_down, q8_, rin_);
-    ck(cudaMemcpyAsync(h_logit_e_, logit_e_, size_t(n_expert_) * 4, cudaMemcpyDeviceToHost, s_), "logits down");
-    ck(cudaMemcpyAsync(h_rin_, rin_, size_t(n_latent_) * 4, cudaMemcpyDeviceToHost, s_), "latent down");
+    ck(cudaMemcpyAsync(h_logit_e_, logit_e_, size_t(n_expert_ + n_latent_) * 4, cudaMemcpyDeviceToHost, s_), "router + latent down");
     // shared expert on the GPU while the host routes and the lane runs
     gemv_q8(l.sh_gate, q8_, ff_g_);
     gemv_q8(l.sh_up, q8_, ff_u_);
-    k::glm_swiglu(ff_g_, ff_u_, ff_a_, n_ff_exp_, 0.0f, s_);
     // the routed transfers were enqueued first: wait only for them
     ck(cudaEventRecord(ev_, s_), "event record");
-    gemv(l.sh_down, ff_a_, sh_);
+    if (fused) {
+        k::native_swiglu_quantize_q8_1(ff_g_, ff_u_, q8b_, n_ff_exp_, 1, s_);
+        gemv_q8(l.sh_down, q8b_, sh_);
+    } else {
+        k::glm_swiglu(ff_g_, ff_u_, ff_a_, n_ff_exp_, 0.0f, s_);
+        gemv(l.sh_down, ff_a_, sh_);
+    }
     ck(cudaEventSynchronize(ev_), "routed wait");
     const auto tr = clk::now();
     if (prof) prof_route += ms(tf, tr);
@@ -922,8 +977,7 @@ void Hy4::ffn(Layer& l) {
     if (!gpu.empty()) k::ds41_add(rout_, tier.sum, rout_, n_latent_, s_);
     dbg_dev("ffn_moe_out", cur_layer_, rout_, size_t(n_latent_));
     gemv(l.routed_up, rout_, o_);
-    k::ds41_add(o_, sh_, o_, n_embd_, s_);
-    rms(o_, &l.post_ffn_norm, o_, n_embd_);
+    post(l.post_ffn_norm, sh_);
     ck(cudaStreamSynchronize(s_), "ffn sync");   // h_rout_ is reused by the next layer
     if (prof) prof_post += ms(te, clk::now());
 }
@@ -957,31 +1011,22 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
     for (int i = 0; i < n_run_; ++i) {
         auto& l = L_[size_t(i)];
         if (l.engram) engram(l, tok, pos);
-        hc_pre(l.hc_attn_fn, l.hc_attn_scale, l.hc_attn_base, true);
-        rms(x_, &l.attn_norm, cur_, n_embd_, q8_);
+        hc_mix(l.hc_attn_fn, l.hc_attn_scale, l.hc_attn_base, true, l.attn_norm);
         cur_layer_ = i;
         dbg_dev("attn_norm", i, cur_, size_t(n_embd_));
         auto ta = clk::now();
         attention(l, pos);
         if (prof) { ck(cudaStreamSynchronize(s_), "prof"); prof_attn += ms(ta, clk::now()); }
-        dbg_dev("attn_out", i, o_, size_t(n_embd_));
-        k::hy4_hc_post(o_, coef_ + hc_, h_, n_embd_, hc_, s_);
-        hc_pre(l.hc_ffn_fn, l.hc_ffn_scale, l.hc_ffn_base, true);
-        rms(x_, &l.ffn_norm, cur_, n_embd_, q8_);
-        ffn(l);
-        dbg_dev("ffn_out", i, o_, size_t(n_embd_));
-        k::hy4_hc_post(o_, coef_ + hc_, h_, n_embd_, hc_, s_);
+        post(l.post_attn_norm, nullptr);
+        hc_mix(l.hc_ffn_fn, l.hc_ffn_scale, l.hc_ffn_base, true, l.ffn_norm);
+        ffn(l);   // its post() is inside: the routed and shared sums are added there
         if (want_dump) {
             dumps[size_t(i)].resize(size_t(n_embd_) * hc_);
             d2h(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4);
         }
     }
     if (n_run_ == n_layer_) {
-        rms(h_, nullptr, flat_, n_embd_ * hc_, q8_);
-        gemv_q8(hc_head_fn_, q8_, mix_);
-        k::hy4_hc_coeff(mix_, (const float*) hc_head_scale_.d, (const float*) hc_head_base_.d, coef_, hc_, false, 1.0f, hc_eps_, s_);
-        k::hy4_hc_pre(h_, coef_, x_, n_embd_, hc_, s_);
-        rms(x_, &out_norm_, cur_, n_embd_, q8_);
+        hc_mix(hc_head_fn_, hc_head_scale_, hc_head_base_, false, out_norm_);
         gemv_q8(output_, q8_, logits_d_);
         logits_.resize(size_t(vocab_));
         d2h(logits_.data(), logits_d_, logits_.size() * 4);
@@ -1036,9 +1081,13 @@ int run(int argc, char** argv) {
         else throw std::runtime_error("unknown argument " + a);
     }
     setenv("STRATA_DS41_ATTN_SPLIT", std::to_string(kAttnSplit).c_str(), 0);
+    // a fused kernel's first launch once produced nothing (position 0 all zeros; not reproduced in 6 runs since):
+    // load every code object up front, and warm the kernels up in load()
+    setenv("HIP_ENABLE_DEFERRED_LOADING", "0", 0);
     if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
     Hy4 m(model, threads, ctx, layers);
     m.tier_setup(tier_gib, reserve_gib, budget);
+    m.fused = !(std::getenv("STRATA_HY4F_UNFUSED") && std::string(std::getenv("STRATA_HY4F_UNFUSED")) == "1");
     m.prof = std::getenv("STRATA_HY4F_PROF") && std::string(std::getenv("STRATA_HY4F_PROF")) == "1";
     const bool partial = m.n_run() < m.n_layer();
     m.want_dump = !dump.empty();

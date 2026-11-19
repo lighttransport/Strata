@@ -39,4 +39,21 @@ void hy4_engram(float* h, const float* kv, const float* g, const float* gamma, c
 /// out[c] = sum_m softmax_m(gate[m][c] + ape[m dim + c]) value[m][c].
 void hy4_kpool(const float* vg, const float* ape, float* out, int kpool, int dim, void* stream);
 
+// ---- fused decode kernels (one launch each instead of 2-5)
+/// The whole iHC mix: r = rms(h [hc][n] as one row, eps rms_eps); mixes[j] = NVFP4 row j of fn (rows of hc n values) . (h r)
+/// for j < rows; coeff = hy4_hc_coeff (rows == 2 hc: pre and post; rows == hc: pre only); x = sum_s pre_s h_s;
+/// y = rms(x) * norm_w (eps rms_eps) and its q8_1 blocks (n % 32 == 0). One block; mixes use FP32 activations.
+void hy4_hc_mix(const float* h, const void* fn, int rows, const float* scale, const float* base, float* coeff, float magnitude,
+                float hc_eps, float rms_eps, const float* norm_w, float* x, float* y, void* y_q8, int n, int hc, void* stream);
+/// h_s += rms(x + add) * w * post[s] for the hc streams (add may be null): the post norm and the residual write in one.
+void hy4_norm_hc_post(const float* x, const float* add, const float* w, const float* post, float* h, int n, int hc, float eps,
+                      void* stream);
+/// MLA rows after the projections: q640[h][512..640) = [rope(q[h][nope..nope+64)) | 0] for every head (q640[h][0..512) is
+/// the absorbed query, written by hy4_q8_0_heads), and the cache row k = [rms(kvpe[0..512)) * kv_w | rope(kvpe[512..576)) | 0].
+/// cs: 32 {cos, sin} pairs (ds41_rope's convention).
+void hy4_mla_finish(const float* q, int heads, int q_stride, int nope, const float* kvpe, const float* kv_w, const float* cs, float* q640,
+                    float* krow, float eps, void* stream);
+/// q8_1 blocks of x[i] sigmoid(g[i]) (n % 32 == 0): the attention gate and the wo input quantization in one.
+void hy4_mul_sigmoid_q8(const float* x, const float* g, void* q8, int n, void* stream);
+
 }  // namespace strata::kernels

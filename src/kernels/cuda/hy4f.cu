@@ -2,6 +2,7 @@
 // Reductions go through shared memory with a fixed tree, so they do not depend on the wave width (wave32 on RDNA,
 // warp 32 on NVIDIA).
 #include "strata/kernels/hy4f.hpp"
+#include "strata/kernels/q8_1_finite.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -134,6 +135,152 @@ __global__ void kpool_kernel(const float* vg, const float* ape, float* out, int 
     out[c] = acc / den;
 }
 
+
+// ---- fused kernels
+struct Q81 { half2 ds; int8_t qs[32]; };   // ggml block_q8_1 (36 bytes)
+
+// value i of a q8_1 row set: the 32 lanes of a warp hold block i / 32 (iq_kernels.cu q8_1_store, the same bits)
+__device__ __forceinline__ void q81_store(const float xi, Q81* y, const long long i) {
+    float amax = fabsf(xi), sum = xi;
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1) {
+        amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+        sum += __shfl_xor_sync(0xffffffffu, sum, o);
+    }
+    const float d = q8_1_finite(amax / 127.0f);
+    y[i / 32].qs[i % 32] = q8_1_quant(xi, d, amax);
+    if (i % 32 == 0) y[i / 32].ds = q8_1_ds(d, sum);
+}
+
+__device__ __forceinline__ float ue4m3_half(uint8_t x) {   // ggml_cuda_ue4m3_to_fp32 (iq_kernels.cu ue4m3_to_f32_half)
+    if (x == 0 || x == 0x7F) return 0.0f;
+    const uint32_t e = (x >> 3) & 0xF, m = x & 0x7;
+    return e == 0 ? (float) m * 0.0009765625f : __uint_as_float(((e + 119u) << 23) | (m << 20));
+}
+__constant__ float kFp4[16] = {0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12};
+
+constexpr int kBig = 256;   // one workgroup; 1024 waits for a free CU on a shared GPU (4x slower wall time measured)
+
+__device__ float big_sum(float v, float* sh) {
+    const int t = threadIdx.x;
+    sh[t] = v;
+    __syncthreads();
+    for (int s = kBig / 2; s > 0; s >>= 1) {
+        if (t < s) sh[t] += sh[t + s];
+        __syncthreads();
+    }
+    const float r = sh[0];
+    __syncthreads();
+    return r;
+}
+
+__global__ void __launch_bounds__(kBig) hc_mix_kernel(const float* h, const uint8_t* fn, int rows, const float* scale, const float* base,
+                                                       float* coeff, float mag, float hc_eps, float rms_eps, const float* nw, float* x,
+                                                       float* y, Q81* yq, int n, int hc) {
+    __shared__ float sh[kBig];
+    __shared__ float cf[16];
+    const int t = threadIdx.x, N = n * hc;
+    float ss = 0;
+    for (int i = t; i < N; i += kBig) ss += h[i] * h[i];
+    const float r = 1.0f / sqrtf(big_sum(ss, sh) / N + rms_eps);
+    const int nb = N / 64;
+    const size_t row_bytes = size_t(nb) * 36;
+    for (int j = 0; j < rows; ++j) {
+        float acc = 0;
+        for (int b = t; b < nb; b += kBig) {
+            const uint8_t* blk = fn + size_t(j) * row_bytes + size_t(b) * 36;
+            const float* hv = h + size_t(b) * 64;
+#pragma unroll
+            for (int sb = 0; sb < 4; ++sb) {
+                const float d = ue4m3_half(blk[sb]);
+                float part = 0;
+#pragma unroll
+                for (int k = 0; k < 8; ++k) {
+                    const uint8_t q = blk[4 + sb * 8 + k];
+                    part += kFp4[q & 0xF] * hv[sb * 16 + k] + kFp4[q >> 4] * hv[sb * 16 + 8 + k];
+                }
+                acc += d * part;
+            }
+        }
+        const float m = big_sum(acc, sh) * r;
+        if (t == 0) {
+            if (j < hc) cf[j] = 1.0f / (1.0f + expf(-(m * scale[0] + base[j]))) + hc_eps;
+            else cf[j] = 1.0f / (1.0f + expf(-(m * scale[1] + base[j]))) * mag + hc_eps;
+        }
+    }
+    __syncthreads();
+    if (t < rows) coeff[t] = cf[t];
+    float s2 = 0;
+    for (int i = t; i < n; i += kBig) {
+        float v = h[i] * cf[0];
+        for (int s = 1; s < hc; ++s) v += h[size_t(s) * n + i] * cf[s];
+        x[i] = v;
+        s2 += v * v;
+    }
+    const float r2 = 1.0f / sqrtf(big_sum(s2, sh) / n + rms_eps);
+    for (int i = t; i < n; i += kBig) {   // n % 32 == 0 and kBig % 32 == 0: whole warps per q8_1 block
+        const float v = x[i] * r2 * nw[i];
+        y[i] = v;
+        q81_store(v, yq, i);
+    }
+}
+
+__global__ void __launch_bounds__(kBig) norm_hc_post_kernel(const float* x, const float* add, const float* w, const float* post, float* h,
+                                                             int n, int hc, float eps) {
+    __shared__ float sh[kBig];
+    const int t = threadIdx.x;
+    float ss = 0;
+    for (int i = t; i < n; i += kBig) {
+        const float v = add ? x[i] + add[i] : x[i];
+        ss += v * v;
+    }
+    const float r = 1.0f / sqrtf(big_sum(ss, sh) / n + eps);
+    for (int i = t; i < n; i += kBig) {
+        const float v = (add ? x[i] + add[i] : x[i]) * r * w[i];
+        for (int s = 0; s < hc; ++s) h[size_t(s) * n + i] = h[size_t(s) * n + i] + v * post[s];
+    }
+}
+
+__device__ __forceinline__ void rot(float x0, float x1, float c, float s, float* o) {
+    o[0] = __fsub_rn(__fmul_rn(x0, c), __fmul_rn(x1, s));
+    o[1] = __fadd_rn(__fmul_rn(x0, s), __fmul_rn(x1, c));
+}
+
+// blocks 0..heads-1: a head's rope tail; block heads: the cache row (128 threads)
+__global__ void mla_finish_kernel(const float* q, int heads, int q_stride, int nope, const float* kvpe, const float* kv_w, const float* cs,
+                                  float* q640, float* krow, float eps) {
+    const int t = threadIdx.x;
+    if (blockIdx.x < heads) {
+        float* out = q640 + size_t(blockIdx.x) * 640;
+        const float* pe = q + size_t(blockIdx.x) * q_stride + nope;
+        if (t < 32) rot(pe[2 * t], pe[2 * t + 1], cs[2 * t], cs[2 * t + 1], out + 512 + 2 * t);
+        else if (t < 96) out[576 + (t - 32)] = 0.0f;
+        return;
+    }
+    __shared__ float sh[128];
+    float ss = 0;
+    for (int i = t; i < 512; i += 128) ss += kvpe[i] * kvpe[i];
+    sh[t] = ss;
+    __syncthreads();
+    for (int s = 64; s > 0; s >>= 1) {
+        if (t < s) sh[t] += sh[t + s];
+        __syncthreads();
+    }
+    const float r = 1.0f / sqrtf(sh[0] / 512 + eps);
+    for (int i = t; i < 512; i += 128) krow[i] = kvpe[i] * r * kv_w[i];
+    if (t < 32) rot(kvpe[512 + 2 * t], kvpe[512 + 2 * t + 1], cs[2 * t], cs[2 * t + 1], krow + 512 + 2 * t);
+    else if (t < 96) krow[576 + (t - 32)] = 0.0f;
+}
+
+__global__ void mul_sigmoid_q8_kernel(const float* x, const float* g, Q81* y, int n) {
+#if defined(__HIPCC__)
+#pragma clang fp contract(off)
+#endif
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    q81_store(x[i] * (1.0f / (1.0f + expf(-g[i]))), y, i);
+}
+
 }  // namespace
 
 void hy4_hc_coeff(const float* mixes, const float* scale, const float* base, float* out, int hc, bool with_post, float magnitude,
@@ -176,6 +323,29 @@ void hy4_engram(float* h, const float* kv, const float* g, const float* gamma, c
 void hy4_kpool(const float* vg, const float* ape, float* out, int kpool, int dim, void* stream) {
     kpool_kernel<<<(dim + 127) / 128, 128, 0, (cudaStream_t) stream>>>(vg, ape, out, kpool, dim);
     check("kpool");
+}
+
+void hy4_hc_mix(const float* h, const void* fn, int rows, const float* scale, const float* base, float* coeff, float magnitude,
+                float hc_eps, float rms_eps, const float* norm_w, float* x, float* y, void* y_q8, int n, int hc, void* stream) {
+    if (n % 32 || (n * hc) % 64 || rows > 16) throw std::invalid_argument("hy4_hc_mix: shape");
+    hc_mix_kernel<<<1, kBig, 0, (cudaStream_t) stream>>>(h, (const uint8_t*) fn, rows, scale, base, coeff, magnitude, hc_eps, rms_eps,
+                                                          norm_w, x, y, (Q81*) y_q8, n, hc);
+    check("hc_mix");
+}
+void hy4_norm_hc_post(const float* x, const float* add, const float* w, const float* post, float* h, int n, int hc, float eps,
+                      void* stream) {
+    norm_hc_post_kernel<<<1, kBig, 0, (cudaStream_t) stream>>>(x, add, w, post, h, n, hc, eps);
+    check("norm_hc_post");
+}
+void hy4_mla_finish(const float* q, int heads, int q_stride, int nope, const float* kvpe, const float* kv_w, const float* cs, float* q640,
+                    float* krow, float eps, void* stream) {
+    mla_finish_kernel<<<heads + 1, 128, 0, (cudaStream_t) stream>>>(q, heads, q_stride, nope, kvpe, kv_w, cs, q640, krow, eps);
+    check("mla_finish");
+}
+void hy4_mul_sigmoid_q8(const float* x, const float* g, void* q8, int n, void* stream) {
+    if (n % 32) throw std::invalid_argument("hy4_mul_sigmoid_q8: n % 32");
+    mul_sigmoid_q8_kernel<<<(n + 255) / 256, 256, 0, (cudaStream_t) stream>>>(x, g, (Q81*) q8, n);
+    check("mul_sigmoid_q8");
 }
 
 }  // namespace strata::kernels
