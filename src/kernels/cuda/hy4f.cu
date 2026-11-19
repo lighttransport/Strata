@@ -120,6 +120,20 @@ __global__ void engram_kernel(float* h, const float* kv, const float* g, const f
     for (int j = threadIdx.x; j < n; j += kThreads) hs[j] += (val[j] * rv * gamma[j]) * (gate + hc_scale[size_t(s) * n + j]);
 }
 
+__global__ void kpool_kernel(const float* vg, const float* ape, float* out, int kpool, int dim) {
+    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= dim) return;
+    float mx = -INFINITY;
+    for (int m = 0; m < kpool; ++m) mx = fmaxf(mx, vg[size_t(m) * 2 * dim + dim + c] + ape[size_t(m) * dim + c]);
+    float den = 0, acc = 0;
+    for (int m = 0; m < kpool; ++m) {
+        const float e = expf(vg[size_t(m) * 2 * dim + dim + c] + ape[size_t(m) * dim + c] - mx);
+        den += e;
+        acc += e * vg[size_t(m) * 2 * dim + c];
+    }
+    out[c] = acc / den;
+}
+
 }  // namespace
 
 void hy4_hc_coeff(const float* mixes, const float* scale, const float* base, float* out, int hc, bool with_post, float magnitude,
@@ -157,6 +171,11 @@ void hy4_engram(float* h, const float* kv, const float* g, const float* gamma, c
                 bool any, void* stream) {
     engram_kernel<<<hc, kThreads, 0, (cudaStream_t) stream>>>(h, kv, g, gamma, hc_scale, n, hc, eps, any);
     check("engram");
+}
+
+void hy4_kpool(const float* vg, const float* ape, float* out, int kpool, int dim, void* stream) {
+    kpool_kernel<<<(dim + 127) / 128, 128, 0, (cudaStream_t) stream>>>(vg, ape, out, kpool, dim);
+    check("kpool");
 }
 
 }  // namespace strata::kernels

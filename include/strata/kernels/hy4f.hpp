@@ -35,4 +35,8 @@ void hy4_mul_sigmoid(const float* x, const float* g, float* y, int n, void* stre
 void hy4_engram(float* h, const float* kv, const float* g, const float* gamma, const float* hc_scale, int n, int hc,
                 float eps, bool any, void* stream);
 
+/// DSA kpool: one pooled indexer key from a complete group of `kpool` cache rows vg[m] = [value (dim) | gate (dim)]:
+/// out[c] = sum_m softmax_m(gate[m][c] + ape[m dim + c]) value[m][c].
+void hy4_kpool(const float* vg, const float* ape, float* out, int kpool, int dim, void* stream);
+
 }  // namespace strata::kernels

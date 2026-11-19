@@ -53,6 +53,7 @@ void ck(cudaError_t e, const char* what) {
 }
 
 constexpr int kF32 = 0, kQ8_0 = 8, kNvfp4 = 40;
+constexpr int kAttnSplit = 8;
 constexpr int kRow = 640;   // MLA attention row: latent 512 | rope 64 | zero pad (ds41_attention wants dim % 128)
 
 float half_to_float(uint16_t h) {
@@ -96,6 +97,9 @@ struct Layer {
     W ffn_gate, ffn_up, ffn_down;                                   // dense
     W gate_inp, routed_down, routed_up, sh_gate, sh_up, sh_down;     // MoE
     W eng_kv, eng_kv_b, eng_gate, eng_gamma, eng_hc_scale;
+    bool indexer = false;
+    W ix_qb, ix_k, ix_knorm, ix_proj, ix_ape, ix_gate, ix_val, ix_cnorm;
+    float *vg = nullptr, *pooled = nullptr;   // per position [value | gate], per complete group the pooled key
     std::vector<float> bias, lookup_norm;                            // host: router bias, Engram row norm
     strata::ds41::LaneLayer lane;
     float* kv = nullptr;   // ring [ring][kRow]
@@ -213,6 +217,7 @@ public:
         read_config();
         n_run_ = layers > 0 ? std::min(layers, n_layer_) : n_layer_;
         ck(cudaStreamCreateWithFlags(&s_, cudaStreamNonBlocking), "stream");
+        ck(cudaHostAlloc((void**) &ring_, ring_cap_, cudaHostAllocDefault), "h2d ring");
         load(threads);
     }
 
@@ -236,6 +241,13 @@ private:
     float eps_ = 0, hc_eps_ = 0, hc_mag_ = 0, w_scale_ = 1, clamp_ = 0;
     bool w_norm_ = true;
     float rope_full_ = 0, rope_swa_ = 0;
+    int ix_top_ = 0, ix_heads_ = 0, ix_dim_ = 0, kpool_ = 0;
+    float *iq_ = nullptr, *ik_ = nullptr, *iw_ = nullptr, *iscore_ = nullptr, *cs2_ = nullptr;
+    int* isel_ = nullptr;
+    std::vector<float> h_iscore_, h_cs2_;
+    std::vector<int> h_isel_;
+    long sparse_calls = 0;
+    void indexer(Layer& l, int pos, int& nsel);
     // Engram
     std::vector<int> e_layers_;
     int ngram_ = 0, e_heads_ = 0, e_dim_ = 0, e_cols_ = 0;
@@ -262,7 +274,8 @@ private:
     void* q8_ = nullptr;
     void* q8b_ = nullptr;
     // host staging
-    std::vector<float> h_logit_e_, h_rin_, h_rout_, h_cs_;
+    float *h_logit_e_ = nullptr, *h_rin_ = nullptr, *h_rout_ = nullptr;   // pinned
+    std::vector<float> h_cs_;
     cudaEvent_t ev_ = nullptr;
 
     const strata::TensorInfo& T(const std::string& n) const {
@@ -301,11 +314,45 @@ private:
     void dbg_dev(const std::string& name, int il, const float* v, size_t n) {
         if (!want_dump) return;
         std::vector<float> h(n);
-        ck(cudaMemcpyAsync(h.data(), v, n * 4, cudaMemcpyDeviceToHost, s_), "dbg");
-        ck(cudaStreamSynchronize(s_), "dbg sync");
+        d2h(h.data(), v, n * 4);
         dbg_host(name, il, h.data(), n);
     }
     int cur_layer_ = 0;
+    // Every host<->device copy goes through pinned memory: no pageable / file-mapped source reaches the driver (a
+    // 2026-11-19 TR16 hang followed amdgpu svm_range work and a corrupted page freelist; pageable copies from the
+    // mmapped GGUF were in flight). h2d: a pinned ring on the decode stream (synchronized when it wraps); d2h: synchronous.
+    uint8_t* ring_ = nullptr;
+    size_t ring_cap_ = size_t(64) << 20, ring_off_ = 0;
+    uint8_t* back_ = nullptr;
+    size_t back_cap_ = 0;
+    void h2d(void* dst, const void* src, size_t n) {
+        const auto* p = (const uint8_t*) src;
+        auto* d = (uint8_t*) dst;
+        while (n) {
+            const size_t c = std::min(n, ring_cap_);
+            if (ring_off_ + c > ring_cap_) { ck(cudaStreamSynchronize(s_), "h2d ring"); ring_off_ = 0; }
+            std::memcpy(ring_ + ring_off_, p, c);
+            ck(cudaMemcpyAsync(d, ring_ + ring_off_, c, cudaMemcpyHostToDevice, s_), "h2d");
+            ring_off_ = (ring_off_ + c + 255) & ~size_t(255);
+            p += c; d += c; n -= c;
+        }
+    }
+    void d2h(void* dst, const void* src, size_t n) {
+        if (n > back_cap_) {
+            if (back_) ck(cudaFreeHost(back_), "d2h free");
+            back_cap_ = std::max(n, size_t(1) << 20);
+            ck(cudaHostAlloc((void**) &back_, back_cap_, cudaHostAllocDefault), "d2h buffer");
+        }
+        ck(cudaMemcpyAsync(back_, src, n, cudaMemcpyDeviceToHost, s_), "d2h");
+        ck(cudaStreamSynchronize(s_), "d2h sync");
+        std::memcpy(dst, back_, n);
+    }
+    float* pinned(size_t floats) {
+        void* p = nullptr;
+        ck(cudaHostAlloc(&p, floats * 4, cudaHostAllocDefault), "pinned");
+        std::memset(p, 0, floats * 4);
+        return (float*) p;
+    }
     float* alloc(size_t floats) {
         void* p = nullptr;
         ck(cudaMalloc(&p, std::max<size_t>(floats, 4) * sizeof(float)), "alloc");
@@ -359,7 +406,21 @@ void Hy4::read_config() {
         l.ring = l.swa ? window_ : ctx_;
         if (l.heads % 8) throw std::runtime_error("hy4f: head count must be a multiple of 8");
     }
-    if (ctx_ > 2048) throw std::runtime_error("hy4f: contexts above 2048 need the DSA indexer (not ported yet)");
+    if (g_.get("hy_v4_flash.attention.indexer.top_k")) {
+        ix_top_ = int(M("attention.indexer.top_k").u);
+        ix_heads_ = int(M("attention.indexer.head_count").u);
+        ix_dim_ = int(M("attention.indexer.key_length").u);
+        kpool_ = int(M("attention.indexer.kpool").u);
+        if (!g_.get("hy_v4_flash.attention.indexer.kpool_select_tail") || !M("attention.indexer.kpool_select_tail").u)
+            throw std::runtime_error("hy4f: only the select-tail indexer is implemented");
+        const auto types = items<int>("attention.indexer.types");
+        for (int i = 0; i < n_layer_ && i < int(types.size()); ++i) L_[size_t(i)].indexer = types[size_t(i)] != 0;
+        for (const auto& l : L_)
+            if (l.indexer && l.swa) throw std::runtime_error("hy4f: a window layer owns an indexer");
+        for (const auto& l : L_)
+            if (!l.indexer && !l.swa && ctx_ > ix_top_) throw std::runtime_error("hy4f: a full layer without an indexer");
+        if (ix_dim_ != 128 || kpool_ < 2 || ix_top_ % kpool_) throw std::runtime_error("hy4f: unexpected indexer geometry");
+    } else if (ctx_ > 4096) throw std::runtime_error("hy4f: no indexer: context limited to 4096 rows");
     // Engram (optional: a cut model from tools/hy4f_truncate_gguf.py has none)
     if (!g_.get("hy_v4_flash.ple.layers")) return;
     for (int64_t x : ints("ple.layers")) e_layers_.push_back(int(x));
@@ -400,7 +461,8 @@ W Hy4::upload(const std::string& name) {
     else if (w.type == kNvfp4) bytes = size_t(t.elements() / 64) * 36;
     else throw std::runtime_error("hy4f: " + name + " has unsupported type " + t.type_name());
     ck(cudaMalloc(&w.d, std::max<size_t>(bytes, 16)), "weight alloc");
-    ck(cudaMemcpy(w.d, g_.tensor_data(t), bytes, cudaMemcpyHostToDevice), "weight upload");
+    h2d(w.d, g_.tensor_data(t), bytes);
+    ck(cudaStreamSynchronize(s_), "weight upload");
     return w;
 }
 
@@ -481,6 +543,18 @@ void Hy4::load(int threads) {
             l.lookup_norm.assign((const float*) g_.tensor_data(ln), (const float*) g_.tensor_data(ln) + ln.elements());
         }
         l.kv = alloc(size_t(l.ring) * kRow);
+        if (l.indexer) {
+            l.ix_qb = up(p + "indexer.attn_q_b.weight");
+            l.ix_k = up(p + "indexer.attn_k.weight");
+            l.ix_knorm = up(p + "indexer.k_norm.weight");
+            l.ix_proj = up(p + "indexer.proj.weight");
+            l.ix_ape = up(p + "indexer_compressor_ape.weight");
+            l.ix_gate = up(p + "indexer_compressor_gate.weight");
+            l.ix_val = up(p + "indexer_compressor_value.weight");
+            l.ix_cnorm = up(p + "indexer_compressor_norm.weight");
+            l.vg = alloc(size_t(ctx_) * 2 * ix_dim_);
+            l.pooled = alloc(size_t(ctx_ / kpool_ + 1) * ix_dim_);
+        }
     }
     if (n_run_ == n_layer_) {
         out_norm_ = up("output_norm.weight");
@@ -520,14 +594,24 @@ void Hy4::load(int threads) {
     eng_r_ = alloc(size_t(std::max(1, e_cols_ * e_dim_)));
     eng_kv_ = alloc(n * (hc_ + 1));
     cs_ = alloc(size_t(rope_dim_) * 2);
+    if (ix_dim_) {
+        iq_ = alloc(size_t(ix_heads_) * ix_dim_);
+        ik_ = alloc(size_t(ix_dim_));
+        iw_ = alloc(size_t(ix_heads_));
+        iscore_ = alloc(size_t(ctx_ / kpool_ + 1));
+        cs2_ = alloc(size_t(rope_dim_));
+        ck(cudaMalloc((void**) &isel_, size_t(ctx_ + kpool_) * 4), "isel");
+    }
     ck(cudaEventCreateWithFlags(&ev_, cudaEventDisableTiming), "event");
-    scores_ = alloc(k::ds41_attention_scratch(max_heads) / 4 + 1);
+    // + the split-output partials (STRATA_DS41_ATTN_SPLIT, set in run(): the unsplit kernel stages 8 x rows floats in LDS,
+    // past 64 KB near 2048 rows)
+    scores_ = alloc(k::ds41_attention_scratch(max_heads) / 4 + size_t(kAttnSplit) * max_heads * kRow + 1);
     const size_t q8 = std::max({n * hc_, ffw, size_t(max_heads) * v_head_, size_t(q_rank_), size_t(e_cols_ * e_dim_)}) / 32 * 36;
     ck(cudaMalloc(&q8_, q8), "q8");
     ck(cudaMalloc(&q8b_, q8), "q8b");
-    h_logit_e_.resize(size_t(n_expert_));
-    h_rin_.resize(size_t(n_latent_));
-    h_rout_.resize(size_t(n_latent_));
+    h_logit_e_ = pinned(size_t(n_expert_));
+    h_rin_ = pinned(size_t(n_latent_));
+    h_rout_ = pinned(size_t(n_latent_));
     dumps.assign(size_t(n_run_), {});
     const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     std::fprintf(stderr, "hy4f: %d of %d blocks, %.2f GiB on the GPU, %d lane threads, ctx %d, loaded in %.1f s\n", n_run_, n_layer_,
@@ -550,7 +634,9 @@ void Hy4::tier_setup(double gib, double reserve_gib, int budget) {
         throw std::runtime_error("hy4f: GPU expert blob layout does not match the GGUF rows");
     size_t free_b = 0, total_b = 0;
     ck(cudaMemGetInfo(&free_b, &total_b), "mem info");
-    const double want = gib > 0 ? gib * double(1u << 30) : double(free_b) - reserve_gib * double(1u << 30);
+    // default (gib < 0): free VRAM - reserve, at most 4 GiB (the card is shared: trunk ~4.2 GB + 4 = ~8 GB in all)
+    const double want = gib > 0 ? gib * double(1u << 30)
+                                : std::min(double(free_b) - reserve_gib * double(1u << 30), 4.0 * double(1u << 30));
     t.slots = want > 0 ? int(want / double(t.blob)) : 0;
     if (t.slots <= 0) { t.slots = 0; return; }
     ck(cudaMalloc(&t.arena, size_t(t.slots) * t.blob), "tier arena");
@@ -639,7 +725,7 @@ void Hy4::engram(Layer& l, int tok, int pos) {
             for (int j = 0; j < e_dim_; ++j) r[j] = r[j] * scale * l.lookup_norm[size_t(col) * e_dim_ + j] * valid;
         }
     }
-    ck(cudaMemcpyAsync(eng_r_, rows.data(), rows.size() * 4, cudaMemcpyHostToDevice, s_), "engram rows");
+    h2d(eng_r_, rows.data(), rows.size() * 4);
     gemv(l.eng_kv, eng_r_, eng_kv_);
     k::ds41_add(eng_kv_, (const float*) l.eng_kv_b.d, eng_kv_, n_embd_ * (hc_ + 1), s_);
     k::hy4_engram(h_, eng_kv_, (const float*) l.eng_gate.d, (const float*) l.eng_gamma.d, (const float*) l.eng_hc_scale.d, n_embd_, hc_,
@@ -654,6 +740,11 @@ void Hy4::attention(Layer& l, int pos) {
     gemv_q8(l.gate, q8_, gt_);
     rms(qr_, &l.q_a_norm, qr_, q_rank_, q8b_);
     gemv_q8(l.q_b, q8b_, q_);
+    if (l.indexer) {   // the inputs are live now: qr's q8_1 (q8b_) and cur's (q8_)
+        gemv_q8(l.ix_qb, q8b_, iq_);
+        gemv_q8(l.ix_k, q8_, ik_);
+        gemv_q8(l.ix_proj, q8_, iw_);
+    }
     rms(kvpe_, &l.kv_a_norm, kvn_, kv_rank_);
     // rope (NORM: adjacent pairs) on q_pe (after the 128 nope values of each head) and k_pe; tables from step()
     const float* cs = cs_ + (l.swa ? rope_dim_ : 0);
@@ -667,13 +758,69 @@ void Hy4::attention(Layer& l, int pos) {
     const int rows = std::min(pos + 1, l.ring);
     const int first = ((pos - rows + 1) % l.ring + l.ring) % l.ring;
     const float scale = 1.0f / std::sqrt(float(qk));
-    k::ds41_attention(q640_, H, kRow, l.kv, first, l.ring, rows, nullptr, 0, nullptr, 0, (const float*) l.sinks.d, scale, scores_,
-                      att_, s_);
+    int nsel = 0;
+    if (l.indexer) indexer(l, pos, nsel);
+    if (nsel > 0)   // the selected rows only (the tail and the top pools); positions are the full layer's slots
+        k::ds41_attention(q640_, H, kRow, l.kv, 0, 1, 0, l.kv, kRow, isel_, nsel, (const float*) l.sinks.d, scale, scores_, att_, s_);
+    else
+        k::ds41_attention(q640_, H, kRow, l.kv, first, l.ring, rows, nullptr, 0, nullptr, 0, (const float*) l.sinks.d, scale, scores_,
+                          att_, s_);
     // un-absorb: av[h] = W_vb[h] att[h][0..512)  (W_vb[h]: [256][512])
     k::hy4_q8_0_heads(l.v_b.d, att_, kRow, av_, v_head_, v_head_, kv_rank_, H, s_);
     k::hy4_mul_sigmoid(av_, gt_, av_, H * v_head_, s_);
     gemv(l.wo, av_, o_);
     rms(o_, &l.post_attn_norm, o_, n_embd_);
+}
+
+
+// DSA kpool indexer of a full layer at `pos` (llama.cpp build_kpool_select, select-tail): this token's [value | gate]
+// row, the pooled key of a group it completes, and - when more complete groups precede its own than the top-k keeps -
+// the selection: the top (top_k / kpool - 1) groups by score plus the token's own group (the tail). nsel = 0: every
+// row is selected (exact full attention).
+void Hy4::indexer(Layer& l, int pos, int& nsel) {
+    const int D = ix_dim_, half = D - rope_dim_;
+    // query: rope on the trailing rope_dim of each head, at pos (the full layers' table)
+    k::ds41_rope(iq_, ix_heads_, D, half, rope_dim_ / 2, cs_, s_);
+    rms(ik_, &l.ix_knorm, ik_, D);
+    float* row = l.vg + size_t(pos) * 2 * D;
+    gemv(l.ix_val, ik_, row);
+    gemv(l.ix_gate, ik_, row + D);
+    if (pos % kpool_ == kpool_ - 1) {
+        const int g = pos / kpool_;
+        float* pk = l.pooled + size_t(g) * D;
+        k::hy4_kpool(l.vg + size_t(g) * kpool_ * 2 * D, (const float*) l.ix_ape.d, pk, kpool_, D, s_);
+        rms(pk, &l.ix_cnorm, pk, D);
+        // rotated at its first member's position
+        h_cs2_.resize(size_t(rope_dim_));
+        const float theta_scale = std::pow(rope_full_, -2.0f / float(rope_dim_));
+        float theta = float(g * kpool_);
+        for (int i = 0; i < rope_dim_; i += 2) {
+            h_cs2_[size_t(i)] = std::cos(theta);
+            h_cs2_[size_t(i) + 1] = std::sin(theta);
+            theta *= theta_scale;
+        }
+        h2d(cs2_, h_cs2_.data(), h_cs2_.size() * 4);
+        k::ds41_rope(pk, 1, D, half, rope_dim_ / 2, cs2_, s_);
+    }
+    const int visible = pos / kpool_;                  // complete groups before the token's own
+    const int top = ix_top_ / kpool_ - 1;
+    nsel = 0;
+    if (visible <= top) return;
+    k::ds41_index_score(iq_, ix_heads_, D, l.pooled, D, visible, iw_, 1.0f / std::sqrt(float(D * ix_heads_)), iscore_, s_);
+    h_iscore_.resize(size_t(visible));
+    d2h(h_iscore_.data(), iscore_, size_t(visible) * 4);
+    std::vector<int> order(static_cast<size_t>(visible));
+    std::iota(order.begin(), order.end(), 0);
+    std::partial_sort(order.begin(), order.begin() + top, order.end(), [&](int a, int b) {
+        return h_iscore_[size_t(a)] > h_iscore_[size_t(b)] || (h_iscore_[size_t(a)] == h_iscore_[size_t(b)] && a < b);
+    });
+    h_isel_.clear();
+    for (int i = 0; i < top; ++i)
+        for (int m = 0; m < kpool_; ++m) h_isel_.push_back(order[size_t(i)] * kpool_ + m);
+    for (int p = pos - pos % kpool_; p <= pos; ++p) h_isel_.push_back(p);
+    nsel = int(h_isel_.size());
+    h2d(isel_, h_isel_.data(), h_isel_.size() * 4);
+    ++sparse_calls;
 }
 
 void Hy4::ffn(Layer& l) {
@@ -688,8 +835,8 @@ void Hy4::ffn(Layer& l) {
     }
     k::ds41_f32_gemv((const float*) l.gate_inp.d, cur_, logit_e_, n_expert_, n_embd_, s_);
     gemv_q8(l.routed_down, q8_, rin_);
-    ck(cudaMemcpyAsync(h_logit_e_.data(), logit_e_, size_t(n_expert_) * 4, cudaMemcpyDeviceToHost, s_), "logits down");
-    ck(cudaMemcpyAsync(h_rin_.data(), rin_, size_t(n_latent_) * 4, cudaMemcpyDeviceToHost, s_), "latent down");
+    ck(cudaMemcpyAsync(h_logit_e_, logit_e_, size_t(n_expert_) * 4, cudaMemcpyDeviceToHost, s_), "logits down");
+    ck(cudaMemcpyAsync(h_rin_, rin_, size_t(n_latent_) * 4, cudaMemcpyDeviceToHost, s_), "latent down");
     // shared expert on the GPU while the host routes and the lane runs
     gemv_q8(l.sh_gate, q8_, ff_g_);
     gemv_q8(l.sh_up, q8_, ff_u_);
@@ -741,7 +888,7 @@ void Hy4::ffn(Layer& l) {
         tier.hits += long(gpu.size());
         if (!gpu.empty()) tier.run(gpu, rin_, n_latent_, s_);
     }
-    lane_->begin(l.lane, h_rin_.data(), 1, cpu_ids.data(), w.data(), top_k_, h_rout_.data());
+    lane_->begin(l.lane, h_rin_, 1, cpu_ids.data(), w.data(), top_k_, h_rout_);
     if (!misses.empty()) {   // uploads while the lane computes
         ck(cudaEventRecord(ev_, s_), "tier order event");
         std::sort(misses.begin(), misses.end(), [&](int a, int b) { return tier.score[size_t(a)] > tier.score[size_t(b)]; });
@@ -759,9 +906,9 @@ void Hy4::ffn(Layer& l) {
         }
     }
     lane_->finish();
-    dbg_host("ffn_moe_logits", cur_layer_, h_logit_e_.data(), h_logit_e_.size());
+    dbg_host("ffn_moe_logits", cur_layer_, h_logit_e_, size_t(n_expert_));
     expert_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-    ck(cudaMemcpyAsync(rout_, h_rout_.data(), size_t(n_latent_) * 4, cudaMemcpyHostToDevice, s_), "latent up");
+    ck(cudaMemcpyAsync(rout_, h_rout_, size_t(n_latent_) * 4, cudaMemcpyHostToDevice, s_), "latent up");
     if (!gpu.empty()) k::ds41_add(rout_, tier.sum, rout_, n_latent_, s_);
     dbg_dev("ffn_moe_out", cur_layer_, rout_, size_t(n_latent_));
     gemv(l.routed_up, rout_, o_);
@@ -782,7 +929,7 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
     // embedding (Q8_0 row) -> the hc streams
     std::vector<float> emb(static_cast<size_t>(n_embd_));
     dequant_q8_0(g_.tensor_data(*tok_embd_) + size_t(tok) * size_t(n_embd_ / 32 * 34), n_embd_, emb.data());
-    ck(cudaMemcpyAsync(x_, emb.data(), emb.size() * 4, cudaMemcpyHostToDevice, s_), "embedding");
+    h2d(x_, emb.data(), emb.size() * 4);
     k::ds41_broadcast_streams(x_, h_, n_embd_, s_);
     h_cs_.resize(size_t(rope_dim_) * 2);
     for (int t = 0; t < 2; ++t) {
@@ -795,7 +942,7 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
             theta *= theta_scale;
         }
     }
-    ck(cudaMemcpyAsync(cs_, h_cs_.data(), h_cs_.size() * 4, cudaMemcpyHostToDevice, s_), "rope tables");
+    h2d(cs_, h_cs_.data(), h_cs_.size() * 4);
     for (int i = 0; i < n_run_; ++i) {
         auto& l = L_[size_t(i)];
         if (l.engram) engram(l, tok, pos);
@@ -813,7 +960,7 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
         k::hy4_hc_post(o_, coef_ + hc_, h_, n_embd_, hc_, s_);
         if (want_dump) {
             dumps[size_t(i)].resize(size_t(n_embd_) * hc_);
-            ck(cudaMemcpyAsync(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4, cudaMemcpyDeviceToHost, s_), "dump");
+            d2h(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4);
         }
     }
     if (n_run_ == n_layer_) {
@@ -824,7 +971,7 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
         rms(x_, &out_norm_, cur_, n_embd_, q8_);
         gemv_q8(output_, q8_, logits_d_);
         logits_.resize(size_t(vocab_));
-        ck(cudaMemcpyAsync(logits_.data(), logits_d_, logits_.size() * 4, cudaMemcpyDeviceToHost, s_), "logits");
+        d2h(logits_.data(), logits_d_, logits_.size() * 4);
     }
     ck(cudaStreamSynchronize(s_), "step");
     gpu_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -875,6 +1022,7 @@ int run(int argc, char** argv) {
         else if (a == "--tier-uploads") budget = std::stoi(next());          // replacements per token
         else throw std::runtime_error("unknown argument " + a);
     }
+    setenv("STRATA_DS41_ATTN_SPLIT", std::to_string(kAttnSplit).c_str(), 0);
     if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
     Hy4 m(model, threads, ctx, layers);
     m.tier_setup(tier_gib, reserve_gib, budget);
