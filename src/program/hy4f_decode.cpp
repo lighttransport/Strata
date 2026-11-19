@@ -102,6 +102,105 @@ struct Layer {
     int ring = 0;
 };
 
+
+// The GPU expert tier: whole routed experts ([gate | up | down] NVFP4 blobs) in a VRAM arena, computed by
+// native_expert_grouped while the CPU lane computes the rest of the layer's routes. Adaptive: a route that misses
+// raises its expert's decayed count; misses take free slots, then replace the lowest-count resident (a per-token
+// budget of uploads through a pinned staging ring on a copy stream ordered after the decode stream).
+struct Tier {
+    int experts = 0, slots = 0, used = 0;
+    size_t blob = 0, gate_bytes = 0, down_bytes = 0;
+    uint8_t* arena = nullptr;
+    std::vector<int> slot_of, owner;
+    std::vector<char> ready;
+    std::vector<cudaEvent_t> slot_ev;
+    std::vector<float> score;
+    cudaStream_t copy = nullptr;
+    static constexpr int kStage = 4;
+    uint8_t* stage[kStage] = {};
+    cudaEvent_t stage_ev[kStage] = {};
+    int next_stage = 0;
+    k::NativeExpertLayout L;
+    void* table_d = nullptr;
+    uint8_t* table_h[2] = {};
+    cudaEvent_t table_ev[2] = {};
+    unsigned calls = 0;
+    void* scratch = nullptr;
+    float* out = nullptr;
+    void* xq = nullptr;
+    float* sum = nullptr;
+    long hits = 0, routes = 0, promotions = 0;
+    int budget = 0, left = 0;
+
+    bool on() const { return slots > 0; }
+    bool is_ready(int s) {
+        if (!ready[size_t(s)] && cudaEventQuery(slot_ev[size_t(s)]) == cudaSuccess) ready[size_t(s)] = 1;
+        return ready[size_t(s)] != 0;
+    }
+    // group the resident routes: blob address and weight; out rows e, summed into `sum` (n floats)
+    void run(const std::vector<std::pair<const uint8_t*, float>>& g, const float* x, int n, cudaStream_t s) {
+        const int G = int(g.size());
+        const int sb = int(calls++ & 1u);
+        ck(cudaEventSynchronize(table_ev[sb]), "tier table staging");
+        uint8_t* h = table_h[sb];
+        auto* ptr = reinterpret_cast<unsigned long long*>(h);
+        auto* start = reinterpret_cast<int32_t*>(ptr + 16);
+        int32_t* ng = start + 17;
+        int32_t* dst = ng + 1;
+        int32_t* tok = dst + 16;
+        float* w = reinterpret_cast<float*>(tok + 16);
+        for (int i = 0; i < G; ++i) {
+            ptr[i] = reinterpret_cast<unsigned long long>(g[size_t(i)].first);
+            start[i] = i;
+            dst[i] = i;
+            tok[i] = 0;
+            w[i] = g[size_t(i)].second;
+        }
+        start[G] = G;
+        *ng = G;
+        const size_t bytes = size_t(reinterpret_cast<uint8_t*>(w + 16) - h);
+        auto* tb = (uint8_t*) table_d + size_t(sb) * 512;
+        ck(cudaMemcpyAsync(tb, h, bytes, cudaMemcpyHostToDevice, s), "tier table");
+        ck(cudaEventRecord(table_ev[sb], s), "tier table event");
+        k::quantize_q8_1_rows(x, 1, n, xq, s);
+        const size_t o_start = 16 * 8, o_ng = o_start + 17 * 4, o_dst = o_ng + 4, o_tok = o_dst + 16 * 4, o_w = o_tok + 16 * 4;
+        k::native_expert_grouped(L, reinterpret_cast<const unsigned long long*>(tb), reinterpret_cast<const int32_t*>(tb + o_start),
+                                 reinterpret_cast<const int32_t*>(tb + o_ng), reinterpret_cast<const int32_t*>(tb + o_dst),
+                                 reinterpret_cast<const int32_t*>(tb + o_tok), 16, 16, xq, scratch, out, s);
+        ck(cudaMemsetAsync(sum, 0, size_t(n) * 4, s), "tier sum");
+        k::ds41_scatter_axpy(out, reinterpret_cast<const int32_t*>(tb + o_tok), reinterpret_cast<const float*>(tb + o_w), G, n, sum, s);
+    }
+    // upload expert `key` (gate/up/down rows at the given host addresses) into a slot; false: not worth a slot
+    bool promote(int key, const uint8_t* gate, const uint8_t* up, const uint8_t* down, cudaEvent_t after, bool free_only) {
+        int slot = -1;
+        if (used < slots) slot = used++;
+        else {
+            if (free_only) return false;
+            float best = INFINITY;
+            for (int i = 0; i < slots; ++i)
+                if (ready[size_t(i)] && score[size_t(owner[size_t(i)])] < best) { best = score[size_t(owner[size_t(i)])]; slot = i; }
+            if (slot < 0 || best >= score[size_t(key)]) return false;
+            slot_of[size_t(owner[size_t(slot)])] = -1;
+        }
+        const int b = next_stage++ % kStage;
+        ck(cudaEventSynchronize(stage_ev[b]), "tier staging");
+        std::memcpy(stage[b], gate, gate_bytes);
+        std::memcpy(stage[b] + L.up_off, up, gate_bytes);
+        std::memcpy(stage[b] + L.down_off, down, down_bytes);
+        const float tail[4] = {1.0f, 1.0f, 1.0f, 0.0f};   // GGUF NVFP4 has no per-tensor scale
+        std::memcpy(stage[b] + L.tail_off, tail, sizeof tail);
+        ck(cudaStreamWaitEvent(copy, after, 0), "tier order");
+        ck(cudaMemcpyAsync(arena + size_t(slot) * blob, stage[b], blob, cudaMemcpyHostToDevice, copy), "tier upload");
+        ck(cudaEventRecord(stage_ev[b], copy), "tier stage event");
+        ck(cudaEventRecord(slot_ev[size_t(slot)], copy), "tier slot event");
+        owner[size_t(slot)] = key;
+        slot_of[size_t(key)] = slot;
+        ready[size_t(slot)] = 0;
+        ++promotions;
+        return true;
+    }
+};
+
 std::string join_ids(const std::vector<int>& v) {
     std::string s;
     for (size_t i = 0; i < v.size(); ++i) s += (i ? "," : "") + std::to_string(v[i]);
@@ -127,6 +226,8 @@ public:
     int n_layer() const { return n_layer_; }
     int vocab() const { return vocab_; }
     double expert_ms = 0, gpu_ms = 0;
+    Tier tier;
+    void tier_setup(double gib, double reserve_gib, int budget);
 
 private:
     strata::GgufFile g_;
@@ -161,7 +262,8 @@ private:
     void* q8_ = nullptr;
     void* q8b_ = nullptr;
     // host staging
-    std::vector<float> h_logit_e_, h_rin_, h_rout_;
+    std::vector<float> h_logit_e_, h_rin_, h_rout_, h_cs_;
+    cudaEvent_t ev_ = nullptr;
 
     const strata::TensorInfo& T(const std::string& n) const {
         const auto* t = g_.find(n);
@@ -313,7 +415,7 @@ void Hy4::load(int threads) {
     };
     tok_embd_ = &T("token_embd.weight");
     if (tok_embd_->type != kQ8_0) throw std::runtime_error("hy4f: token_embd must be Q8_0");
-    lane_ = std::make_unique<strata::ds41::ExpertLane>(n_latent_, n_ff_exp_, threads, true);
+    lane_ = std::make_unique<strata::ds41::ExpertLane>(n_latent_, n_ff_exp_, threads + 1, true);   // begin(): threads 1.. compute
     for (int i = 0; i < n_run_; ++i) {
         auto& l = L_[size_t(i)];
         const std::string p = "blk." + std::to_string(i) + ".";
@@ -417,7 +519,8 @@ void Hy4::load(int threads) {
     sh_ = alloc(n);
     eng_r_ = alloc(size_t(std::max(1, e_cols_ * e_dim_)));
     eng_kv_ = alloc(n * (hc_ + 1));
-    cs_ = alloc(size_t(rope_dim_));
+    cs_ = alloc(size_t(rope_dim_) * 2);
+    ck(cudaEventCreateWithFlags(&ev_, cudaEventDisableTiming), "event");
     scores_ = alloc(k::ds41_attention_scratch(max_heads) / 4 + 1);
     const size_t q8 = std::max({n * hc_, ffw, size_t(max_heads) * v_head_, size_t(q_rank_), size_t(e_cols_ * e_dim_)}) / 32 * 36;
     ck(cudaMalloc(&q8_, q8), "q8");
@@ -429,6 +532,52 @@ void Hy4::load(int threads) {
     const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     std::fprintf(stderr, "hy4f: %d of %d blocks, %.2f GiB on the GPU, %d lane threads, ctx %d, loaded in %.1f s\n", n_run_, n_layer_,
                  double(dev_bytes) / double(1u << 30), threads, ctx_, s);
+}
+
+
+void Hy4::tier_setup(double gib, double reserve_gib, int budget) {
+    if (gib == 0) return;
+    Tier& t = tier;
+    t.L = k::native_expert_layout(kNvfp4, kNvfp4, n_latent_, n_ff_exp_);
+    t.L.swiglu_limit = clamp_;   // L.tail_off: the GPU kernels always apply the {s_gate, s_up, s_down} tail; slots carry 1.0s
+    if (!k::native_expert_supported(kNvfp4, kNvfp4, n_latent_, n_ff_exp_)) throw std::runtime_error("hy4f: no GPU kernels for NVFP4 experts");
+    const auto* any = &L_[size_t(n_layer_ - 1)].lane;
+    t.gate_bytes = any->f.gu_row * size_t(n_ff_exp_);
+    t.down_bytes = any->f.d_row * size_t(n_latent_);
+    t.blob = t.L.bytes;
+    if (t.L.up_off != t.gate_bytes || t.L.down_off != 2 * t.gate_bytes || t.L.tail_off != 2 * t.gate_bytes + t.down_bytes ||
+        t.blob != t.L.tail_off + 16)
+        throw std::runtime_error("hy4f: GPU expert blob layout does not match the GGUF rows");
+    size_t free_b = 0, total_b = 0;
+    ck(cudaMemGetInfo(&free_b, &total_b), "mem info");
+    const double want = gib > 0 ? gib * double(1u << 30) : double(free_b) - reserve_gib * double(1u << 30);
+    t.slots = want > 0 ? int(want / double(t.blob)) : 0;
+    if (t.slots <= 0) { t.slots = 0; return; }
+    ck(cudaMalloc(&t.arena, size_t(t.slots) * t.blob), "tier arena");
+    t.experts = n_expert_;
+    t.slot_of.assign(size_t(n_layer_) * n_expert_, -1);
+    t.score.assign(size_t(n_layer_) * n_expert_, 0.0f);
+    t.owner.assign(size_t(t.slots), -1);
+    t.ready.assign(size_t(t.slots), 0);
+    t.slot_ev.resize(size_t(t.slots));
+    for (auto& e : t.slot_ev) ck(cudaEventCreateWithFlags(&e, cudaEventDisableTiming), "slot event");
+    ck(cudaStreamCreateWithFlags(&t.copy, cudaStreamNonBlocking), "copy stream");
+    for (int b = 0; b < Tier::kStage; ++b) {
+        ck(cudaHostAlloc((void**) &t.stage[b], t.blob, cudaHostAllocPortable), "tier staging");
+        ck(cudaEventCreateWithFlags(&t.stage_ev[b], cudaEventDisableTiming), "stage event");
+    }
+    ck(cudaMalloc(&t.table_d, 1024), "tier tables");
+    for (int b = 0; b < 2; ++b) {
+        ck(cudaHostAlloc((void**) &t.table_h[b], 512, cudaHostAllocPortable), "tier table staging");
+        ck(cudaEventCreateWithFlags(&t.table_ev[b], cudaEventDisableTiming), "table event");
+    }
+    ck(cudaMalloc(&t.scratch, k::native_expert_scratch_bytes(16, n_ff_exp_)), "tier scratch");
+    ck(cudaMalloc((void**) &t.out, size_t(16) * n_latent_ * 4), "tier out");
+    ck(cudaMalloc(&t.xq, size_t(n_latent_) / 32 * 36), "tier xq");
+    ck(cudaMalloc((void**) &t.sum, size_t(n_latent_) * 4), "tier sum");
+    t.budget = budget;
+    std::fprintf(stderr, "hy4f: GPU expert tier %d slots (%.2f GiB, %.1f%% of the routed experts), %d uploads/token\n", t.slots,
+                 double(t.slots) * double(t.blob) / double(1u << 30), 100.0 * t.slots / double(n_expert_ * (n_layer_ - 1)), budget);
 }
 
 void Hy4::gemv_q8(const W& w, const void* q8, float* y) {
@@ -506,22 +655,10 @@ void Hy4::attention(Layer& l, int pos) {
     rms(qr_, &l.q_a_norm, qr_, q_rank_, q8b_);
     gemv_q8(l.q_b, q8b_, q_);
     rms(kvpe_, &l.kv_a_norm, kvn_, kv_rank_);
-    // rope (NORM: adjacent pairs) on q_pe (after the 128 nope values of each head) and k_pe
-    {
-        std::vector<float> cs(static_cast<size_t>(rope_dim_));
-        const float theta_scale = std::pow(l.rope_base, -2.0f / float(rope_dim_));
-        float theta = float(pos);
-        for (int i = 0; i < rope_dim_; i += 2) {
-            cs[size_t(i)] = std::cos(theta);
-            cs[size_t(i) + 1] = std::sin(theta);
-            theta *= theta_scale;
-        }
-        ck(cudaMemcpyAsync(cs_, cs.data(), cs.size() * 4, cudaMemcpyHostToDevice, s_), "rope table");
-        // the host vector must outlive the copy
-        ck(cudaStreamSynchronize(s_), "rope sync");
-    }
-    k::ds41_rope(q_, H, qk, k_head_, rope_dim_ / 2, cs_, s_);
-    k::ds41_rope(kvpe_, 1, kv_rank_ + rope_dim_, kv_rank_, rope_dim_ / 2, cs_, s_);
+    // rope (NORM: adjacent pairs) on q_pe (after the 128 nope values of each head) and k_pe; tables from step()
+    const float* cs = cs_ + (l.swa ? rope_dim_ : 0);
+    k::ds41_rope(q_, H, qk, k_head_, rope_dim_ / 2, cs, s_);
+    k::ds41_rope(kvpe_, 1, kv_rank_ + rope_dim_, kv_rank_, rope_dim_ / 2, cs, s_);
     // absorb: qa[h] = W_kb[h] q_nope[h]  (W_kb[h]: [512][128])
     k::hy4_q8_0_heads(l.k_b.d, q_, qk, qa_, kv_rank_, kv_rank_, k_head_, H, s_);
     k::hy4_mla_pack_q(qa_, q_ + k_head_, qk, q640_, H, s_);
@@ -558,12 +695,9 @@ void Hy4::ffn(Layer& l) {
     gemv_q8(l.sh_up, q8_, ff_u_);
     k::glm_swiglu(ff_g_, ff_u_, ff_a_, n_ff_exp_, 0.0f, s_);
     // the routed transfers were enqueued first: wait only for them
-    cudaEvent_t ev;
-    ck(cudaEventCreateWithFlags(&ev, cudaEventDisableTiming), "event");
-    ck(cudaEventRecord(ev, s_), "event record");
+    ck(cudaEventRecord(ev_, s_), "event record");
     gemv(l.sh_down, ff_a_, sh_);
-    ck(cudaEventSynchronize(ev), "routed wait");
-    ck(cudaEventDestroy(ev), "event destroy");
+    ck(cudaEventSynchronize(ev_), "routed wait");
     // router: sigmoid scores, top-k on score + bias, weights = the unbiased scores, normed, scaled
     std::vector<float> prob(static_cast<size_t>(n_expert_)), sel(static_cast<size_t>(n_expert_));
     for (int e = 0; e < n_expert_; ++e) {
@@ -589,11 +723,47 @@ void Hy4::ffn(Layer& l) {
     }
     for (auto& x : w) x *= w_scale_;
     const auto t0 = std::chrono::steady_clock::now();
-    lane_->run(l.lane, h_rin_.data(), 1, ids.data(), w.data(), top_k_, h_rout_.data());
+    // resident routes to the GPU tier (computed now, on the decode stream), the rest to the CPU lane in parallel
+    std::vector<int32_t> cpu_ids = ids;
+    std::vector<std::pair<const uint8_t*, float>> gpu;
+    std::vector<int> misses;
+    if (tier.on()) {
+        for (int i = 0; i < top_k_; ++i) {
+            const int key = cur_layer_ * n_expert_ + ids[size_t(i)];
+            tier.score[size_t(key)] += 1.0f;
+            const int sl = tier.slot_of[size_t(key)];
+            if (sl >= 0 && tier.is_ready(sl)) {
+                gpu.push_back({tier.arena + size_t(sl) * tier.blob, w[size_t(i)]});
+                cpu_ids[size_t(i)] = -1;
+            } else if (sl < 0) misses.push_back(key);
+        }
+        tier.routes += top_k_;
+        tier.hits += long(gpu.size());
+        if (!gpu.empty()) tier.run(gpu, rin_, n_latent_, s_);
+    }
+    lane_->begin(l.lane, h_rin_.data(), 1, cpu_ids.data(), w.data(), top_k_, h_rout_.data());
+    if (!misses.empty()) {   // uploads while the lane computes
+        ck(cudaEventRecord(ev_, s_), "tier order event");
+        std::sort(misses.begin(), misses.end(), [&](int a, int b) { return tier.score[size_t(a)] > tier.score[size_t(b)]; });
+        int fills = 0;
+        for (int key : misses) {
+            const bool free_slot = tier.used < tier.slots;
+            if (!free_slot && tier.left <= 0) break;
+            if (free_slot && fills >= 4) break;
+            const int e = key % n_expert_;
+            if (tier.promote(key, l.lane.gate + size_t(e) * l.lane.gate_stride, l.lane.up + size_t(e) * l.lane.gate_stride,
+                             l.lane.down + size_t(e) * l.lane.down_stride, ev_, false)) {
+                if (free_slot) ++fills;
+                else --tier.left;
+            }
+        }
+    }
+    lane_->finish();
     dbg_host("ffn_moe_logits", cur_layer_, h_logit_e_.data(), h_logit_e_.size());
-    dbg_host("ffn_moe_out", cur_layer_, h_rout_.data(), h_rout_.size());
     expert_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     ck(cudaMemcpyAsync(rout_, h_rout_.data(), size_t(n_latent_) * 4, cudaMemcpyHostToDevice, s_), "latent up");
+    if (!gpu.empty()) k::ds41_add(rout_, tier.sum, rout_, n_latent_, s_);
+    dbg_dev("ffn_moe_out", cur_layer_, rout_, size_t(n_latent_));
     gemv(l.routed_up, rout_, o_);
     k::ds41_add(o_, sh_, o_, n_embd_, s_);
     rms(o_, &l.post_ffn_norm, o_, n_embd_);
@@ -605,11 +775,27 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
     if (int(history_.size()) != pos) history_.resize(size_t(pos));
     history_.push_back(tok);
     const auto t0 = std::chrono::steady_clock::now();
+    if (tier.on()) {
+        for (auto& x : tier.score) x *= 0.98f;
+        tier.left = tier.budget;
+    }
     // embedding (Q8_0 row) -> the hc streams
     std::vector<float> emb(static_cast<size_t>(n_embd_));
     dequant_q8_0(g_.tensor_data(*tok_embd_) + size_t(tok) * size_t(n_embd_ / 32 * 34), n_embd_, emb.data());
     ck(cudaMemcpyAsync(x_, emb.data(), emb.size() * 4, cudaMemcpyHostToDevice, s_), "embedding");
     k::ds41_broadcast_streams(x_, h_, n_embd_, s_);
+    h_cs_.resize(size_t(rope_dim_) * 2);
+    for (int t = 0; t < 2; ++t) {
+        const float base = t ? rope_swa_ : rope_full_;
+        const float theta_scale = std::pow(base, -2.0f / float(rope_dim_));
+        float theta = float(pos);
+        for (int i = 0; i < rope_dim_; i += 2) {
+            h_cs_[size_t(t * rope_dim_ + i)] = std::cos(theta);
+            h_cs_[size_t(t * rope_dim_ + i + 1)] = std::sin(theta);
+            theta *= theta_scale;
+        }
+    }
+    ck(cudaMemcpyAsync(cs_, h_cs_.data(), h_cs_.size() * 4, cudaMemcpyHostToDevice, s_), "rope tables");
     for (int i = 0; i < n_run_; ++i) {
         auto& l = L_[size_t(i)];
         if (l.engram) engram(l, tok, pos);
@@ -670,7 +856,8 @@ int run(int argc, char** argv) {
     }
     std::string model = argv[1], dump;
     std::vector<int> ids;
-    int n_gen = 16, layers = 0, threads = 15, ctx = 2048;
+    int n_gen = 16, layers = 0, threads = 15, ctx = 2048, budget = 8;
+    double tier_gib = -1, reserve_gib = 3.0;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string {
@@ -683,10 +870,14 @@ int run(int argc, char** argv) {
         else if (a == "--dump") dump = next();
         else if (a == "--threads") threads = std::stoi(next());
         else if (a == "--ctx") ctx = std::stoi(next());
+        else if (a == "--tier-gib") tier_gib = std::stod(next());          // 0: no GPU tier; -1: free VRAM - reserve
+        else if (a == "--tier-reserve-gib") reserve_gib = std::stod(next());
+        else if (a == "--tier-uploads") budget = std::stoi(next());          // replacements per token
         else throw std::runtime_error("unknown argument " + a);
     }
     if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
     Hy4 m(model, threads, ctx, layers);
+    m.tier_setup(tier_gib, reserve_gib, budget);
     const bool partial = m.n_run() < m.n_layer();
     m.want_dump = !dump.empty();
     std::vector<std::vector<float>> all(static_cast<size_t>(m.n_run()));
@@ -723,6 +914,7 @@ int run(int argc, char** argv) {
     if (partial || next < 0) return 0;
     std::vector<int> out;
     m.expert_ms = 0;
+    m.tier.hits = m.tier.routes = m.tier.promotions = 0;
     m.gpu_ms = 0;
     t0 = std::chrono::steady_clock::now();
     for (int i = 0; i < n_gen; ++i) {
@@ -732,8 +924,9 @@ int run(int argc, char** argv) {
     }
     const double gen_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     std::printf("%s\n", join_ids(out).c_str());
-    std::fprintf(stderr, "hy4f: decode %d tokens in %.2f s: %.2f tok/s (lane %.1f ms/token)\n", n_gen, gen_s, double(n_gen) / gen_s,
-                 m.expert_ms / std::max(1, n_gen));
+    std::fprintf(stderr, "hy4f: decode %d tokens in %.2f s: %.2f tok/s (experts %.1f ms/token; tier hit %.1f%%, %ld uploads)\n", n_gen,
+                 gen_s, double(n_gen) / gen_s, m.expert_ms / std::max(1, n_gen),
+                 m.tier.routes ? 100.0 * double(m.tier.hits) / double(m.tier.routes) : 0.0, m.tier.promotions);
     return 0;
 }
 
