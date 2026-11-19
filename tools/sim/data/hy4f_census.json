@@ -1,0 +1,6203 @@
+{
+ "arch": "hy_v4_flash",
+ "file": "Hy4-flash-SPARK-4Bit-Fast.gguf",
+ "meta": {
+  "block_count": 43,
+  "context_length": 1048576,
+  "embedding_length": 3072,
+  "feed_forward_length": 13824,
+  "attention.head_count_kv": 1,
+  "rope.freq_base_swa": 10000.0,
+  "attention.layer_norm_rms_epsilon": 9.999999747378752e-06,
+  "expert_count": 512,
+  "expert_used_count": 16,
+  "attention.key_length": 576,
+  "attention.value_length": 512,
+  "leading_dense_block_count": 1,
+  "vocab_size": 120832,
+  "attention.q_lora_rank": 1024,
+  "attention.kv_lora_rank": 512,
+  "attention.key_length_mla": 256,
+  "attention.value_length_mla": 256,
+  "expert_feed_forward_length": 1536,
+  "expert_shared_count": 1,
+  "expert_weights_scale": 3.997999906539917,
+  "expert_weights_norm": true,
+  "rope.dimension_count": 64,
+  "expert_gating_func": 2,
+  "swiglu_clamp_exp": [
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0
+  ],
+  "hyper_connection.count": 4,
+  "hyper_connection.epsilon": 9.999999974752427e-07,
+  "hyper_connection.magnitude": 2.0,
+  "attention.indexer.head_count": 16,
+  "attention.indexer.key_length": 128,
+  "attention.indexer.top_k": 2048,
+  "attention.indexer.types": [
+   true,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true,
+   false,
+   false,
+   false,
+   true
+  ],
+  "rope.freq_base": 10000000.0,
+  "attention.head_count": [
+   32,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   64,
+   64,
+   64,
+   32,
+   32
+  ],
+  "attention.sliding_window": 512,
+  "attention.sliding_window_pattern": [
+   false,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   false
+  ],
+  "expert_latent_length": 1536,
+  "nextn_predict_layers": 1,
+  "attention.indexer.kpool": 4,
+  "attention.indexer.kpool_select_tail": true,
+  "ple.layers": [
+   1,
+   11,
+   21,
+   31
+  ],
+  "ple.ngram_size": 3,
+  "ple.heads_per_ngram": 8,
+  "embedding_length_per_layer_input": 96,
+  "ple.layer_multipliers": 12,
+  "ple.head_offsets": 64,
+  "ple.head_vocab_sizes": 64,
+  "engram.pad_token_id": 120002,
+  "engram.token_map": 120832
+ },
+ "globals": {
+  "output.weight": [
+   "NVFP4",
+   208797696
+  ],
+  "output_hc_base.weight": [
+   "F32",
+   16
+  ],
+  "output_hc_fn.weight": [
+   "NVFP4",
+   27648
+  ],
+  "output_hc_scale.weight": [
+   "F32",
+   4
+  ],
+  "output_norm.weight": [
+   "F32",
+   12288
+  ],
+  "per_layer_token_embd.weight": [
+   "Q8_0",
+   67320654432
+  ],
+  "token_embd.weight": [
+   "Q8_0",
+   394395648
+  ]
+ },
+ "blocks": [
+  {
+   "expert_bytes": 0,
+   "experts": 0,
+   "dense_bytes": 120617168,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "ffn_down.weight": [
+     "NVFP4",
+     23887872
+    ],
+    "ffn_gate.weight": [
+     "NVFP4",
+     23887872
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_up.weight": [
+     "NVFP4",
+     23887872
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 81967312,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "engram_gate.weight": [
+     "F32",
+     49152
+    ],
+    "engram_hc_scale.weight": [
+     "F32",
+     49152
+    ],
+    "engram_kv.weight": [
+     "NVFP4",
+     13271040
+    ],
+    "engram_kv_b.weight": [
+     "F32",
+     61440
+    ],
+    "engram_lookup_norm.weight": [
+     "F32",
+     6144
+    ],
+    "engram_pre_gamma.weight": [
+     "F32",
+     12288
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 120060240,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "engram_gate.weight": [
+     "F32",
+     49152
+    ],
+    "engram_hc_scale.weight": [
+     "F32",
+     49152
+    ],
+    "engram_kv.weight": [
+     "NVFP4",
+     13271040
+    ],
+    "engram_kv_b.weight": [
+     "F32",
+     61440
+    ],
+    "engram_lookup_norm.weight": [
+     "F32",
+     6144
+    ],
+    "engram_pre_gamma.weight": [
+     "F32",
+     12288
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 81967312,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "engram_gate.weight": [
+     "F32",
+     49152
+    ],
+    "engram_hc_scale.weight": [
+     "F32",
+     49152
+    ],
+    "engram_kv.weight": [
+     "NVFP4",
+     13271040
+    ],
+    "engram_kv_b.weight": [
+     "F32",
+     61440
+    ],
+    "engram_lookup_norm.weight": [
+     "F32",
+     6144
+    ],
+    "engram_pre_gamma.weight": [
+     "F32",
+     12288
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 120060240,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "engram_gate.weight": [
+     "F32",
+     49152
+    ],
+    "engram_hc_scale.weight": [
+     "F32",
+     49152
+    ],
+    "engram_kv.weight": [
+     "NVFP4",
+     13271040
+    ],
+    "engram_kv_b.weight": [
+     "F32",
+     61440
+    ],
+    "engram_lookup_norm.weight": [
+     "F32",
+     6144
+    ],
+    "engram_pre_gamma.weight": [
+     "F32",
+     12288
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 106611024,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     6684672
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     28311552
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     9437184
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     256
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 3981312,
+   "experts": 512,
+   "dense_bytes": 68518096,
+   "tensors": {
+    "attn_gate.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "NVFP4",
+     14155776
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "NVFP4",
+     4718592
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_down_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_gate_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_routed_up.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "ffn_up_exps.weight": [
+     "NVFP4",
+     679477248
+    ],
+    "ffn_up_shexp.weight": [
+     "NVFP4",
+     2654208
+    ],
+    "hc_attn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_attn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_attn_scale.weight": [
+     "F32",
+     8
+    ],
+    "hc_ffn_base.weight": [
+     "F32",
+     32
+    ],
+    "hc_ffn_fn.weight": [
+     "NVFP4",
+     55296
+    ],
+    "hc_ffn_scale.weight": [
+     "F32",
+     8
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  },
+  {
+   "expert_bytes": 7520256,
+   "experts": 512,
+   "dense_bytes": 129654912,
+   "tensors": {
+    "attn_gate.weight": [
+     "Q8_0",
+     26738688
+    ],
+    "attn_k_b.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_kv_a_mqa.weight": [
+     "Q8_0",
+     1880064
+    ],
+    "attn_kv_a_norm.weight": [
+     "F32",
+     2048
+    ],
+    "attn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "attn_output.weight": [
+     "Q8_0",
+     26738688
+    ],
+    "attn_q_a.weight": [
+     "Q8_0",
+     3342336
+    ],
+    "attn_q_a_norm.weight": [
+     "F32",
+     4096
+    ],
+    "attn_q_b.weight": [
+     "Q8_0",
+     8912896
+    ],
+    "attn_sinks.weight": [
+     "F32",
+     128
+    ],
+    "attn_v_b.weight": [
+     "Q8_0",
+     4456448
+    ],
+    "exp_probs_b.bias": [
+     "F32",
+     2048
+    ],
+    "ffn_down_exps.weight": [
+     "Q8_0",
+     1283457024
+    ],
+    "ffn_down_shexp.weight": [
+     "Q8_0",
+     5013504
+    ],
+    "ffn_gate_exps.weight": [
+     "Q8_0",
+     1283457024
+    ],
+    "ffn_gate_inp.weight": [
+     "F32",
+     6291456
+    ],
+    "ffn_gate_shexp.weight": [
+     "Q8_0",
+     5013504
+    ],
+    "ffn_norm.weight": [
+     "F32",
+     12288
+    ],
+    "ffn_routed_down.weight": [
+     "Q8_0",
+     5013504
+    ],
+    "ffn_routed_up.weight": [
+     "Q8_0",
+     5013504
+    ],
+    "ffn_up_exps.weight": [
+     "Q8_0",
+     1283457024
+    ],
+    "ffn_up_shexp.weight": [
+     "Q8_0",
+     5013504
+    ],
+    "indexer.attn_k.weight": [
+     "Q8_0",
+     417792
+    ],
+    "indexer.attn_q_b.weight": [
+     "Q8_0",
+     2228224
+    ],
+    "indexer.k_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer.proj.weight": [
+     "Q8_0",
+     52224
+    ],
+    "indexer_compressor_ape.weight": [
+     "F32",
+     2048
+    ],
+    "indexer_compressor_gate.weight": [
+     "Q8_0",
+     17408
+    ],
+    "indexer_compressor_norm.weight": [
+     "F32",
+     512
+    ],
+    "indexer_compressor_value.weight": [
+     "Q8_0",
+     17408
+    ],
+    "nextn.eh_proj.weight": [
+     "Q8_0",
+     20054016
+    ],
+    "nextn.enorm.weight": [
+     "F32",
+     12288
+    ],
+    "nextn.hnorm.weight": [
+     "F32",
+     12288
+    ],
+    "nextn.shared_head_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_attention_norm.weight": [
+     "F32",
+     12288
+    ],
+    "post_ffw_norm.weight": [
+     "F32",
+     12288
+    ]
+   }
+  }
+ ]
+}
