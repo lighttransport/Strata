@@ -27,8 +27,12 @@
 #include "strata/kernels/native_mmvq.hpp"
 
 #include <cuda_runtime.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
+#include <thread>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -611,6 +615,34 @@ void Hy4::load(int threads) {
             l.vg = alloc(size_t(ctx_) * 2 * ix_dim_);
             l.pooled = alloc(size_t(ctx_ / kpool_ + 1) * ix_dim_);
         }
+    }
+    // STRATA_DS41_LANE_BANDS=1: every 128-row band of every expert matrix moved to NUMA node (band + expert) % nodes and
+    // computed by that node's lane threads (pages are migrated, not copied: the page cache keeps them there)
+    if (lane_->bands()) {
+        const auto b0 = std::chrono::steady_clock::now();
+        std::atomic<size_t> asked{0};
+        std::atomic<int> next{0}, populate_fail{0};
+        std::vector<std::thread> movers;
+        for (int t = 0; t < 8; ++t)
+            movers.emplace_back([&] {
+                for (int i; (i = next.fetch_add(1)) < n_run_;)
+                    if (!L_[size_t(i)].dense) {
+                        // move_pages only moves pages mapped in this process (unmapped ones give -ENOENT): map them first
+                        const auto& ln = L_[size_t(i)].lane;
+                        const uintptr_t pg = uintptr_t(sysconf(_SC_PAGESIZE));
+                        for (auto [base, bytes] : {std::pair{ln.gate, ln.gate_stride * size_t(n_expert_)},
+                                                   std::pair{ln.up, ln.gate_stride * size_t(n_expert_)},
+                                                   std::pair{ln.down, ln.down_stride * size_t(n_expert_)}}) {
+                            const uintptr_t a0 = uintptr_t(base) / pg * pg, a1 = (uintptr_t(base) + bytes + pg - 1) / pg * pg;
+                            if (madvise(reinterpret_cast<void*>(a0), a1 - a0, 22 /* MADV_POPULATE_READ */) != 0) ++populate_fail;
+                        }
+                        asked += strata::ds41::ExpertLane::place_bands(ln, n_expert_, n_latent_, n_ff_exp_, lane_->nodes());
+                    }
+            });
+        for (auto& m : movers) m.join();
+        std::fprintf(stderr, "hy4f: lane bands on %d NUMA nodes: %.1f GiB placed in %.1f s (%d populate failures)\n", lane_->nodes(),
+                     double(asked.load()) / double(1ull << 30), std::chrono::duration<double>(std::chrono::steady_clock::now() - b0).count(),
+                     populate_fail.load());
     }
     if (n_run_ == n_layer_) {
         out_norm_ = up("output_norm.weight");
