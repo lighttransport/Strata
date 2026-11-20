@@ -1,0 +1,121 @@
+[
+  {
+    "i": 0,
+    "kind": "installed",
+    "mib": 1024,
+    "command": [
+      "tools/membw/membw",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 1,
+    "kind": "baseline",
+    "mib": 1024,
+    "command": [
+      "build-fp4-local/bw-audit/baseline",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 2,
+    "kind": "probe",
+    "mib": 1024,
+    "command": [
+      "build-fp4-local/bw-audit/probe",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 3,
+    "kind": "probe",
+    "mib": 4096,
+    "command": [
+      "build-fp4-local/bw-audit/probe",
+      "--threads",
+      "16",
+      "--mib",
+      "4096",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 4,
+    "kind": "baseline",
+    "mib": 1024,
+    "command": [
+      "build-fp4-local/bw-audit/baseline",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 5,
+    "kind": "installed",
+    "mib": 1024,
+    "command": [
+      "tools/membw/membw",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 6,
+    "kind": "probe",
+    "mib": 1024,
+    "command": [
+      "build-fp4-local/bw-audit/probe",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  }
+]

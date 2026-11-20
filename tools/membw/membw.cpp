@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <climits>
+#include <cerrno>
 #include <cstdlib>
 #include <stdexcept>
 #include <set>
@@ -18,9 +19,34 @@
 #include <omp.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
+#include <linux/mempolicy.h>
+#include <unistd.h>
+#include <sstream>
 
 static std::string read(const std::string& path) {
     std::ifstream f(path); std::string s; std::getline(f, s); return s;
+}
+static void placement(const std::vector<double*>& src,const std::vector<double*>& dst) {
+    std::set<uintptr_t> selected;
+    std::ifstream maps("/proc/self/maps");std::string line;
+    while(std::getline(maps,line)) {
+        auto dash=line.find('-'),space=line.find(' ');
+        if(dash==std::string::npos||space==std::string::npos)continue;
+        auto lo=std::stoull(line.substr(0,dash),nullptr,16),hi=std::stoull(line.substr(dash+1,space-dash-1),nullptr,16);
+        for(const auto* collection:{&src,&dst})for(auto ptr:*collection)
+            if(uintptr_t(ptr)>=lo&&uintptr_t(ptr)<hi)selected.insert(lo);
+    }
+    std::map<int,size_t> pages;
+    std::ifstream numa("/proc/self/numa_maps");
+    while(std::getline(numa,line)) {
+        std::istringstream in(line);std::string token;in>>token;
+        if(!selected.count(std::stoull(token,nullptr,16)))continue;
+        while(in>>token)if(token.size()>2&&token[0]=='N'&&token.find('=')!=std::string::npos) {
+            auto equal=token.find('=');pages[std::stoi(token.substr(1,equal-1))]+=std::stoull(token.substr(equal+1));
+        }
+    }
+    std::cout<<"PLACEMENT mappings="<<selected.size();for(auto [node,count]:pages)std::cout<<" N"<<node<<"="<<count;std::cout<<"\n";
 }
 static double now() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -104,7 +130,7 @@ __attribute__((noinline)) static double scan_integer(const double* src, size_t c
     }
 }
 
-static double* allocate(size_t bytes, bool huge) {
+static double* allocate(size_t bytes, bool huge, int bind_node = -1) {
     size_t alignment = huge ? 2*1024*1024 : 4096;
     // Trim over-allocation so transparent huge pages can cover the whole mapping.
     void* raw = mmap(nullptr, bytes + alignment, PROT_READ | PROT_WRITE,
@@ -118,6 +144,15 @@ static double* allocate(size_t bytes, bool huge) {
     auto* result = reinterpret_cast<double*>(aligned);
     if (madvise(result, bytes, huge ? MADV_HUGEPAGE : MADV_NOHUGEPAGE)) {
         std::cerr << "madvise failed\n"; std::abort();
+    }
+    if (bind_node >= 0) {
+        if (bind_node >= int(8*sizeof(unsigned long))) {
+            std::cerr << "NUMA node exceeds local-binding mask\n"; std::abort();
+        }
+        const unsigned long mask = 1ul << bind_node;
+        if (syscall(SYS_mbind, result, bytes, MPOL_BIND, &mask, 8*sizeof(mask), 0)) {
+            std::cerr << "mbind failed: " << std::strerror(errno) << '\n'; std::abort();
+        }
     }
     return result;
 }
@@ -142,17 +177,19 @@ static void pin_cpu(int cpu) {
 int main(int argc, char** argv) {
     int threads = 0, node = -1, repeats = 10;
     size_t mib = 1024, prefetch = 0, block_kib = 256;
-    int unroll = 4, layers = 1; bool huge = false, spread = false;
+    int unroll = 4, layers = 1; bool huge = false, spread = false, bind_local = false, numa_report = false;
     std::string kernel = "all";
     try {
         for (int i = 1; i < argc; ++i) {
             std::string a = argv[i];
+            if (a == "--bind-local") { bind_local = true; continue; }
+            if (a == "--numa-report") { numa_report = true; continue; }
             if (a == "--spread") { spread = true; continue; }
             if (a == "--huge") { huge = true; continue; }
             if (a == "--kernel" && i + 1 < argc) { kernel = argv[++i]; continue; }
             if (a == "--help") {
                 std::cout << "Usage: membw [--threads N] [--node N] [--mib N] [--repeats N]\n"
-                          << "       [--huge] [--spread] [--unroll 4|8|16] [--prefetch BYTES] [--block-kib N] [--layers N]\n"
+                          << "       [--huge] [--spread] [--bind-local] [--numa-report] [--unroll 4|8|16] [--prefetch BYTES] [--block-kib N] [--layers N]\n"
                           << "       [--kernel all|read|read-int|read-sse|copy|decode|decode-stream]\n"
                           << "Defaults: physical cores in current affinity, all nodes, 1024 MiB per array, 10 repeats.\n";
                 return 0;
@@ -180,6 +217,7 @@ int main(int argc, char** argv) {
         if (kernel != "all" && kernel != "read" && kernel != "read-int" && kernel != "read-sse" && kernel != "copy" && kernel != "decode" && kernel != "decode-stream") throw std::runtime_error("unknown kernel");
         cpu_set_t allowed; CPU_ZERO(&allowed);
         if (sched_getaffinity(0, sizeof(allowed), &allowed)) throw std::runtime_error("cannot read CPU affinity");
+        std::map<int,int> cpu_nodes;
         std::vector<int> cpus, siblings; std::set<std::string> cores;
         std::set<int> nodes;
         for (int c = 0; c < CPU_SETSIZE; ++c) {
@@ -191,7 +229,7 @@ int main(int argc, char** argv) {
                 if (name.rfind("node", 0) == 0) n = std::stoi(name.substr(4));
             }
             if (node >= 0 && node != n) continue;
-            nodes.insert(n);
+            nodes.insert(n); cpu_nodes[c] = n;
             std::string key = read(base + "/topology/physical_package_id") + ":" + read(base + "/topology/core_id");
             if (cores.insert(key).second) cpus.push_back(c); else siblings.push_back(c);
         }
@@ -217,6 +255,7 @@ int main(int argc, char** argv) {
                     uint8_t packed = (i + j + row) & 255;
                     reference[row] += (packed & 15)*activation[2*i+j] + (packed >> 4)*activation[2*i+32+j];
                 }
+        if (bind_local) for (int cpu : cpus) if (cpu_nodes.at(cpu) < 0) throw std::runtime_error("CPU has no NUMA node for local binding");
         omp_set_dynamic(0); omp_set_num_threads(threads);
         std::cout << "Threads: " << threads << "; eligible NUMA nodes:";
         for (int n : nodes) std::cout << ' ' << n;
@@ -231,12 +270,15 @@ int main(int argc, char** argv) {
                 std::cerr << "OpenMP could not create the requested worker count\n"; std::abort();
             }
             int t = omp_get_thread_num(); pin_cpu(cpus[t]);
-            src[t] = allocate(bytes, huge); dst[t] = allocate(bytes, huge);
+            src[t] = allocate(bytes, huge, bind_local ? cpu_nodes.at(cpus[t]) : -1);
+            dst[t] = allocate(bytes, huge, bind_local ? cpu_nodes.at(cpus[t]) : -1);
             for (size_t i = 0; i < count; ++i) { src[t][i] = 1.0; dst[t][i] = 0.0; }
             outputs[t].resize(bytes/2048);
             orders[t].resize((bytes + block_kib*1024 - 1)/(block_kib*1024));
             std::iota(orders[t].begin(), orders[t].end(), 0);
         }
+        if (bind_local) std::cout << "Allocation policy: bind each buffer to its worker NUMA node\n";
+        if (numa_report) placement(src,dst);
         std::vector<std::string> modes = kernel == "all" ? std::vector<std::string>{"read", "copy", "decode"} : std::vector<std::string>{kernel};
         for (const auto& mode : modes) {
             bool isdecode = mode == "decode" || mode == "decode-stream";
@@ -314,6 +356,7 @@ int main(int argc, char** argv) {
             std::cout << mode << ": median " << median << ", best " << rates.back() << ", min " << rates.front()
                       << " GB/s (decimal), " << repeats << " passes; validation OK\n";
         }
+        if (numa_report) placement(src,dst);
         for (int t = 0; t < threads; ++t) { munmap(src[t], bytes); munmap(dst[t], bytes); }
     } catch (const std::exception& e) { std::cerr << "membw: " << e.what() << '\n'; return 1; }
 }

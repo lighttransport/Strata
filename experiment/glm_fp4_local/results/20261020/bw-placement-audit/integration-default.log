@@ -1,0 +1,6 @@
+Threads: 2; eligible NUMA nodes: 0 1; worker CPUs: 0 1
+Array size: 64 MiB each (two arrays); worker first-touch placement
+Page advice: 4 KiB; unroll: 4; prefetch: 0 bytes; decode block: 256 KiB; layers: 1
+read: median 36.3921, best 36.6267, min 36.1276 GB/s (decimal), 3 passes; validation OK
+copy: median 25.416, best 26.4376, min 24.2956 GB/s (decimal), 3 passes; validation OK
+decode: median 21.1346, best 21.1571, min 18.4922 GB/s (decimal), 3 passes; validation OK

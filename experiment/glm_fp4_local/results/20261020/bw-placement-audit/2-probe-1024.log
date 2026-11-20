@@ -1,0 +1,36 @@
+Threads: 16; eligible NUMA nodes: 0 1; worker CPUs: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+Array size: 1024 MiB each (two arrays); worker first-touch placement
+Page advice: 4 KiB; unroll: 4; prefetch: 0 bytes; decode block: 256 KiB; layers: 1
+PLACEMENT mappings=32 N1=524288
+SAMPLE round=0 wall_ms=31.9113 active_cores=12.5746
+SAMPLE round=1 wall_ms=31.396 active_cores=12.8496
+SAMPLE round=2 wall_ms=31.9546 active_cores=12.8186
+SAMPLE round=3 wall_ms=31.3735 active_cores=12.9124
+SAMPLE round=4 wall_ms=31.3748 active_cores=12.907
+SAMPLE round=5 wall_ms=31.3179 active_cores=12.8627
+SAMPLE round=6 wall_ms=31.1986 active_cores=12.9538
+SAMPLE round=7 wall_ms=31.2141 active_cores=12.9417
+SAMPLE round=8 wall_ms=31.4027 active_cores=12.8149
+SAMPLE round=9 wall_ms=31.8014 active_cores=12.5351
+SAMPLE round=10 wall_ms=31.4936 active_cores=12.6785
+SAMPLE round=11 wall_ms=31.3895 active_cores=12.7057
+SAMPLE round=12 wall_ms=31.4693 active_cores=12.7393
+SAMPLE round=13 wall_ms=31.462 active_cores=12.7245
+SAMPLE round=14 wall_ms=31.343 active_cores=12.732
+SAMPLE round=15 wall_ms=31.4657 active_cores=12.7078
+SAMPLE round=16 wall_ms=31.6275 active_cores=12.6464
+SAMPLE round=17 wall_ms=31.6449 active_cores=12.6566
+SAMPLE round=18 wall_ms=31.7913 active_cores=12.6456
+SAMPLE round=19 wall_ms=31.8321 active_cores=12.6586
+SAMPLE round=20 wall_ms=31.4554 active_cores=12.7338
+SAMPLE round=21 wall_ms=31.4832 active_cores=12.6916
+SAMPLE round=22 wall_ms=31.5885 active_cores=12.6823
+SAMPLE round=23 wall_ms=31.6884 active_cores=12.6616
+SAMPLE round=24 wall_ms=31.7337 active_cores=12.6513
+SAMPLE round=25 wall_ms=36.3825 active_cores=11.0614
+SAMPLE round=26 wall_ms=31.454 active_cores=12.7502
+SAMPLE round=27 wall_ms=31.3899 active_cores=12.776
+SAMPLE round=28 wall_ms=31.438 active_cores=12.6955
+SAMPLE round=29 wall_ms=31.64 active_cores=12.6363
+read: median 34.1222, best 34.4163, min 29.5126 GB/s (decimal), 30 passes; validation OK
+PLACEMENT mappings=32 N1=524288

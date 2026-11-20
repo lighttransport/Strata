@@ -13,9 +13,28 @@ Workers are pinned to CPUs from the process's allowed affinity mask.
 By default, one worker runs on each physical core. Extra threads use SMT
 siblings after physical cores. Each worker allocates and initializes its
 own buffers after pinning, so Linux's default first-touch memory policy
-places pages on that worker's node. Arrays are split equally between workers
+prefers that worker's node, but can fall back to another node under local memory
+pressure. Arrays are split equally between workers
 and rounded down to whole pages. `--mib` is the size of each of two arrays,
 not the total allocation. Use buffers much larger than the last-level cache.
+
+Use `--bind-local` to bind each buffer to its worker's NUMA node before it is
+first touched, and `--numa-report` to print aggregate resident page counts from
+`/proc/self/numa_maps` before and after measurement:
+
+```sh
+tools/membw/membw --threads 16 --mib 1024 --repeats 30 --kernel read --bind-local --numa-report
+```
+
+Binding applies only to this process's benchmark buffers. It can cause local
+page reclaim during allocation; allocation remains outside timing. The report
+sums mappings containing those buffers, which can include adjacent allocations
+if mappings merge. It reports no addresses and is not a hardware traffic counter.
+Neither option is enabled by default. First-touch placement alone is not proof
+of local allocation: a memory-pressure diagnostic on Threadripper 1950X placed
+all 2 GiB of buffers on node 1 and read about 34 GB/s, while explicitly bound,
+evenly split buffers read 77–82 GB/s. See
+[the measured evidence](../../experiment/glm_fp4_local/results/20261020/bw-placement-audit/summary.json).
 
 Select a node with `--node N`. This filters worker CPUs; it does not override
 an inherited memory policy. For strict node binding, use numactl:

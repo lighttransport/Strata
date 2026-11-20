@@ -1,0 +1,9 @@
+Threads: 2; eligible NUMA nodes: 1; worker CPUs: 8 9
+Array size: 128 MiB each (two arrays); worker first-touch placement
+Page advice: 4 KiB; unroll: 4; prefetch: 0 bytes; decode block: 256 KiB; layers: 1
+Allocation policy: bind each buffer to its worker NUMA node
+PLACEMENT mappings=4 N1=65536
+read: median 40.8817, best 40.9506, min 39.9044 GB/s (decimal), 3 passes; validation OK
+copy: median 27.1622, best 27.31, min 27.0762 GB/s (decimal), 3 passes; validation OK
+decode: median 22.8563, best 22.9112, min 22.8031 GB/s (decimal), 3 passes; validation OK
+PLACEMENT mappings=4 N1=65536

@@ -1,0 +1,173 @@
+{
+  "measurements": [
+    {
+      "log": "0-installed-1024.log",
+      "median_GBps": {
+        "read": 32.3158
+      },
+      "placement": [],
+      "median_active_cores": null
+    },
+    {
+      "log": "1-baseline-1024.log",
+      "median_GBps": {
+        "read": 33.6964
+      },
+      "placement": [],
+      "median_active_cores": null
+    },
+    {
+      "log": "2-probe-1024.log",
+      "median_GBps": {
+        "read": 34.1222
+      },
+      "placement": [
+        "PLACEMENT mappings=32 N1=524288",
+        "PLACEMENT mappings=32 N1=524288"
+      ],
+      "median_active_cores": 12.70675
+    },
+    {
+      "log": "3-probe-4096.log",
+      "median_GBps": {
+        "read": 32.8158
+      },
+      "placement": [
+        "PLACEMENT mappings=32 N1=2097152",
+        "PLACEMENT mappings=32 N1=2097152"
+      ],
+      "median_active_cores": 12.22735
+    },
+    {
+      "log": "4-baseline-1024.log",
+      "median_GBps": {
+        "read": 33.6711
+      },
+      "placement": [],
+      "median_active_cores": null
+    },
+    {
+      "log": "5-installed-1024.log",
+      "median_GBps": {
+        "read": 32.4374
+      },
+      "placement": [],
+      "median_active_cores": null
+    },
+    {
+      "log": "6-probe-1024.log",
+      "median_GBps": {
+        "read": 33.7025
+      },
+      "placement": [
+        "PLACEMENT mappings=32 N1=524288",
+        "PLACEMENT mappings=32 N1=524288"
+      ],
+      "median_active_cores": 12.514800000000001
+    },
+    {
+      "log": "integration-default.log",
+      "median_GBps": {
+        "read": 36.3921,
+        "copy": 25.416,
+        "decode": 21.1346
+      },
+      "placement": [],
+      "median_active_cores": null
+    },
+    {
+      "log": "integration-huge.log",
+      "median_GBps": {
+        "read": 39.2912,
+        "copy": 26.2558,
+        "decode": 21.8043
+      },
+      "placement": [
+        "PLACEMENT mappings=4 N0=32768",
+        "PLACEMENT mappings=4 N0=32768"
+      ],
+      "median_active_cores": null
+    },
+    {
+      "log": "integration-local.log",
+      "median_GBps": {
+        "read": 82.4162
+      },
+      "placement": [
+        "PLACEMENT mappings=32 N0=262144 N1=262144",
+        "PLACEMENT mappings=32 N0=262144 N1=262144"
+      ],
+      "median_active_cores": null
+    },
+    {
+      "log": "integration-node1.log",
+      "median_GBps": {
+        "read": 40.8817,
+        "copy": 27.1622,
+        "decode": 22.8563
+      },
+      "placement": [
+        "PLACEMENT mappings=4 N1=65536",
+        "PLACEMENT mappings=4 N1=65536"
+      ],
+      "median_active_cores": null
+    },
+    {
+      "log": "locality-0-default.log",
+      "median_GBps": {
+        "read": 33.7684
+      },
+      "placement": [
+        "PLACEMENT mappings=32 N1=524288",
+        "PLACEMENT mappings=32 N1=524288"
+      ],
+      "median_active_cores": 12.59095
+    },
+    {
+      "log": "locality-1-strict.log",
+      "median_GBps": {
+        "read": 76.5339
+      },
+      "placement": [
+        "PLACEMENT mappings=32 N0=262144 N1=262144",
+        "PLACEMENT mappings=32 N0=262144 N1=262144"
+      ],
+      "median_active_cores": 14.471900000000002
+    },
+    {
+      "log": "locality-2-strict.log",
+      "median_GBps": {
+        "read": 78.5891
+      },
+      "placement": [
+        "PLACEMENT mappings=31 N0=262144 N1=262144",
+        "PLACEMENT mappings=31 N0=262144 N1=262144"
+      ],
+      "median_active_cores": 14.71715
+    },
+    {
+      "log": "locality-3-default.log",
+      "median_GBps": {
+        "read": 81.9163
+      },
+      "placement": [
+        "PLACEMENT mappings=32 N0=262144 N1=262144",
+        "PLACEMENT mappings=32 N0=262144 N1=262144"
+      ],
+      "median_active_cores": 15.0886
+    }
+  ],
+  "finding": "Default first touch placed all buffers on node 1 in low-bandwidth runs. Explicit per-worker local binding split pages evenly and restored the high-bandwidth regime. Subsequent default allocations also split evenly after local memory was reclaimed.",
+  "limits": [
+    "Earlier 34/83 GB/s runs did not record placement, so the exact historical cause is inferred, not directly observed.",
+    "Page counts aggregate buffer-containing mappings; not per-thread memory-controller traffic.",
+    "Measured read bandwidth is not theoretical DRAM bandwidth or quantized-kernel utilization.",
+    "Strict binding can induce reclaim; allocation and reclaim are outside the scan timer."
+  ],
+  "source_sha256": {
+    "tools/membw/membw.cpp": "eff4324e75f3595de42c0ded19970b620f3a267e84e4ded869e7d402a92de7e5",
+    "build-fp4-local/bw-audit/baseline.cpp": "4d4a434bb125bc89e72fd3eefbf75e131721653f31bc60ba2a364f006289fc60",
+    "build-fp4-local/bw-audit/probe.cpp": "86ccbb262122c610f29414cc14a080a1438276cb041313bd9102e62a88d2c05a",
+    "build-fp4-local/bw-audit/locality.cpp": "93996a23dacf3e6f720b908203334c9f7a07501c70ed7b73d07900b5c361827e"
+  }
+}

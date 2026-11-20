@@ -1,0 +1,10 @@
+{
+  "OMP_WAIT_POLICY": "PASSIVE",
+  "OMP_DYNAMIC": "FALSE",
+  "numa_balancing": "1",
+  "binary_sha256": {
+    "build-fp4-local/bw-audit/baseline": "4e5d671206e7cd5d83b0afb866c3b2ec7561ce18410422c93aca75dc8674c747",
+    "build-fp4-local/bw-audit/probe": "cd849b32b1964c71a0728e022d6c0bf30694d42b25c23eb708b5363a9673cdf4",
+    "tools/membw/membw": "fb822785a6088905f96d9eecc1ff2f5bb86b4090d28817a46565a7da68d5a04e"
+  }
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "i": 0,
+    "mode": "default",
+    "command": [
+      "build-fp4-local/bw-audit/default-locality",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 1,
+    "mode": "strict",
+    "command": [
+      "build-fp4-local/bw-audit/strict-locality",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 2,
+    "mode": "strict",
+    "command": [
+      "build-fp4-local/bw-audit/strict-locality",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  },
+  {
+    "i": 3,
+    "mode": "default",
+    "command": [
+      "build-fp4-local/bw-audit/default-locality",
+      "--threads",
+      "16",
+      "--mib",
+      "1024",
+      "--repeats",
+      "30",
+      "--kernel",
+      "read"
+    ],
+    "returncode": 0
+  }
+]
