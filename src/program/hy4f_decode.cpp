@@ -15,6 +15,7 @@
 //
 //     strata-hy4f MODEL.gguf --ids 1,2,3 [--n 32] [--layers L] [--dump DIR] [--threads 15] [--ctx 2048]
 //
+// --inject REF (with --dump): after each block, h is replaced by the reference dump's l_out-<il> (per-block error).
 // --layers L runs only the first L blocks (no head) and with --dump writes DIR/l_out-<il>.bin per block: the four
 // streams of every prompt position ([n][4][pos], the ds41f_llama_dump .bin format: int32 type, int64 ne[4], f32).
 #include "strata/artifact/gguf_reader.hpp"
@@ -251,6 +252,7 @@ public:
     // the four streams after block il for the last step (host copy), filled when dumping
     std::vector<std::vector<float>> dumps;   // [il] -> [4 * n] of the last step
     bool want_dump = false;
+    std::vector<std::vector<float>> inject;   // --inject: per block, reference streams [pos][hc][n] replacing h after the block
     // STRATA_HY4F_CKSUM=1: FNV-1a of the logits' bits per step, and of the streams after each block (eager: a sync per block)
     bool cksum = false;
     std::vector<uint64_t> ck_logits;
@@ -971,9 +973,12 @@ void Hy4::attention(Layer& l, int pos) {
     }
     // un-absorb: av[h] = W_vb[h] att[h][0..512)  (W_vb[h]: [256][512])
     k::hy4_q8_0_heads(l.v_b.d, att_, kRow, av_, v_head_, v_head_, kv_rank_, H, s_);
+    dbg_dev("attn_kqv", cur_layer_, av_, size_t(H) * v_head_);
+    dbg_dev("attn_gate_logit", cur_layer_, gt_, size_t(H) * v_head_);
     if (fused) {
         k::hy4_mul_sigmoid_q8(av_, gt_, q8b_, H * v_head_, s_);
         gemv_q8(l.wo, q8b_, o_);
+        dbg_dev("attn_wo", cur_layer_, o_, size_t(n_embd_));
     } else {
         k::hy4_mul_sigmoid(av_, gt_, av_, H * v_head_, s_);
         gemv(l.wo, av_, o_);
@@ -1155,6 +1160,9 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
         if (!want_dump) return;
         dumps[size_t(i)].resize(size_t(n) * hc_);
         d2h(dumps[size_t(i)].data(), h_, dumps[size_t(i)].size() * 4);
+        const size_t row = size_t(n) * hc_;
+        if (size_t(i) < inject.size() && inject[size_t(i)].size() >= (size_t(pos) + 1) * row)
+            h2d(h_, inject[size_t(i)].data() + size_t(pos) * row, row * 4);   // the next block starts from the reference
     };
     auto block = [&](int i) {   // up to the FFN input
         auto& l = L_[size_t(i)];
@@ -1166,7 +1174,9 @@ const std::vector<float>& Hy4::step(int tok, int pos) {
         attention(l, pos);
         if (prof) { ck(cudaStreamSynchronize(s_), "prof"); prof_attn += ms(ta, clk::now()); }
         post(l.post_attn_norm, nullptr);
+        dbg_dev("hc_attn_out", i, h_, size_t(n) * hc_);
         hc_mix(l.hc_ffn_fn, l.hc_ffn_scale, l.hc_ffn_base, true, l.ffn_norm);
+        dbg_dev("ffn_norm", i, cur_, size_t(n));
     };
     int prev = -1, i = 0;
     while (true) {
@@ -1234,7 +1244,7 @@ int run(int argc, char** argv) {
         std::fprintf(stderr, "usage: strata-hy4f MODEL.gguf --ids 1,2,3 [--n 32] [--layers L] [--dump DIR] [--threads 15] [--ctx 2048]\n");
         return 2;
     }
-    std::string model = argv[1], dump;
+    std::string model = argv[1], dump, inject;
     std::vector<int> ids;
     int n_gen = 16, layers = 0, threads = 15, ctx = 2048, budget = 8;
     double tier_gib = -1, reserve_gib = 3.0;
@@ -1248,6 +1258,7 @@ int run(int argc, char** argv) {
         else if (a == "--n") n_gen = std::stoi(next());
         else if (a == "--layers") layers = std::stoi(next());
         else if (a == "--dump") dump = next();
+        else if (a == "--inject") inject = next();
         else if (a == "--threads") threads = std::stoi(next());
         else if (a == "--ctx") ctx = std::stoi(next());
         else if (a == "--tier-gib") tier_gib = std::stod(next());          // 0: no GPU tier; -1: free VRAM - reserve
@@ -1268,6 +1279,17 @@ int run(int argc, char** argv) {
     m.prof = strata_env_is_one("STRATA_HY4F_PROF") != 0;
     const bool partial = m.n_run() < m.n_layer();
     m.want_dump = !dump.empty();
+    if (!inject.empty()) {   // a reference dump (same .bin format): each block is checked on the reference's input
+        if (dump.empty()) throw std::runtime_error("--inject needs --dump");
+        for (int i = 0; i < m.n_run(); ++i) {
+            std::ifstream f(inject + "/l_out-" + std::to_string(i) + ".bin", std::ios::binary);
+            if (!f) break;
+            f.seekg(0, std::ios::end); const size_t bytes = size_t(f.tellg()) - 36; f.seekg(36);
+            m.inject.emplace_back(bytes / 4);
+            f.read(reinterpret_cast<char*>(m.inject.back().data()), std::streamsize(bytes));
+        }
+        std::fprintf(stderr, "hy4f: injecting %zu reference blocks\n", m.inject.size());
+    }
     std::vector<std::vector<float>> all(static_cast<size_t>(m.n_run()));
     std::vector<float> all_logits;
     auto t0 = std::chrono::steady_clock::now();
