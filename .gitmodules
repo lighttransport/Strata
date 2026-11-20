@@ -1,0 +1,3 @@
+[submodule "tools/jobctl"]
+	path = tools/jobctl
+	url = ../jobctl.git
