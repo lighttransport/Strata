@@ -19,6 +19,7 @@
 // streams of every prompt position ([n][4][pos], the ds41f_llama_dump .bin format: int32 type, int64 ne[4], f32).
 #include "strata/artifact/gguf_reader.hpp"
 #include "strata/ds41/expert_lane.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/kernels/ds41.hpp"
 #include "strata/kernels/glm.hpp"
@@ -1261,10 +1262,10 @@ int run(int argc, char** argv) {
     if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
     Hy4 m(model, threads, ctx, layers);
     m.tier_setup(tier_gib, reserve_gib, budget);
-    m.graphs = !(std::getenv("STRATA_HY4F_GRAPH") && std::string(std::getenv("STRATA_HY4F_GRAPH")) == "0");
-    m.cksum = std::getenv("STRATA_HY4F_CKSUM") && std::string(std::getenv("STRATA_HY4F_CKSUM")) == "1";
-    m.fused = !(std::getenv("STRATA_HY4F_UNFUSED") && std::string(std::getenv("STRATA_HY4F_UNFUSED")) == "1");
-    m.prof = std::getenv("STRATA_HY4F_PROF") && std::string(std::getenv("STRATA_HY4F_PROF")) == "1";
+    m.graphs = strata_env_truthy_default("STRATA_HY4F_GRAPH", 1) != 0;   // "0" = eager
+    m.cksum = strata_env_is_one("STRATA_HY4F_CKSUM") != 0;
+    m.fused = strata_env_is_one("STRATA_HY4F_UNFUSED") == 0;
+    m.prof = strata_env_is_one("STRATA_HY4F_PROF") != 0;
     const bool partial = m.n_run() < m.n_layer();
     m.want_dump = !dump.empty();
     std::vector<std::vector<float>> all(static_cast<size_t>(m.n_run()));
