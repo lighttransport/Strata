@@ -55,6 +55,9 @@ decodes the output with the GGUF's vocabulary.
 The full model is 148.6 GiB, so most checks use cut models. `tools/hy4f_truncate_gguf.py` writes a GGUF with the
 first L blocks (`--layers L`) or a chosen set of blocks (`--blocks 0,2,21,31`), with the output head kept and,
 with `--keep-engram`, the Engram modules of the kept blocks. `tools/hy4f_compare.py` compares two dumps.
+`tools/hy4f_full_check.sh MODEL.gguf LLAMA_DUMP OUT_DIR` runs the whole full-model check on an idle machine: the
+llama.cpp reference, Strata end to end and per block, the comparisons, and decode speed with and without the GPU
+cache, NUMA bands, 16 threads and eager steps, twice each. It stops if the kernel log shows trouble.
 
 Measured on a Threadripper 1950X with 125 GB of RAM and an RX 9070 XT, with other jobs running on the CPU and
 GPU. The reference is llama.cpp's CPU build on the same cut model and the same prompt.
