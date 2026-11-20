@@ -10,11 +10,15 @@
 //
 // Everything that is not a routed expert or the Engram table lives on the GPU (~4.2 GB). Dense GEMVs are q8_1
 // activations into iq_mmvq (NVFP4 / Q8_0, llama.cpp's CUDA arithmetic); attention is ds41_attention over 640-wide
-// rows (576 padded). The DSA indexer (kpool 4, top-k 2048) selects every token below 2048 positions, so up to that
-// context the attention here is exact without it; longer contexts are refused until the indexer is ported.
+// rows (576 padded). Full layers past 2048 positions attend the DSA kpool indexer's selection (kpool 4, top-k 2048,
+// select-tail). Routed experts the GPU tier holds (--tier-gib) run there; the rest on the CPU lane. The step runs as
+// HIP graph segments between the CPU lane's waits (STRATA_HY4F_GRAPH=0: eager).
 //
-//     strata-hy4f MODEL.gguf --ids 1,2,3 [--n 32] [--layers L] [--dump DIR] [--threads 15] [--ctx 2048]
+//     strata-hy4f MODEL.gguf --ids 1,2,3 [--n 32] [--ctx 2048] [--threads 15] [--tier-gib G] [--ignore-eos]
+//                 [--layers L] [--dump DIR [--inject REF]]
 //
+// Prints the generated ids on stdout (generation stops after the GGUF's EOS token unless --ignore-eos); timings on
+// stderr. tools/hy4f_run.py wraps it with text in and out.
 // --inject REF (with --dump): after each block, h is replaced by the reference dump's l_out-<il> (per-block error).
 // --layers L runs only the first L blocks (no head) and with --dump writes DIR/l_out-<il>.bin per block: the four
 // streams of every prompt position ([n][4][pos], the ds41f_llama_dump .bin format: int32 type, int64 ne[4], f32).
@@ -266,6 +270,7 @@ public:
     int n_run() const { return n_run_; }
     int n_layer() const { return n_layer_; }
     int vocab() const { return vocab_; }
+    int eos() const { return eos_; }
     double expert_ms = 0, gpu_ms = 0;
     Tier tier;
     // STRATA_HY4F_PROF=1: per-phase host times (ms, summed over steps); attention is synchronized to be measured
@@ -325,7 +330,7 @@ private:
     const strata::TensorInfo* tok_embd_ = nullptr;
     W out_norm_, output_, hc_head_fn_, hc_head_base_, hc_head_scale_;
     std::vector<Layer> L_;
-    int n_run_ = 0, ctx_ = 0;
+    int n_run_ = 0, ctx_ = 0, eos_ = -1;
     std::unique_ptr<strata::ds41::ExpertLane> lane_;
     cudaStream_t s_ = nullptr;
     std::vector<int> history_;
@@ -440,6 +445,7 @@ void Hy4::read_config() {
     n_layer_ = blocks - nextn;
     n_embd_ = int(M("embedding_length").u);
     vocab_ = int(M("vocab_size").u);
+    if (const auto* e = g_.get("tokenizer.ggml.eos_token_id")) eos_ = int(e->u);
     hc_ = int(M("hyper_connection.count").u);
     hc_eps_ = float(M("hyper_connection.epsilon").num());
     hc_mag_ = float(M("hyper_connection.magnitude").num());
@@ -1241,12 +1247,16 @@ void write_bin(const std::string& file, const std::vector<float>& v, const int64
 
 int run(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: strata-hy4f MODEL.gguf --ids 1,2,3 [--n 32] [--layers L] [--dump DIR] [--threads 15] [--ctx 2048]\n");
+        std::fprintf(stderr,
+                     "usage: strata-hy4f MODEL.gguf --ids 1,2,3 [--n 16] [--ctx 2048] [--threads 15] [--ignore-eos]\n"
+                     "         [--tier-gib G (0: off; default min(free VRAM - reserve, 4))] [--tier-reserve-gib 3] [--tier-uploads 8]\n"
+                     "         [--layers L] [--dump DIR [--inject REF_DIR]]\n");
         return 2;
     }
     std::string model = argv[1], dump, inject;
     std::vector<int> ids;
     int n_gen = 16, layers = 0, threads = 15, ctx = 2048, budget = 8;
+    bool ignore_eos = false;
     double tier_gib = -1, reserve_gib = 3.0;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
@@ -1259,6 +1269,7 @@ int run(int argc, char** argv) {
         else if (a == "--layers") layers = std::stoi(next());
         else if (a == "--dump") dump = next();
         else if (a == "--inject") inject = next();
+        else if (a == "--ignore-eos") ignore_eos = true;
         else if (a == "--threads") threads = std::stoi(next());
         else if (a == "--ctx") ctx = std::stoi(next());
         else if (a == "--tier-gib") tier_gib = std::stod(next());          // 0: no GPU tier; -1: free VRAM - reserve
@@ -1271,6 +1282,10 @@ int run(int argc, char** argv) {
     // load every code object up front, and warm the kernels up in load()
     setenv("HIP_ENABLE_DEFERRED_LOADING", "0", 0);
     if (ids.empty()) throw std::runtime_error("--ids is required (token ids, e.g. from llama-tokenize)");
+    if (n_gen < 0) throw std::runtime_error("--n must be >= 0");
+    if (ids.size() + size_t(n_gen) > size_t(ctx))
+        throw std::runtime_error("prompt (" + std::to_string(ids.size()) + ") + --n (" + std::to_string(n_gen) +
+                                 ") exceeds --ctx " + std::to_string(ctx));
     Hy4 m(model, threads, ctx, layers);
     m.tier_setup(tier_gib, reserve_gib, budget);
     m.graphs = strata_env_truthy_default("STRATA_HY4F_GRAPH", 1) != 0;   // "0" = eager
@@ -1285,6 +1300,9 @@ int run(int argc, char** argv) {
             std::ifstream f(inject + "/l_out-" + std::to_string(i) + ".bin", std::ios::binary);
             if (!f) break;
             f.seekg(0, std::ios::end); const size_t bytes = size_t(f.tellg()) - 36; f.seekg(36);
+            if (bytes != ids.size() * size_t(3072 * 4) * 4)
+                throw std::runtime_error("--inject: l_out-" + std::to_string(i) + ".bin does not hold " + std::to_string(ids.size()) +
+                                         " positions (another prompt?)");
             m.inject.emplace_back(bytes / 4);
             f.read(reinterpret_cast<char*>(m.inject.back().data()), std::streamsize(bytes));
         }
@@ -1328,15 +1346,18 @@ int run(int argc, char** argv) {
     m.prof_attn = m.prof_route = m.prof_experts = m.prof_post = 0;
     m.gpu_ms = 0;
     t0 = std::chrono::steady_clock::now();
+    int steps = 0;   // the last token needs no step of its own
     for (int i = 0; i < n_gen; ++i) {
         out.push_back(next);
+        if (i + 1 == n_gen || (!ignore_eos && next == m.eos())) break;
         const auto& lg = m.step(next, int(ids.size() + size_t(i)));
+        ++steps;
         next = int(std::max_element(lg.begin(), lg.end()) - lg.begin());
     }
     const double gen_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     std::printf("%s\n", join_ids(out).c_str());
-    std::fprintf(stderr, "hy4f: decode %d tokens in %.2f s: %.2f tok/s (experts %.1f ms/token; tier hit %.1f%%, %ld uploads)\n", n_gen,
-                 gen_s, double(n_gen) / gen_s, m.expert_ms / std::max(1, n_gen),
+    std::fprintf(stderr, "hy4f: decode %d steps in %.2f s: %.2f tok/s (experts %.1f ms/token; tier hit %.1f%%, %ld uploads)\n", steps,
+                 gen_s, steps ? double(steps) / gen_s : 0.0, m.expert_ms / std::max(1, steps),
                  m.tier.routes ? 100.0 * double(m.tier.hits) / double(m.tier.routes) : 0.0, m.tier.promotions);
     std::fprintf(stderr, "hy4f: graphs %ld captured, %ld launches\n", m.graph_captures, m.graph_launches);
     if (m.cksum) {   // one line per stream: logits, then block 0.. (prompt and generated steps)
