@@ -65,8 +65,10 @@ def main():
     if run.returncode != 0:
         raise SystemExit(run.returncode)
     out = [int(x) for x in run.stdout.strip().splitlines()[-1].split(",") if x]
-    f = gguf.GGUFReader(a.model).fields["tokenizer.ggml.tokens"]
-    tokens = f.contents()
+    fields = gguf.GGUFReader(a.model).fields
+    tokens = fields["tokenizer.ggml.tokens"].contents()
+    if "tokenizer.ggml.eos_token_id" in fields and out and out[-1] == int(fields["tokenizer.ggml.eos_token_id"].contents()):
+        out = out[:-1]   # generation stopped at EOS: not part of the text
     print(a.prompt + detokenize(tokens, out))
 
 
